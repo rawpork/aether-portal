@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lingering-water-de49",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-16",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aether_context_db",
+      "database_id": "3e602230-fe2d-4cc9-a488-85caec5ee24a"
+    }
+  ]
+}
