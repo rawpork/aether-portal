@@ -60,13 +60,24 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, title, url, category, created_at FROM saved_nodes WHERE rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, title, url, category, created_at FROM saved_nodes WHERE ai_processed_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, RECLUSTER_BATCH_SIZE).all();
 
         const nodes = results || [];
         let updated = 0;
+        const analyzedIds = [];
         for (const node of nodes) {
-          if (await reclusterNode(env, apiKey, node)) updated++;
+          const result = await reclusterNode(env, apiKey, node);
+          if (!result) continue;
+          analyzedIds.push(node.id);
+          if (result.changed) updated++;
+        }
+
+        // Only nodes Gemini actually answered for are marked; failures stay NULL and retry next run.
+        if (analyzedIds.length) {
+          await env.DB.prepare(
+            `UPDATE saved_nodes SET ai_processed_at = CURRENT_TIMESTAMP WHERE id IN (${analyzedIds.map(() => "?").join(", ")})`
+          ).bind(...analyzedIds).run();
         }
 
         return jsonResponse({
@@ -722,10 +733,10 @@ async function findRecentLinkContext(env, referenceTime, excludeId = null) {
   }
 }
 
-// Returns true if the node was changed.
+// Returns null if Gemini wasn't called or failed, otherwise { changed }.
 async function reclusterNode(env, apiKey, node) {
   const category = String(node.category || "").toLowerCase();
-  if (!RECLUSTER_CATEGORIES.includes(category)) return false;
+  if (!RECLUSTER_CATEGORIES.includes(category)) return null;
 
   const fallbackCategory = category === "link" ? "link" : "note";
   const currentTitle = String(node.title || "");
@@ -743,16 +754,16 @@ async function reclusterNode(env, apiKey, node) {
   }
 
   const analysis = await analyzeWithGemini(apiKey, analysisText, fallbackCategory);
-  if (!analysis) return false;
+  if (!analysis) return null;
 
   const nextCategory = normalizeCategory(analysis.category, fallbackCategory);
   const nextTitle = analysis.title || currentTitle || "Untitled note";
-  if (nextCategory === category && nextTitle === currentTitle && nextUrl === currentUrl) return false;
+  if (nextCategory === category && nextTitle === currentTitle && nextUrl === currentUrl) return { changed: false };
 
   await env.DB.prepare(
-    "UPDATE saved_nodes SET title = ?, category = ?, url = ? WHERE id = ?"
+    "UPDATE saved_nodes SET title = ?, category = ?, url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
   ).bind(nextTitle, nextCategory, nextUrl, node.id).run();
-  return true;
+  return { changed: true };
 }
 
 // Returns { title, category } or null if Gemini failed or returned something unusable.

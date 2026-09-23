@@ -23,7 +23,7 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 
 ## Data model
 
-One table, `saved_nodes`, defined in [migrations/0001_init.sql](migrations/0001_init.sql). It also has `updated_at` and `ai_processed_at`, which the code doesn't use yet. The columns the code relies on are:
+One table, `saved_nodes`, defined in [migrations/](migrations/) (`0001_init.sql` plus `0002_add_ai_processed_at.sql`). The columns the code relies on are:
 
 | Column | Notes |
 | --- | --- |
@@ -32,6 +32,8 @@ One table, `saved_nodes`, defined in [migrations/0001_init.sql](migrations/0001_
 | `url` | The raw message text or URL |
 | `title` | First 30 chars, or Gemini-generated title |
 | `category` | One of `VALID_CATEGORIES`: note, link, article, dev_task, monetization, ai_tool, marketing, route_plan, general, video |
+| `updated_at` | Set when recluster rewrites a node |
+| `ai_processed_at` | Set once Gemini has classified the node in recluster; recluster only picks up rows where it is NULL |
 | `created_at` | D1 `CURRENT_TIMESTAMP` (`YYYY-MM-DD HH:MM:SS` UTC); normalized to ISO in `/api/graph` |
 
 Links are **not stored**. `buildGraphLinks()` computes them on every `/api/graph` request:

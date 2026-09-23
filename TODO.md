@@ -5,7 +5,7 @@ Actionable tasks, roughly in priority order. Phases refer to [ROADMAP.md](ROADMA
 ## Now
 
 - [x] Check the `saved_nodes` schema into the repo (`migrations/0001_init.sql`) so D1 can be recreated from source.
-- [ ] Add an `ai_processed_at` column and skip already-processed nodes in `/api/recluster` (Phase 4).
+- [x] Add an `ai_processed_at` column and skip already-processed nodes in `/api/recluster` (Phase 4).
 - [ ] Add tests for `/api/graph` shape and the Telegram save path using a mocked D1 binding.
 
 ## Next

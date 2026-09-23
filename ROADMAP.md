@@ -14,7 +14,7 @@ See [PROJECT_STATE.md](PROJECT_STATE.md) for the current step and [TODO.md](TODO
 
 Goal: cut Gemini spend per node to ~one call over its lifetime.
 
-- Track enrichment state (e.g. `ai_processed_at` column) and have `/api/recluster` skip nodes already processed. Today every run re-sends every eligible node.
+- ~~Track enrichment state (`ai_processed_at` column) and have `/api/recluster` skip nodes already processed.~~ Done.
 - Enrich at ingest only when local heuristics are weak (short notes, bare URLs), not for every message.
 - Keep prompts minimal: send the URL/text only, cap input length, keep `thinkingBudget: 0` and a small `maxOutputTokens`.
 - Batch several nodes into one Gemini request during recluster (one JSON array in, one out) instead of one call per node.
