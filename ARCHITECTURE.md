@@ -23,7 +23,7 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 
 ## Data model
 
-One table, `saved_nodes`. The schema is not yet checked into the repo (see [TODO.md](TODO.md)); the columns the code relies on are:
+One table, `saved_nodes`, defined in [migrations/0001_init.sql](migrations/0001_init.sql). It also has `updated_at` and `ai_processed_at`, which the code doesn't use yet. The columns the code relies on are:
 
 | Column | Notes |
 | --- | --- |
