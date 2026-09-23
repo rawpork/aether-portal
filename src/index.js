@@ -132,7 +132,11 @@ export default {
           "INSERT INTO saved_nodes (id, url, title, category) VALUES (?, ?, ?, ?)"
         ).bind(id, text, extractedTitle, category).run();
 
-        await sendTelegram(token, chatId, `🧠 Saved as [${category.toUpperCase()}]: "${extractedTitle}"`);
+        await sendTelegram(
+          token,
+          chatId,
+          `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${extractedTitle}"`
+        );
         return new Response("OK");
       } catch (err) {
         console.error("Worker Execution Error:", err.message, err.stack);
