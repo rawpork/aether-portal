@@ -822,12 +822,20 @@ export default {
     const FOCUS_DIM_OPACITY = 0.15;
     const BASE_NODE_OPACITY = 0.75;
     const BASE_LINK_OPACITY = 0.2;
-    const focus = { node: null, nodeIds: new Set(), links: new Set() };
+    const focus = { node: null, nodeIds: new Set() };
 
     // Hover is a lighter layer on top of focus: it only enlarges one node and brightens its links.
     const HOVER_SCALE = 1.6;
-    const hover = { id: null, links: new Set(), source: null };
+    const hover = { id: null, source: null };
     const hoverCapable = window.matchMedia('(hover: hover)');
+
+    // While a node is hovered or focused, links not touching it fade to this so the map stays quiet.
+    const QUIET_LINK_OPACITY = 0.05;
+    // Matched by endpoint id so it holds whether the ends are still ids or already node objects.
+    const linkTouches = (link, id) => Boolean(id) && (linkEndId(link.source) === id || linkEndId(link.target) === id);
+    const isHoverLink = link => linkTouches(link, hover.id);
+    const isFocusLink = link => Boolean(focus.node) && linkTouches(link, focus.node.id);
+    const isActiveLink = link => isHoverLink(link) || isFocusLink(link);
 
     // The graph reads per-element alpha from rgba/hsla colors, so dimming just rewrites the alpha.
     const withAlpha = (color, alpha) => {
@@ -919,13 +927,10 @@ export default {
 
     const getLinkColor = link => {
       const base = link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
-      if (hover.links.has(link)) return withAlpha(base, 1);
-      if (focus.node) return withAlpha(base, focus.links.has(link) ? 1 : FOCUS_DIM_OPACITY);
-      const color = filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end)) ? DIM_LINK_COLOR : base;
-      // While hovering the global link opacity is lifted to 1, so the rest carry the usual fade in their own alpha.
-      if (!hover.id) return color;
-      const { rgb, alpha } = splitColor(color);
-      return withAlpha(rgb, Math.round(alpha * BASE_LINK_OPACITY * 1000) / 1000);
+      if (isActiveLink(link)) return withAlpha(base, 1);
+      // Hover and focus lift the global link opacity to 1, so the quiet fade lives in each link's alpha.
+      if (hover.id || focus.node) return withAlpha(base, QUIET_LINK_OPACITY);
+      return filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end)) ? DIM_LINK_COLOR : base;
     };
 
     const isSameCategoryLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
@@ -1129,8 +1134,9 @@ export default {
     const refreshLinkStyles = () => {
       Graph
         .linkColor(link => getLinkColor(link))
-        .linkWidth(link => hover.links.has(link) ? 2 : focus.links.has(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
-        .linkDirectionalParticles(link => focus.links.has(link) ? 4 : 0);
+        .linkWidth(link => isHoverLink(link) ? 2 : isFocusLink(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
+        .linkDirectionalParticles(link => isActiveLink(link) ? 4 : 0)
+        .linkDirectionalParticleWidth(link => isActiveLink(link) ? 2.5 : 0);
     };
 
     const refreshGraphStyles = () => {
@@ -1302,13 +1308,7 @@ export default {
       if (hover.id) applyNodeHover(Graph.graphData().nodes.find(item => item.id === hover.id), false);
       hover.id = id;
       hover.source = node ? source : null;
-      hover.links = new Set();
-      if (node) {
-        Graph.graphData().links.forEach(link => {
-          if (linkEndId(link.source) === id || linkEndId(link.target) === id) hover.links.add(link);
-        });
-        applyNodeHover(node, true);
-      }
+      if (node) applyNodeHover(node, true);
       if (!focus.node) Graph.linkOpacity(hover.id ? 1 : BASE_LINK_OPACITY);
       refreshLinkStyles();
       // Only canvas hovers scroll the list; scrolling under a hovered card would make it jump.
@@ -1429,12 +1429,10 @@ export default {
     const setFocus = node => {
       focus.node = node;
       focus.nodeIds = new Set([node.id]);
-      focus.links = new Set();
       Graph.graphData().links.forEach(link => {
         const sourceId = linkEndId(link.source);
         const targetId = linkEndId(link.target);
         if (sourceId !== node.id && targetId !== node.id) return;
-        focus.links.add(link);
         focus.nodeIds.add(sourceId);
         focus.nodeIds.add(targetId);
       });
@@ -1447,7 +1445,6 @@ export default {
       if (!focus.node) return;
       focus.node = null;
       focus.nodeIds = new Set();
-      focus.links = new Set();
       Graph.nodeOpacity(BASE_NODE_OPACITY).linkOpacity(hover.id ? 1 : BASE_LINK_OPACITY);
       refreshGraphStyles();
     };
