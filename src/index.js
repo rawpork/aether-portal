@@ -608,6 +608,52 @@ export default {
       return getBaseNodeColor(node);
     };
 
+    // three.js is loaded separately (the graph bundle keeps its own copy private); until then nodes stay default spheres.
+    let THREE = null;
+    const HARDWARE_PATTERN = /3d.?print|printer|filament|hardware|arduino|raspberry|esp32|thingiverse|printables|makerworld|cnc|solder|pcb/i;
+    const CONE_CATEGORIES = ['video', 'marketing'];
+    const CYLINDER_CATEGORIES = ['note', 'general', 'dev_task', 'route_plan'];
+
+    const getNodeShape = node => {
+      if (HARDWARE_PATTERN.test(String(node.title || '') + ' ' + String(node.url || ''))) return 'box';
+      const category = getNodeCategory(node);
+      if (CONE_CATEGORIES.includes(category)) return 'cone';
+      if (CYLINDER_CATEGORIES.includes(category)) return 'cylinder';
+      return 'sphere';
+    };
+
+    const geometryCache = new Map();
+    const getShapeGeometry = shape => {
+      if (!geometryCache.has(shape)) {
+        const geometry = shape === 'box' ? new THREE.BoxGeometry(6.5, 6.5, 6.5)
+          : shape === 'cone' ? new THREE.ConeGeometry(5, 8, 4)
+          : shape === 'cylinder' ? new THREE.CylinderGeometry(3.5, 3.5, 7, 16)
+          : new THREE.SphereGeometry(4, 16, 12);
+        geometryCache.set(shape, geometry);
+      }
+      return geometryCache.get(shape);
+    };
+
+    // Splits rgba()/hsla() into an opaque color plus its alpha; three.js materials take opacity separately.
+    const splitColor = color => {
+      const match = color.match(/^(rgb|hsl)a[(](.*),([^,]*)[)]$/);
+      if (!match) return { rgb: color, alpha: 1 };
+      return { rgb: match[1] + '(' + match[2] + ')', alpha: parseFloat(match[3]) };
+    };
+
+    const materialCache = new Map();
+    const getNodeMaterial = node => {
+      const { rgb, alpha } = splitColor(getNodeColor(node));
+      const opacity = Math.round(alpha * (focus.node ? 1 : BASE_NODE_OPACITY) * 100) / 100;
+      const key = rgb + '|' + opacity;
+      if (!materialCache.has(key)) {
+        materialCache.set(key, new THREE.MeshLambertMaterial({ color: rgb, transparent: true, opacity }));
+      }
+      return materialCache.get(key);
+    };
+
+    const buildNodeMesh = node => new THREE.Mesh(getShapeGeometry(getNodeShape(node)), getNodeMaterial(node));
+
     // Link ends are ids until the graph has processed the link, then node objects.
     const isNodeObject = end => Boolean(end && typeof end === 'object');
 
@@ -799,6 +845,87 @@ export default {
         .linkColor(link => getLinkColor(link))
         .linkWidth(link => focus.links.has(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
         .linkDirectionalParticles(link => focus.links.has(link) ? 4 : 0);
+      // Custom meshes ignore nodeColor/nodeOpacity, so they are rebuilt with the current colors.
+      if (THREE) Graph.nodeThreeObject(node => buildNodeMesh(node));
+      if (territories.group) territories.group.visible = !focus.node;
+    };
+
+    // Each visible category gets a faint wireframe shell and a floating label around its cluster.
+    const territories = { group: null, entries: new Map(), visibleNodes: [] };
+
+    const makeLabelSprite = (text, color) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.font = '600 64px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = color;
+      ctx.fillText(text, 256, 64);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.75, depthWrite: false }));
+      sprite.scale.set(48, 12, 1);
+      return sprite;
+    };
+
+    const disposeTerritory = entry => {
+      territories.group.remove(entry.shell, entry.label);
+      entry.shell.material.dispose();
+      entry.label.material.map.dispose();
+      entry.label.material.dispose();
+    };
+
+    const syncTerritories = visibleNodes => {
+      territories.visibleNodes = visibleNodes;
+      if (!territories.group) return;
+      const categories = new Set(visibleNodes.map(getNodeCategory));
+      territories.entries.forEach((entry, category) => {
+        if (categories.has(category)) return;
+        disposeTerritory(entry);
+        territories.entries.delete(category);
+      });
+      categories.forEach(category => {
+        if (territories.entries.has(category)) return;
+        const color = getCategoryColor(category);
+        const shell = new THREE.Mesh(territories.shellGeometry, new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.07, depthWrite: false }));
+        const label = makeLabelSprite(category.replace(/_/g, ' ').toUpperCase(), color);
+        territories.group.add(shell, label);
+        territories.entries.set(category, { shell, label });
+      });
+      updateTerritories();
+    };
+
+    const updateTerritories = () => {
+      if (!territories.group) return;
+      const groups = new Map();
+      territories.visibleNodes.forEach(node => {
+        if (!Number.isFinite(node.x)) return;
+        const category = getNodeCategory(node);
+        if (!groups.has(category)) groups.set(category, []);
+        groups.get(category).push(node);
+      });
+      territories.entries.forEach((entry, category) => {
+        const nodes = groups.get(category) || [];
+        entry.shell.visible = entry.label.visible = nodes.length > 0;
+        if (!nodes.length) return;
+        const center = { x: 0, y: 0, z: 0 };
+        nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z || 0; });
+        center.x /= nodes.length;
+        center.y /= nodes.length;
+        center.z /= nodes.length;
+        const spread = Math.max(...nodes.map(node => Math.hypot(node.x - center.x, node.y - center.y, (node.z || 0) - center.z)));
+        const radius = Math.max(spread + 12, 18);
+        entry.shell.position.set(center.x, center.y, center.z);
+        entry.shell.scale.setScalar(radius);
+        entry.label.position.set(center.x, center.y + radius + 8, center.z);
+      });
+    };
+
+    let territoryTicks = 0;
+    const onTerritoryTick = () => {
+      territoryTicks = (territoryTicks + 1) % 10;
+      if (territoryTicks === 0) updateTerritories();
     };
 
     const setFocus = node => {
@@ -850,9 +977,23 @@ export default {
       .linkDirectionalParticleWidth(2.5)
       .linkDirectionalParticleColor(() => '#00ffcc')
       .onNodeClick(selectNode)
-      .onBackgroundClick(hideNodeCard);
+      .onBackgroundClick(hideNodeCard)
+      .onEngineTick(onTerritoryTick)
+      .onEngineStop(updateTerritories)
+      .onNodeDragEnd(updateTerritories);
 
     document.getElementById('card-close').addEventListener('click', hideNodeCard);
+
+    import('https://unpkg.com/three@0.180.0/build/three.module.js')
+      .then(module => {
+        THREE = module;
+        territories.group = new THREE.Group();
+        territories.shellGeometry = new THREE.SphereGeometry(1, 20, 14);
+        Graph.scene().add(territories.group);
+        refreshGraphStyles();
+        syncTerritories(territories.visibleNodes);
+      })
+      .catch(err => console.error('three.js failed to load; keeping default node spheres', err));
 
     // Short, stiff links inside a category and long, loose ones across categories keep islands apart.
     Graph.d3Force('charge').strength(-40).distanceMax(260);
@@ -916,6 +1057,7 @@ export default {
       else if (focus.node) setFocus(focus.node);
       else refreshGraphStyles();
       renderLegend(filteredNodes);
+      syncTerritories(filteredNodes);
     };
 
     const loadGraph = async () => {
