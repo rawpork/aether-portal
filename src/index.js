@@ -890,6 +890,7 @@ export default {
         const color = getCategoryColor(category);
         const shell = new THREE.Mesh(territories.shellGeometry, new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.07, depthWrite: false }));
         const label = makeLabelSprite(category.replace(/_/g, ' ').toUpperCase(), color);
+        label.userData.category = category;
         territories.group.add(shell, label);
         territories.entries.set(category, { shell, label });
       });
@@ -919,7 +920,71 @@ export default {
         entry.shell.position.set(center.x, center.y, center.z);
         entry.shell.scale.setScalar(radius);
         entry.label.position.set(center.x, center.y + radius + 8, center.z);
+        entry.center = center;
+        entry.radius = radius;
       });
+    };
+
+    // Labels live outside the library's picking, so a click on one arrives as a background click.
+    let lastPointer = null;
+    const pickLabel = () => {
+      if (!THREE || !territories.group || !territories.group.visible || !lastPointer) return null;
+      const rect = Graph.renderer().domElement.getBoundingClientRect();
+      const pointer = new THREE.Vector2(
+        ((lastPointer.x - rect.left) / rect.width) * 2 - 1,
+        -((lastPointer.y - rect.top) / rect.height) * 2 + 1
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.camera = Graph.camera();
+      raycaster.setFromCamera(pointer, Graph.camera());
+      const labels = [...territories.entries.values()].map(entry => entry.label).filter(label => label.visible);
+      const hit = raycaster.intersectObjects(labels, false)[0];
+      return hit ? hit.object.userData.category : null;
+    };
+
+    const flyToCategory = category => {
+      const entry = territories.entries.get(category);
+      if (!entry || !entry.center) return;
+      const center = entry.center;
+      const distance = entry.radius * 2.5 + 60;
+      let position;
+      if (filterState.flat) {
+        position = { x: center.x, y: center.y, z: distance };
+      } else {
+        const cam = Graph.camera().position;
+        const dir = { x: cam.x - center.x, y: cam.y - center.y, z: cam.z - center.z };
+        const length = Math.hypot(dir.x, dir.y, dir.z) || 1;
+        position = { x: center.x + dir.x / length * distance, y: center.y + dir.y / length * distance, z: center.z + dir.z / length * distance };
+      }
+      pauseAutoRotate();
+      Graph.cameraPosition(position, { x: center.x, y: center.y, z: center.z }, 1200);
+
+      const onlyThis = filterState.highlighted.size === 1 && filterState.highlighted.has(category);
+      filterState.highlighted = onlyThis ? new Set() : new Set([category]);
+      applyGraphFilters();
+    };
+
+    const handleBackgroundClick = () => {
+      const category = pickLabel();
+      if (category) flyToCategory(category);
+      else hideNodeCard();
+    };
+
+    // Slow idle orbit that yields to any interaction and resumes after a quiet spell.
+    const IDLE_RESUME_MS = 5000;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let idleTimer = null;
+    const resumeAutoRotate = () => {
+      const controls = Graph.controls();
+      controls.autoRotate = !focus.node && !filterState.flat && !reducedMotion.matches;
+    };
+    const scheduleResume = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(resumeAutoRotate, IDLE_RESUME_MS);
+    };
+    const pauseAutoRotate = () => {
+      Graph.controls().autoRotate = false;
+      scheduleResume();
     };
 
     let territoryTicks = 0;
@@ -957,15 +1022,17 @@ export default {
     const selectNode = node => {
       showNodeCard(node);
       setFocus(node);
+      pauseAutoRotate();
     };
 
     const hideNodeCard = () => {
       nodeCard.style.display = 'none';
       legend.style.display = 'block';
       clearFocus();
+      scheduleResume();
     };
 
-    const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
+    const Graph = ForceGraph3D({ controlType: 'orbit' })(document.getElementById('3d-graph'))
       .nodeLabel(node => {
         const title = node.title || node.name || 'Saved Entry';
         return escapeHtml(title + ' [' + getNodeCategory(node).toUpperCase() + ']');
@@ -977,12 +1044,22 @@ export default {
       .linkDirectionalParticleWidth(2.5)
       .linkDirectionalParticleColor(() => '#00ffcc')
       .onNodeClick(selectNode)
-      .onBackgroundClick(hideNodeCard)
+      .onBackgroundClick(handleBackgroundClick)
       .onEngineTick(onTerritoryTick)
       .onEngineStop(updateTerritories)
       .onNodeDragEnd(updateTerritories);
 
     document.getElementById('card-close').addEventListener('click', hideNodeCard);
+
+    const graphControls = Graph.controls();
+    graphControls.autoRotateSpeed = 0.5;
+    graphControls.addEventListener('start', pauseAutoRotate);
+    graphControls.addEventListener('end', scheduleResume);
+    document.getElementById('3d-graph').addEventListener('pointerdown', event => {
+      lastPointer = { x: event.clientX, y: event.clientY };
+      pauseAutoRotate();
+    });
+    resumeAutoRotate();
 
     import('https://unpkg.com/three@0.180.0/build/three.module.js')
       .then(module => {
@@ -1100,6 +1177,7 @@ export default {
         Graph.camera().up.set(0, 1, 0);
         Graph.cameraPosition({ x: 0, y: 0, z: 600 }, { x: 0, y: 0, z: 0 }, 800);
       }
+      pauseAutoRotate();
       Graph.d3ReheatSimulation();
     });
 
