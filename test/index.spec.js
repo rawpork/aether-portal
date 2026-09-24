@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { needsWebResearch } from "../src/index.js";
+import { needsWebResearch, parseResearch } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -12,6 +12,19 @@ describe("needsWebResearch", () => {
 	it("keeps note, graph and coding questions on the fast tier", () => {
 		for (const q of ["summarize these notes", "how do these nodes relate", "write a function to sort", "newsletter ideas", ""]) {
 			expect(needsWebResearch(q), q).toBe(false);
+		}
+	});
+});
+
+describe("parseResearch", () => {
+	it("reads saved Q&A entries and drops malformed ones", () => {
+		const saved = JSON.stringify([{ question: "q1", answer: "a1", sources: [] }, { question: "no answer" }, null]);
+		expect(parseResearch(saved)).toEqual([{ question: "q1", answer: "a1", sources: [] }]);
+	});
+
+	it("treats empty or corrupt values as no history", () => {
+		for (const value of [null, "", "not json", "{}"]) {
+			expect(parseResearch(value), String(value)).toEqual([]);
 		}
 	});
 });

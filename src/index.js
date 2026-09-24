@@ -27,6 +27,9 @@ const ASK_DESCRIPTION_LENGTH = 300;
 // Limits for nodes created from the UI's "+" form.
 const NODE_TITLE_MAX = 200;
 const NODE_CONTENT_MAX = 5000;
+// Ask history saved on the focused node: newest entries kept, answers trimmed so the graph payload stays small.
+const RESEARCH_MAX_ENTRIES = 10;
+const RESEARCH_ANSWER_MAX = 4000;
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
@@ -43,7 +46,7 @@ export default {
     if (url.pathname === "/api/graph" && request.method === "GET") {
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at FROM saved_nodes"
+          "SELECT id, title, description, category, url, created_at, research FROM saved_nodes"
         ).all();
 
         const nodes = (results || []).map(node => {
@@ -59,7 +62,8 @@ export default {
             description: node.description ? String(node.description) : null,
             url: rawUrl,
             type: category,
-            created_at: toIsoTimestamp(node.created_at)
+            created_at: toIsoTimestamp(node.created_at),
+            research: parseResearch(node.research)
           };
         });
 
@@ -210,7 +214,8 @@ export default {
           description,
           url: "",
           type: category,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          research: []
         };
         const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual" } : null;
         return jsonResponse({ success: true, node, link });
@@ -289,7 +294,17 @@ export default {
         }
         const answer = reply.text.trim();
         if (!answer) return jsonResponse({ error: "Elarion returned an empty answer." }, 502);
-        return jsonResponse({ answer, sources: reply.sources, tier: reply.tier });
+
+        // Node-card questions are saved on the focused node; cluster questions (no focusId) are not.
+        let research = null;
+        if (focusId && results.some(row => row.id === focusId)) {
+          try {
+            research = await appendResearch(env, focusId, { question, answer, sources: reply.sources });
+          } catch (err) {
+            console.warn("Ask research save failed:", err.message);
+          }
+        }
+        return jsonResponse({ answer, sources: reply.sources, tier: reply.tier, research });
       } catch (err) {
         console.error("Ask Error:", err);
         return jsonResponse({ error: "Ask failed." }, 500);
@@ -554,6 +569,8 @@ export default {
       border-radius: 14px;
       border: 1px solid rgba(0, 255, 204, 0.3);
       display: none;
+      max-height: calc(100vh - 110px);
+      overflow-y: auto;
       backdrop-filter: blur(12px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
     }
@@ -633,6 +650,25 @@ export default {
       overflow-wrap: anywhere;
     }
     .ask-answer.error { border-left-color: #ff4d6d; color: #ffb3c1; }
+    .spawn-button {
+      display: none;
+      align-self: flex-start;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,255,204,0.55);
+      background: rgba(0,255,204,0.12);
+      color: #00ffcc;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .card-research { display: none; margin-top: 10px; font-size: 12px; }
+    .card-research summary { cursor: pointer; color: #00ffcc; font-weight: 700; }
+    .card-research-list { max-height: 26vh; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+    .research-entry { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.04); }
+    .research-entry summary { color: #fff; font-weight: 600; font-size: 12px; }
+    .research-entry .research-date { color: #8a93a6; font-size: 10px; margin-left: 6px; font-weight: 400; }
+    .research-entry .research-body { margin-top: 6px; color: #dffdf7; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
     #cluster-drawer {
       position: absolute;
       top: 62px;
@@ -848,7 +884,12 @@ export default {
         <button id="card-ask-button">Ask</button>
       </div>
       <div id="card-ask-answer" class="ask-answer"></div>
+      <button type="button" id="card-spawn-button" class="spawn-button">+ Create Node from Answer</button>
     </div>
+    <details id="card-research" class="card-research">
+      <summary id="card-research-summary">Past Research &amp; Q&amp;A</summary>
+      <div id="card-research-list" class="card-research-list"></div>
+    </details>
   </div>
 
   <aside id="cluster-drawer" aria-label="Cluster reader">
@@ -1206,6 +1247,10 @@ export default {
     const cardAskInput = document.getElementById('card-ask-input');
     const cardAskButton = document.getElementById('card-ask-button');
     const cardAskAnswer = document.getElementById('card-ask-answer');
+    const cardSpawnButton = document.getElementById('card-spawn-button');
+    const cardResearch = document.getElementById('card-research');
+    const cardResearchSummary = document.getElementById('card-research-summary');
+    const cardResearchList = document.getElementById('card-research-list');
     const clusterDrawer = document.getElementById('cluster-drawer');
     const drawerDot = document.getElementById('drawer-dot');
     const drawerTitle = document.getElementById('drawer-title');
@@ -1222,6 +1267,40 @@ export default {
       output.textContent = text || '';
       output.classList.toggle('error', Boolean(isError));
       output.style.display = text ? 'block' : 'none';
+    };
+
+    const NEWLINE = String.fromCharCode(10);
+    // Answer text followed by its web sources, as shown in the answer box, history and spawned nodes.
+    const formatAnswer = (answer, sources) => {
+      const sourceLines = (Array.isArray(sources) ? sources : []).map(source => '- ' + source.title + ' — ' + source.uri);
+      return sourceLines.length ? [answer, '', 'Web sources:', ...sourceLines].join(NEWLINE) : answer;
+    };
+
+    // The latest card answer, kept so "+ Create Node from Answer" can prefill the Add Node form.
+    let lastCardAnswer = null;
+
+    const renderResearch = node => {
+      const entries = Array.isArray(node.research) ? node.research : [];
+      cardResearchSummary.textContent = 'Past Research & Q&A (' + entries.length + ')';
+      cardResearchList.replaceChildren(...entries.slice().reverse().map(entry => {
+        const item = document.createElement('details');
+        item.className = 'research-entry';
+        const summary = document.createElement('summary');
+        summary.textContent = truncate(String(entry.question), 120);
+        const asked = entry.asked_at ? new Date(entry.asked_at) : null;
+        if (asked && !Number.isNaN(asked.getTime())) {
+          const date = document.createElement('span');
+          date.className = 'research-date';
+          date.textContent = asked.toLocaleDateString();
+          summary.appendChild(date);
+        }
+        const body = document.createElement('div');
+        body.className = 'research-body';
+        body.textContent = formatAnswer(String(entry.answer), entry.sources);
+        item.append(summary, body);
+        return item;
+      }));
+      cardResearch.style.display = entries.length ? 'block' : 'none';
     };
 
     const PREVIEW_LENGTH = 220;
@@ -1262,6 +1341,9 @@ export default {
       }
       cardAskInput.value = '';
       setAskAnswer(cardAskAnswer, '');
+      lastCardAnswer = null;
+      cardSpawnButton.style.display = 'none';
+      renderResearch(node);
       nodeCard.style.display = 'block';
       // The card spans the bottom of the screen, so the legend steps aside while it's open.
       legend.style.display = 'none';
@@ -1892,13 +1974,11 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question, label, focusId, nodeIds: nodeIds.slice(0, ASK_MAX_NODES) })
         });
-        const sources = Array.isArray(body.sources) ? body.sources : [];
-        const sourceLines = sources.map(source => '- ' + source.title + ' — ' + source.uri);
-        setAskAnswer(output, sourceLines.length
-          ? [body.answer, '', 'Web sources:', ...sourceLines].join(String.fromCharCode(10))
-          : body.answer);
+        setAskAnswer(output, formatAnswer(body.answer, body.sources));
+        return { ...body, question };
       } catch (err) {
         setAskAnswer(output, err.message || 'Elarion could not answer.', true);
+        return null;
       } finally {
         button.disabled = false;
       }
@@ -1912,15 +1992,40 @@ export default {
       }
     });
 
-    cardAskButton.addEventListener('click', () => {
-      if (!focus.node) return;
-      askElarion({
+    cardAskButton.addEventListener('click', async () => {
+      const node = focus.node;
+      if (!node) return;
+      lastCardAnswer = null;
+      cardSpawnButton.style.display = 'none';
+      const reply = await askElarion({
         button: cardAskButton,
         input: cardAskInput,
         output: cardAskAnswer,
-        label: focus.node.title || focus.node.name || '',
-        focusId: focus.node.id,
-        nodeIds: [focus.node.id, ...[...focus.nodeIds].filter(id => id !== focus.node.id)]
+        label: node.title || node.name || '',
+        focusId: node.id,
+        nodeIds: [node.id, ...[...focus.nodeIds].filter(id => id !== node.id)]
+      });
+      // Ignore replies that land after the user moved to another node.
+      if (!reply || focus.node !== node) return;
+      if (Array.isArray(reply.research)) {
+        node.research = reply.research;
+        const stored = graphData.nodes.find(item => item.id === node.id);
+        if (stored) stored.research = reply.research;
+        renderResearch(node);
+      }
+      lastCardAnswer = { node, question: reply.question, answer: reply.answer, sources: reply.sources };
+      cardSpawnButton.style.display = 'inline-block';
+    });
+
+    cardSpawnButton.addEventListener('click', () => {
+      if (!lastCardAnswer) return;
+      const { node, question, answer, sources } = lastCardAnswer;
+      const category = getNodeCategory(node);
+      openAddNodeModal({
+        title: truncate('Research: ' + question.split(NEWLINE).join(' '), 80),
+        category: CATEGORY_ORDER.includes(category) ? category : 'note',
+        content: truncate(formatAnswer(answer, sources), 5000),
+        linkTargetId: node.id
       });
     });
     bindAskShortcut(cardAskInput, cardAskButton);
@@ -1973,9 +2078,12 @@ export default {
 
     addNodeCategory.replaceChildren(...CATEGORY_ORDER.map(category => new Option(categoryLabel(category), category)));
 
-    const openAddNodeModal = () => {
+    // prefill (optional): { title, category, content, linkTargetId }, used by "+ Create Node from Answer".
+    const openAddNodeModal = (prefill = {}) => {
       addNodeForm.reset();
-      addNodeCategory.value = 'note';
+      addNodeCategory.value = prefill.category || 'note';
+      addNodeTitle.value = prefill.title || '';
+      addNodeContent.value = prefill.content || '';
       addNodeError.textContent = '';
       const sorted = [...graphData.nodes].sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
       addNodeLink.replaceChildren(
@@ -1983,7 +2091,8 @@ export default {
         ...sorted.map(node => new Option(truncate(String(node.title || node.name || node.id), 60), node.id))
       );
       // Connecting to the node being looked at is the likely intent.
-      if (focus.node) addNodeLink.value = focus.node.id;
+      if (prefill.linkTargetId) addNodeLink.value = prefill.linkTargetId;
+      else if (focus.node) addNodeLink.value = focus.node.id;
       filterMenu.open = false;
       settingsMenu.classList.remove('open');
       addNodeModal.hidden = false;
@@ -1991,7 +2100,7 @@ export default {
     };
     const closeAddNodeModal = () => { addNodeModal.hidden = true; };
 
-    document.getElementById('add-node-button').addEventListener('click', openAddNodeModal);
+    document.getElementById('add-node-button').addEventListener('click', () => openAddNodeModal());
     document.getElementById('add-node-cancel').addEventListener('click', closeAddNodeModal);
     addNodeModal.addEventListener('click', event => { if (event.target === addNodeModal) closeAddNodeModal(); });
     document.addEventListener('keydown', event => {
@@ -2156,6 +2265,32 @@ function toIsoTimestamp(value) {
   if (!value) return null;
   const text = String(value);
   return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text) ? text.replace(" ", "T") + "Z" : text;
+}
+
+// The research column is a JSON array; anything unreadable counts as no history.
+export function parseResearch(value) {
+  if (!value) return [];
+  try {
+    const entries = JSON.parse(String(value));
+    return Array.isArray(entries) ? entries.filter(entry => entry && entry.question && entry.answer) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+// Adds one Q&A to the node's history (oldest dropped past the cap) and returns the saved list.
+async function appendResearch(env, nodeId, { question, answer, sources }) {
+  const row = await env.DB.prepare("SELECT research FROM saved_nodes WHERE id = ?").bind(nodeId).first();
+  const entry = {
+    question,
+    answer: answer.length > RESEARCH_ANSWER_MAX ? answer.slice(0, RESEARCH_ANSWER_MAX - 1).trimEnd() + "…" : answer,
+    sources: Array.isArray(sources) ? sources : [],
+    asked_at: new Date().toISOString()
+  };
+  const research = [...parseResearch(row?.research), entry].slice(-RESEARCH_MAX_ENTRIES);
+  await env.DB.prepare("UPDATE saved_nodes SET research = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .bind(JSON.stringify(research), nodeId).run();
+  return research;
 }
 
 function extractKeywords(text) {
