@@ -576,6 +576,8 @@ export default {
       cursor: pointer;
     }
     .mini-card:hover { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); }
+    /* Mirrors a hovered 3D node; declared before .active so the selected card wins. */
+    .mini-card.hover { border-color: #22d3ee; background: rgba(30,41,59,0.8); }
     .mini-card.active {
       border-color: rgba(0,255,204,0.85);
       background: rgba(0,255,204,0.12);
@@ -822,6 +824,11 @@ export default {
     const BASE_LINK_OPACITY = 0.2;
     const focus = { node: null, nodeIds: new Set(), links: new Set() };
 
+    // Hover is a lighter layer on top of focus: it only enlarges one node and brightens its links.
+    const HOVER_SCALE = 1.6;
+    const hover = { id: null, links: new Set(), source: null };
+    const hoverCapable = window.matchMedia('(hover: hover)');
+
     // The graph reads per-element alpha from rgba/hsla colors, so dimming just rewrites the alpha.
     const withAlpha = (color, alpha) => {
       if (color[0] === '#' && color.length === 7) {
@@ -875,8 +882,15 @@ export default {
     };
 
     const materialCache = new Map();
-    const getNodeMaterial = node => {
+    const getNodeMaterial = (node, hovered = false) => {
       const { rgb, alpha } = splitColor(getNodeColor(node));
+      if (hovered) {
+        const key = rgb + '|hover';
+        if (!materialCache.has(key)) {
+          materialCache.set(key, new THREE.MeshLambertMaterial({ color: rgb, emissive: rgb, emissiveIntensity: 0.7, transparent: true, opacity: 1 }));
+        }
+        return materialCache.get(key);
+      }
       const opacity = Math.round(alpha * (focus.node ? 1 : BASE_NODE_OPACITY) * 100) / 100;
       const key = rgb + '|' + opacity;
       if (!materialCache.has(key)) {
@@ -885,16 +899,33 @@ export default {
       return materialCache.get(key);
     };
 
-    const buildNodeMesh = node => new THREE.Mesh(getShapeGeometry(getNodeShape(node)), getNodeMaterial(node));
+    const buildNodeMesh = node => {
+      const hovered = node.id === hover.id;
+      const mesh = new THREE.Mesh(getShapeGeometry(getNodeShape(node)), getNodeMaterial(node, hovered));
+      if (hovered) mesh.scale.setScalar(HOVER_SCALE);
+      return mesh;
+    };
+
+    // Patches just the one mesh so hovering never rebuilds the whole graph.
+    const applyNodeHover = (node, on) => {
+      const obj = node && node.__threeObj;
+      if (!obj) return;
+      obj.scale.setScalar(on ? HOVER_SCALE : 1);
+      if (THREE && obj.isMesh) obj.material = getNodeMaterial(node, on);
+    };
 
     // Link ends are ids until the graph has processed the link, then node objects.
     const isNodeObject = end => Boolean(end && typeof end === 'object');
 
     const getLinkColor = link => {
       const base = link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
+      if (hover.links.has(link)) return withAlpha(base, 1);
       if (focus.node) return withAlpha(base, focus.links.has(link) ? 1 : FOCUS_DIM_OPACITY);
-      if (filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end))) return DIM_LINK_COLOR;
-      return base;
+      const color = filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end)) ? DIM_LINK_COLOR : base;
+      // While hovering the global link opacity is lifted to 1, so the rest carry the usual fade in their own alpha.
+      if (!hover.id) return color;
+      const { rgb, alpha } = splitColor(color);
+      return withAlpha(rgb, Math.round(alpha * BASE_LINK_OPACITY * 1000) / 1000);
     };
 
     const isSameCategoryLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
@@ -1095,12 +1126,16 @@ export default {
     };
 
     // Fresh accessors make the graph re-evaluate colors, widths and particles.
-    const refreshGraphStyles = () => {
+    const refreshLinkStyles = () => {
       Graph
-        .nodeColor(node => getNodeColor(node))
         .linkColor(link => getLinkColor(link))
-        .linkWidth(link => focus.links.has(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
+        .linkWidth(link => hover.links.has(link) ? 2 : focus.links.has(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
         .linkDirectionalParticles(link => focus.links.has(link) ? 4 : 0);
+    };
+
+    const refreshGraphStyles = () => {
+      Graph.nodeColor(node => getNodeColor(node));
+      refreshLinkStyles();
       // Custom meshes ignore nodeColor/nodeOpacity, so they are rebuilt with the current colors.
       if (THREE) Graph.nodeThreeObject(node => buildNodeMesh(node));
       if (territories.group) territories.group.visible = !focus.node;
@@ -1244,7 +1279,40 @@ export default {
       }
       // The drawer stays open: the card lights up, the canvas focuses and flies to the node.
       card.addEventListener('click', () => selectNode(node, { fly: true }));
+      // Touch screens emulate mouseenter on tap and never leave, so hover sync is mouse-only.
+      card.classList.toggle('hover', hover.id === node.id);
+      card.addEventListener('mouseenter', () => { if (hoverCapable.matches) setHover(node, 'drawer'); });
+      card.addEventListener('mouseleave', () => { if (hover.id === node.id) setHover(null); });
       return card;
+    };
+
+    const syncDrawerHover = scroll => {
+      let hoverCard = null;
+      clusterCards.querySelectorAll('.mini-card').forEach(card => {
+        const isHover = card.dataset.id === hover.id;
+        card.classList.toggle('hover', isHover);
+        if (isHover) hoverCard = card;
+      });
+      if (scroll && hoverCard) hoverCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    };
+
+    const setHover = (node, source) => {
+      const id = node ? node.id : null;
+      if (id === hover.id) return;
+      if (hover.id) applyNodeHover(Graph.graphData().nodes.find(item => item.id === hover.id), false);
+      hover.id = id;
+      hover.source = node ? source : null;
+      hover.links = new Set();
+      if (node) {
+        Graph.graphData().links.forEach(link => {
+          if (linkEndId(link.source) === id || linkEndId(link.target) === id) hover.links.add(link);
+        });
+        applyNodeHover(node, true);
+      }
+      if (!focus.node) Graph.linkOpacity(hover.id ? 1 : BASE_LINK_OPACITY);
+      refreshLinkStyles();
+      // Only canvas hovers scroll the list; scrolling under a hovered card would make it jump.
+      syncDrawerHover(source === 'canvas');
     };
 
     // Mirror the focused node onto the drawer list (either direction: card tap or canvas click).
@@ -1307,6 +1375,8 @@ export default {
       if (!clusterDrawer.classList.contains('open')) return;
       clusterDrawer.classList.remove('open');
       document.body.classList.remove('drawer-open');
+      // A hidden card never fires mouseleave, so its hover is dropped here.
+      if (hover.source === 'drawer') setHover(null);
       drawerCategory = null;
       if (nodeCard.style.display !== 'block') legend.style.display = 'block';
     };
@@ -1378,7 +1448,7 @@ export default {
       focus.node = null;
       focus.nodeIds = new Set();
       focus.links = new Set();
-      Graph.nodeOpacity(BASE_NODE_OPACITY).linkOpacity(BASE_LINK_OPACITY);
+      Graph.nodeOpacity(BASE_NODE_OPACITY).linkOpacity(hover.id ? 1 : BASE_LINK_OPACITY);
       refreshGraphStyles();
     };
 
@@ -1412,6 +1482,7 @@ export default {
       .linkDirectionalParticleWidth(2.5)
       .linkDirectionalParticleColor(() => '#00ffcc')
       .onNodeClick(node => selectNode(node))
+      .onNodeHover(node => setHover(node, 'canvas'))
       .onBackgroundClick(handleBackgroundClick)
       .onEngineTick(onTerritoryTick)
       .onEngineStop(updateTerritories)
@@ -1705,6 +1776,7 @@ export default {
       cardDelete.disabled = true;
       try {
         await adminFetch('/api/node/' + encodeURIComponent(node.id), { method: 'DELETE' });
+        if (hover.id === node.id) setHover(null);
         graphData.nodes = graphData.nodes.filter(item => item.id !== node.id);
         graphData.links = graphData.links.filter(link => linkEndId(link.source) !== node.id && linkEndId(link.target) !== node.id);
         hideNodeCard();
