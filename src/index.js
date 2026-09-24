@@ -465,18 +465,26 @@ export default {
     #node-card .card-close:hover { color: #00ffcc; }
     #node-card .card-delete {
       position: absolute;
-      top: 9px;
+      top: 8px;
       right: 40px;
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding: 0;
       background: none;
       border: none;
-      font-size: 15px;
-      line-height: 1;
+      border-radius: 6px;
+      color: #ef4444;
       cursor: pointer;
-      padding: 3px 6px;
-      opacity: 0.6;
+      transition: background 0.15s ease;
     }
-    #node-card .card-delete:hover { opacity: 1; }
-    #node-card .card-delete:disabled { opacity: 0.3; cursor: wait; }
+    #node-card .card-delete svg { width: 18px; height: 18px; flex-shrink: 0; display: block; }
+    #node-card .card-delete:hover,
+    #node-card .card-delete:focus-visible { background: rgba(239, 68, 68, 0.15); outline: none; }
+    #node-card .card-delete:disabled { opacity: 0.4; cursor: wait; }
     .ask-box { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
     .ask-row { display: flex; gap: 6px; align-items: stretch; }
     .ask-box textarea {
@@ -572,7 +580,7 @@ export default {
     .mini-card span { display: block; font-size: 11px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
     .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #00ffcc; text-decoration: none; }
     #cluster-drawer .ask-box { margin-top: 0; }
-    #node-card h3 { padding-right: 24px; margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
+    #node-card h3 { padding-right: 56px; margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
     #node-card p { margin: 0 0 12px 0; font-size: 13px; color: #ccc; word-break: break-word; line-height: 1.4; }
     #node-card .card-tag {
       display: inline-block;
@@ -706,7 +714,7 @@ export default {
 
   <div id="node-card">
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
-    <button id="card-delete" class="card-delete" title="Delete node" aria-label="Delete node">🗑</button>
+    <button id="card-delete" class="card-delete" title="Delete node" aria-label="Delete node"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
     <span id="card-tag" class="card-tag">NOTE</span>
     <h3 id="card-title">Node Details</h3>
     <p id="card-description"></p>
