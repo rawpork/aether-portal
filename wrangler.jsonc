@@ -3,6 +3,10 @@
   "name": "lingering-water-de49",
   "main": "src/index.js",
   "compatibility_date": "2026-09-16",
+  // Daily connection miner (scheduled handler in src/index.js), midnight UTC.
+  "triggers": {
+    "crons": ["0 0 * * *"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

@@ -1,4 +1,5 @@
 import { fetchLinkMetadata } from "./metadata.js";
+import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerResponse } from "./miner.js";
 
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
@@ -15,6 +16,11 @@ const MAX_SEMANTIC_LINKS_PER_NODE = 5;
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
 export default {
+  // Daily cron (wrangler.jsonc triggers): categorize unanalyzed nodes and mine relationship edges.
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(mineConnections(env));
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
@@ -42,7 +48,9 @@ export default {
           };
         });
 
-        return jsonResponse({ nodes, links: buildGraphLinks(nodes) });
+        const links = buildGraphLinks(nodes);
+        mergeMinedEdges(links, nodes, await loadMinedEdges(env));
+        return jsonResponse({ nodes, links });
       } catch (e) {
         console.error("D1 Graph Fetch Error:", e);
         return jsonResponse({ nodes: [], links: [] });
@@ -374,6 +382,46 @@ export default {
       font-weight: bold;
       font-size: 12px;
     }
+    #legend {
+      position: absolute;
+      bottom: 20px;
+      left: 15px;
+      z-index: 9;
+      min-width: 150px;
+      max-height: 45vh;
+      overflow-y: auto;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(8, 12, 20, 0.55);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: #dffdf7;
+      font-size: 11px;
+    }
+    #legend .legend-title { margin: 0 0 6px 0; font-size: 10px; letter-spacing: 0.08em; color: #8a93a6; text-transform: uppercase; }
+    #legend .legend-item {
+      appearance: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin: 2px 0;
+      padding: 4px 6px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      text-align: left;
+    }
+    #legend .legend-item:hover { background: rgba(255,255,255,0.06); }
+    #legend .legend-item.active { border-color: rgba(0,255,204,0.55); background: rgba(0,255,204,0.1); }
+    #legend .legend-item.dimmed { opacity: 0.45; }
+    #legend .legend-badge { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    #legend .legend-name { flex: 1; }
+    #legend .legend-count { color: #8a93a6; font-variant-numeric: tabular-nums; }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
 </head>
@@ -420,6 +468,11 @@ export default {
     <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">Open Link ↗</a>
   </div>
 
+  <div id="legend">
+    <p class="legend-title">Categories · tap to highlight</p>
+    <div id="legend-items"></div>
+  </div>
+
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
 
   <script>
@@ -429,8 +482,30 @@ export default {
       type: 'all',
       horizon: 'all',
       query: '',
-      clusterMode: 'category'
+      clusterMode: 'category',
+      // Categories highlighted from the legend; empty means everything is shown at full color.
+      highlighted: new Set()
     };
+
+    const CATEGORY_COLORS = {
+      note: '#8ecae6',
+      general: '#94a3b8',
+      link: '#4f84ff',
+      article: '#00ffcc',
+      video: '#ff4d6d',
+      dev_task: '#ffd166',
+      monetization: '#7ae582',
+      ai_tool: '#c77dff',
+      marketing: '#ff9f1c',
+      route_plan: '#f15bb5'
+    };
+    const CATEGORY_ORDER = Object.keys(CATEGORY_COLORS);
+    const FALLBACK_CATEGORY_COLOR = '#cccccc';
+    const DIM_NODE_COLOR = 'rgba(90, 100, 120, 0.18)';
+    const DIM_LINK_COLOR = 'rgba(90, 100, 120, 0.06)';
+    const MINED_LINK_COLOR = 'rgba(255, 209, 102, 0.75)';
+    const DEFAULT_LINK_COLOR = 'rgba(255, 255, 255, 0.2)';
+    const getCategoryColor = category => CATEGORY_COLORS[category] || FALLBACK_CATEGORY_COLOR;
 
     const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
     const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
@@ -450,6 +525,57 @@ export default {
     };
 
     const getRainbowColor = node => 'hsl(' + getNodeHue(node) + ', 80%, 60%)';
+
+    const isHighlighted = node => filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node));
+
+    const getNodeColor = node => {
+      if (!isHighlighted(node)) return DIM_NODE_COLOR;
+      return filterState.clusterMode === 'rainbow' ? getRainbowColor(node) : getCategoryColor(getNodeCategory(node));
+    };
+
+    // Link ends are ids until the graph has processed the link, then node objects.
+    const isNodeObject = end => Boolean(end && typeof end === 'object');
+
+    const getLinkColor = link => {
+      if (filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end))) return DIM_LINK_COLOR;
+      return link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
+    };
+
+    const isSameCategoryLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
+      getNodeCategory(link.source) === getNodeCategory(link.target);
+
+    // Each category gets a fixed anchor on a sphere; a weak pull toward it turns categories into separate islands.
+    const CLUSTER_RADIUS = 220;
+    const CLUSTER_STRENGTH = 0.06;
+    const clusterAnchors = new Map();
+    const getClusterAnchor = category => {
+      if (!clusterAnchors.has(category)) {
+        const known = CATEGORY_ORDER.indexOf(category);
+        const index = known >= 0 ? known : CATEGORY_ORDER.length + clusterAnchors.size;
+        const total = Math.max(CATEGORY_ORDER.length, index + 1);
+        // Fibonacci sphere spreads anchors evenly around the origin.
+        const y = 1 - (2 * (index + 0.5)) / total;
+        const r = Math.sqrt(1 - y * y);
+        const theta = index * Math.PI * (3 - Math.sqrt(5));
+        clusterAnchors.set(category, { x: Math.cos(theta) * r * CLUSTER_RADIUS, y: y * CLUSTER_RADIUS, z: Math.sin(theta) * r * CLUSTER_RADIUS });
+      }
+      return clusterAnchors.get(category);
+    };
+
+    const clusterForce = () => {
+      let nodes = [];
+      const force = alpha => {
+        const k = CLUSTER_STRENGTH * alpha;
+        nodes.forEach(node => {
+          const anchor = getClusterAnchor(getNodeCategory(node));
+          node.vx += (anchor.x - node.x) * k;
+          node.vy += (anchor.y - node.y) * k;
+          node.vz += (anchor.z - (node.z || 0)) * k;
+        });
+      };
+      force.initialize = initNodes => { nodes = initNodes; };
+      return force;
+    };
 
     const matchesTypeFilter = node => {
       const category = getNodeCategory(node);
@@ -509,6 +635,8 @@ export default {
     let graphData = { nodes: [], links: [] };
 
     const nodeCard = document.getElementById('node-card');
+    const legend = document.getElementById('legend');
+    const legendItems = document.getElementById('legend-items');
     const cardTitle = document.getElementById('card-title');
     const cardTag = document.getElementById('card-tag');
     const cardDescription = document.getElementById('card-description');
@@ -552,17 +680,74 @@ export default {
         cardLink.style.display = 'none';
       }
       nodeCard.style.display = 'block';
+      // The card spans the bottom of the screen, so the legend steps aside while it's open.
+      legend.style.display = 'none';
     };
 
-    const hideNodeCard = () => { nodeCard.style.display = 'none'; };
+    const hideNodeCard = () => {
+      nodeCard.style.display = 'none';
+      legend.style.display = 'block';
+    };
 
     const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
       .nodeLabel(node => {
         const title = node.title || node.name || 'Saved Entry';
         return escapeHtml(title + ' [' + getNodeCategory(node).toUpperCase() + ']');
       })
+      .linkWidth(link => link.type === 'ai' ? 1.2 : 0)
       .onNodeClick(showNodeCard)
       .onBackgroundClick(hideNodeCard);
+
+    // Short, stiff links inside a category and long, loose ones across categories keep islands apart.
+    Graph.d3Force('charge').strength(-40).distanceMax(260);
+    Graph.d3Force('link')
+      .distance(link => isSameCategoryLink(link) ? 22 : 110)
+      .strength(link => isSameCategoryLink(link) ? 0.5 : 0.03);
+    Graph.d3Force('cluster', clusterForce());
+
+    const toggleHighlight = category => {
+      if (filterState.highlighted.has(category)) filterState.highlighted.delete(category);
+      else filterState.highlighted.add(category);
+      applyGraphFilters();
+    };
+
+    const renderLegend = visibleNodes => {
+      const counts = new Map();
+      visibleNodes.forEach(node => {
+        const category = getNodeCategory(node);
+        counts.set(category, (counts.get(category) || 0) + 1);
+      });
+      // Keep highlighted categories listed (at 0) so they can still be toggled off.
+      filterState.highlighted.forEach(category => { if (!counts.has(category)) counts.set(category, 0); });
+
+      const rank = category => {
+        const index = CATEGORY_ORDER.indexOf(category);
+        return index >= 0 ? index : CATEGORY_ORDER.length;
+      };
+      const categories = [...counts.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+
+      legendItems.replaceChildren(...categories.map(category => {
+        const item = document.createElement('button');
+        item.className = 'legend-item';
+        item.classList.toggle('active', filterState.highlighted.has(category));
+        item.classList.toggle('dimmed', filterState.highlighted.size > 0 && !filterState.highlighted.has(category));
+
+        const badge = document.createElement('span');
+        badge.className = 'legend-badge';
+        badge.style.background = getCategoryColor(category);
+        const name = document.createElement('span');
+        name.className = 'legend-name';
+        name.textContent = category.replace(/_/g, ' ');
+        const count = document.createElement('span');
+        count.className = 'legend-count';
+        count.textContent = String(counts.get(category));
+
+        item.append(badge, name, count);
+        item.addEventListener('click', () => toggleHighlight(category));
+        return item;
+      }));
+      legend.style.visibility = categories.length ? 'visible' : 'hidden';
+    };
 
     const applyGraphFilters = () => {
       const filteredNodes = graphData.nodes.filter(node => matchesTypeFilter(node) && matchesTimeFilter(node) && matchesSearch(node));
@@ -570,12 +755,9 @@ export default {
       const filteredLinks = graphData.links.filter(link => visibleIds.has(linkEndId(link.source)) && visibleIds.has(linkEndId(link.target)));
 
       Graph.graphData({ nodes: filteredNodes, links: filteredLinks });
-
-      if (filterState.clusterMode === 'rainbow') {
-        Graph.nodeColor(node => getRainbowColor(node));
-      } else {
-        Graph.nodeColor('color').nodeAutoColorBy('category');
-      }
+      // Fresh accessors force a recolor when only the highlight or color mode changed.
+      Graph.nodeColor(node => getNodeColor(node)).linkColor(link => getLinkColor(link));
+      renderLegend(filteredNodes);
     };
 
     const loadGraph = async () => {
@@ -625,6 +807,7 @@ export default {
       filterState.horizon = 'all';
       filterState.query = '';
       filterState.clusterMode = 'category';
+      filterState.highlighted.clear();
       timeFilter.value = 'all';
       searchInput.value = '';
       clusterToggle.textContent = 'Category View';
@@ -884,33 +1067,7 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
   const prompt = `You are cleaning a saved knowledge item. Use the exact source content or URL to infer a better title and category. Return only valid JSON: {"title":"...","category":"note|link|article|dev_task|monetization|ai_tool|marketing|route_plan|general"}. Source: ${sourceText}`;
 
   try {
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 512,
-          responseMimeType: "application/json",
-          // 2.5 Flash thinks by default and thinking tokens count against maxOutputTokens.
-          thinkingConfig: { thinkingBudget: 0 }
-        }
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const rawModelText = data?.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
-    const cleanedText = rawModelText.replace(/```json|```/gi, "").trim();
-    const parsed = JSON.parse(cleanedText);
-
+    const parsed = await callGeminiJson(apiKey, prompt, 512);
     const title = String(parsed?.title || "").trim().slice(0, 200);
     if (!title) throw new Error("Gemini returned no title");
     const category = normalizeCategory(parsed.category, sourceText.startsWith("http") ? "link" : fallbackCategory);
@@ -919,6 +1076,114 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
   } catch (err) {
     console.error("Gemini analysis failed:", err);
     return null;
+  }
+}
+
+// Sends one prompt to Gemini Flash in JSON mode and returns the parsed object. Throws on HTTP or parse errors.
+async function callGeminiJson(apiKey, prompt, maxOutputTokens) {
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens,
+        responseMimeType: "application/json",
+        // 2.5 Flash thinks by default and thinking tokens count against maxOutputTokens.
+        thinkingConfig: { thinkingBudget: 0 }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawModelText = data?.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
+  return JSON.parse(rawModelText.replace(/```json|```/gi, "").trim());
+}
+
+// Cron job: one batched Gemini prompt assigns categories to unanalyzed nodes and extracts edges
+// between them and recently analyzed nodes. Nodes stay unprocessed (and retry tomorrow) if Gemini fails.
+async function mineConnections(env) {
+  if (!env.GEMINI_API_KEY) {
+    console.error("Connection miner skipped: GEMINI_API_KEY is not configured.");
+    return;
+  }
+
+  const { results: newRows } = await env.DB.prepare(
+    "SELECT id, title, url, category FROM saved_nodes WHERE ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
+  ).bind(MINER_BATCH_SIZE).all();
+  const newNodes = newRows || [];
+  if (!newNodes.length) return;
+
+  const { results: contextRows } = await env.DB.prepare(
+    "SELECT id, title, url, category FROM saved_nodes WHERE ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
+  ).bind(MINER_CONTEXT_SIZE).all();
+  const allNodes = [...newNodes, ...(contextRows || [])];
+
+  let mined;
+  try {
+    const prompt = buildMinerPrompt(newNodes, contextRows || [], RECLUSTER_CATEGORIES);
+    const parsed = await callGeminiJson(env.GEMINI_API_KEY, prompt, 8192);
+    mined = parseMinerResponse(parsed, newNodes.length, allNodes.length, normalizeCategory);
+  } catch (err) {
+    console.error("Connection miner Gemini call failed:", err);
+    return;
+  }
+
+  const statements = [];
+  mined.categories.forEach((category, i) => {
+    const node = newNodes[i];
+    const current = String(node.category || "").toLowerCase();
+    // Videos are detected from the URL; like /api/recluster, only re-tag the AI-managed categories.
+    if (!RECLUSTER_CATEGORIES.includes(current) || category === current) return;
+    statements.push(env.DB.prepare(
+      "UPDATE saved_nodes SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ).bind(category, node.id));
+  });
+  for (const { a, b, relation } of mined.edges) {
+    const [sourceId, targetId] = [String(allNodes[a].id), String(allNodes[b].id)].sort();
+    statements.push(env.DB.prepare(
+      "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation) VALUES (?, ?, ?)"
+    ).bind(sourceId, targetId, relation));
+  }
+  statements.push(env.DB.prepare(
+    `UPDATE saved_nodes SET ai_processed_at = CURRENT_TIMESTAMP WHERE id IN (${newNodes.map(() => "?").join(", ")})`
+  ).bind(...newNodes.map(node => node.id)));
+
+  await env.DB.batch(statements);
+  console.log(`Connection miner: analyzed ${newNodes.length} nodes, ${statements.length - 1 - mined.edges.length} re-tagged, ${mined.edges.length} edges.`);
+}
+
+// Missing table (migration not applied yet) just means no mined edges.
+async function loadMinedEdges(env) {
+  try {
+    const { results } = await env.DB.prepare("SELECT source_id, target_id, relation FROM node_edges").all();
+    return results || [];
+  } catch (err) {
+    console.error("Mined edge lookup failed:", err);
+    return [];
+  }
+}
+
+// Mined edges override keyword/category links between the same pair so each pair is drawn once.
+function mergeMinedEdges(links, nodes, edges) {
+  const nodeIds = new Set(nodes.map(node => node.id));
+  const pairKey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+  const linkByPair = new Map(links.map(link => [pairKey(link.source, link.target), link]));
+
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source_id) || !nodeIds.has(edge.target_id)) continue;
+    const mined = { source: edge.source_id, target: edge.target_id, value: 2, type: "ai", relation: edge.relation || null };
+    const existing = linkByPair.get(pairKey(edge.source_id, edge.target_id));
+    if (existing) Object.assign(existing, mined);
+    else links.push(mined);
   }
 }
 

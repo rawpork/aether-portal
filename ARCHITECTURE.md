@@ -22,10 +22,11 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 | `POST /api/recluster?cursor=N` | `Authorization: Bearer <ADMIN_TOKEN>` | Re-classifies one batch (10 rows) with Gemini; client pages via `nextCursor` until `done` |
 | `POST /api/backfill-metadata?cursor=N` | `Authorization: Bearer <ADMIN_TOKEN>` | Fetches title/description for up to 10 links with no `description`; same paging as recluster |
 | `GET` anything else | none | Serves the 3D graph UI |
+| cron `0 0 * * *` | n/a | `scheduled()` runs the connection miner (see Data flow) |
 
 ## Data model
 
-One table, `saved_nodes`, defined in [migrations/](migrations/) (`0001_init.sql` plus later `ALTER TABLE` migrations). The columns the code relies on are:
+Two tables, defined in [migrations/](migrations/). `saved_nodes`, defined in [migrations/](migrations/) (`0001_init.sql` plus later `ALTER TABLE` migrations). The columns the code relies on are:
 
 | Column | Notes |
 | --- | --- |
@@ -36,10 +37,12 @@ One table, `saved_nodes`, defined in [migrations/](migrations/) (`0001_init.sql`
 | `description` | Preview text for the node card: `og:description`, or "YouTube video by <author>"; NULL for notes |
 | `category` | One of `VALID_CATEGORIES`: note, link, article, dev_task, monetization, ai_tool, marketing, route_plan, general, video |
 | `updated_at` | Set when recluster rewrites a node |
-| `ai_processed_at` | Set once Gemini has classified the node in recluster; recluster only picks up rows where it is NULL |
+| `ai_processed_at` | Set once Gemini has classified the node (recluster or the daily miner); both only pick up rows where it is NULL |
 | `created_at` | D1 `CURRENT_TIMESTAMP` (`YYYY-MM-DD HH:MM:SS` UTC); normalized to ISO in `/api/graph` |
 
-Links are **not stored**. `buildGraphLinks()` computes them on every `/api/graph` request:
+`node_edges` (`0004_node_edges.sql`) holds relationship edges mined by Gemini: `source_id < target_id`, `relation` short phrase.
+
+`buildGraphLinks()` computes the remaining links on every `/api/graph` request, then `mergeMinedEdges()` adds the stored edges as type **ai** (replacing a computed link for the same pair):
 - **semantic** links from shared keywords (title + URL, stop words removed), capped at 5 per node;
 - **category** links chaining consecutive nodes of the same category, so clusters hold together with O(n) edges.
 
@@ -51,7 +54,8 @@ Links are **not stored**. `buildGraphLinks()` computes them on every `/api/graph
 3. **Contextualize (conditional AI)** — only if the text is a placeholder like "look into this", the link saved in the previous 60 s is merged in and sent to Gemini once.
 4. **Persist** — insert into `saved_nodes`, reply to the chat.
 5. **Enrich (manual, batched AI)** — the UI's "Recluster Graph with AI" button walks `/api/recluster` in batches; each eligible node costs at most 1 context lookup + 1 Gemini call + 1 update.
-6. **View** — the UI fetches `/api/graph`, filters client-side (type, time, search), and colors by category or rainbow hue.
+6. **Mine (daily cron, batched AI)** — `mineConnections()` sends up to 40 unanalyzed nodes plus the 60 most recently analyzed ones to Gemini in one prompt; it re-tags categories (not videos), inserts `node_edges`, and marks the batch processed. On Gemini failure nothing is marked, so it retries the next day.
+7. **View** — the UI fetches `/api/graph`, filters client-side (type, time, search), colors by a fixed category palette or rainbow hue, and shows a category legend (tap to highlight). A custom `cluster` force pulls each category toward its own anchor so categories form islands.
 
 ## Secrets / environment
 
