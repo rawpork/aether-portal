@@ -403,7 +403,24 @@ export default {
       color: #dffdf7;
       font-size: 11px;
     }
-    #legend .legend-title { margin: 0 0 6px 0; font-size: 10px; letter-spacing: 0.08em; color: #8a93a6; text-transform: uppercase; }
+    #legend .legend-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: #8a93a6;
+      text-transform: uppercase;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    #legend .legend-title::-webkit-details-marker { display: none; }
+    #legend .legend-title::before { content: '▸'; font-size: 11px; transition: transform 0.15s; }
+    #legend[open] .legend-title::before { transform: rotate(90deg); }
+    #legend[open] .legend-title { margin-bottom: 6px; }
+    #legend:not([open]) { min-width: 0; }
     #legend .legend-item {
       appearance: none;
       display: flex;
@@ -472,10 +489,10 @@ export default {
     <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">Open Link ↗</a>
   </div>
 
-  <div id="legend">
-    <p class="legend-title">Categories · tap to highlight</p>
+  <details id="legend" open>
+    <summary class="legend-title">Categories · tap to highlight</summary>
     <div id="legend-items"></div>
-  </div>
+  </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
 
@@ -641,6 +658,8 @@ export default {
     const nodeCard = document.getElementById('node-card');
     const legend = document.getElementById('legend');
     const legendItems = document.getElementById('legend-items');
+    // Start collapsed on phones so the legend doesn't cover the graph.
+    if (window.matchMedia('(max-width: 768px)').matches) legend.open = false;
     const cardTitle = document.getElementById('card-title');
     const cardTag = document.getElementById('card-tag');
     const cardDescription = document.getElementById('card-description');
