@@ -370,7 +370,20 @@ export default {
       backdrop-filter: blur(12px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
     }
-    #node-card h3 { margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
+    #node-card .card-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: #8a93a6;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+    #node-card .card-close:hover { color: #00ffcc; }
+    #node-card h3 { padding-right: 24px; margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
     #node-card p { margin: 0 0 12px 0; font-size: 13px; color: #ccc; word-break: break-word; line-height: 1.4; }
     #node-card .card-tag {
       display: inline-block;
@@ -500,6 +513,7 @@ export default {
   </header>
 
   <div id="node-card">
+    <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
     <span id="card-tag" class="card-tag">NOTE</span>
     <h3 id="card-title">Node Details</h3>
     <p id="card-description"></p>
@@ -569,17 +583,39 @@ export default {
 
     const isHighlighted = node => filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node));
 
+    // Selecting a node focuses its 1-hop neighborhood: everything else fades to FOCUS_DIM_OPACITY.
+    const FOCUS_DIM_OPACITY = 0.15;
+    const BASE_NODE_OPACITY = 0.75;
+    const BASE_LINK_OPACITY = 0.2;
+    const focus = { node: null, nodeIds: new Set(), links: new Set() };
+
+    // The graph reads per-element alpha from rgba/hsla colors, so dimming just rewrites the alpha.
+    const withAlpha = (color, alpha) => {
+      if (color[0] === '#' && color.length === 7) {
+        const n = parseInt(color.slice(1), 16);
+        return 'rgba(' + (n >> 16) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + alpha + ')';
+      }
+      if (color.startsWith('hsl(')) return 'hsla(' + color.slice(4, -1) + ', ' + alpha + ')';
+      if (color.startsWith('rgba(')) return color.replace(/,[^,]*[)]$/, ', ' + alpha + ')');
+      return color;
+    };
+
+    const getBaseNodeColor = node => filterState.clusterMode === 'rainbow' ? getRainbowColor(node) : getCategoryColor(getNodeCategory(node));
+
     const getNodeColor = node => {
+      if (focus.node) return focus.nodeIds.has(node.id) ? getBaseNodeColor(node) : withAlpha(getBaseNodeColor(node), FOCUS_DIM_OPACITY);
       if (!isHighlighted(node)) return DIM_NODE_COLOR;
-      return filterState.clusterMode === 'rainbow' ? getRainbowColor(node) : getCategoryColor(getNodeCategory(node));
+      return getBaseNodeColor(node);
     };
 
     // Link ends are ids until the graph has processed the link, then node objects.
     const isNodeObject = end => Boolean(end && typeof end === 'object');
 
     const getLinkColor = link => {
+      const base = link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
+      if (focus.node) return withAlpha(base, focus.links.has(link) ? 1 : FOCUS_DIM_OPACITY);
       if (filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end))) return DIM_LINK_COLOR;
-      return link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
+      return base;
     };
 
     const isSameCategoryLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
@@ -756,9 +792,50 @@ export default {
       legend.style.display = 'none';
     };
 
+    // Fresh accessors make the graph re-evaluate colors, widths and particles.
+    const refreshGraphStyles = () => {
+      Graph
+        .nodeColor(node => getNodeColor(node))
+        .linkColor(link => getLinkColor(link))
+        .linkWidth(link => focus.links.has(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
+        .linkDirectionalParticles(link => focus.links.has(link) ? 4 : 0);
+    };
+
+    const setFocus = node => {
+      focus.node = node;
+      focus.nodeIds = new Set([node.id]);
+      focus.links = new Set();
+      Graph.graphData().links.forEach(link => {
+        const sourceId = linkEndId(link.source);
+        const targetId = linkEndId(link.target);
+        if (sourceId !== node.id && targetId !== node.id) return;
+        focus.links.add(link);
+        focus.nodeIds.add(sourceId);
+        focus.nodeIds.add(targetId);
+      });
+      // Full opacity for the focused set means lifting the global multipliers too.
+      Graph.nodeOpacity(1).linkOpacity(1);
+      refreshGraphStyles();
+    };
+
+    const clearFocus = () => {
+      if (!focus.node) return;
+      focus.node = null;
+      focus.nodeIds = new Set();
+      focus.links = new Set();
+      Graph.nodeOpacity(BASE_NODE_OPACITY).linkOpacity(BASE_LINK_OPACITY);
+      refreshGraphStyles();
+    };
+
+    const selectNode = node => {
+      showNodeCard(node);
+      setFocus(node);
+    };
+
     const hideNodeCard = () => {
       nodeCard.style.display = 'none';
       legend.style.display = 'block';
+      clearFocus();
     };
 
     const Graph = ForceGraph3D()(document.getElementById('3d-graph'))
@@ -766,9 +843,16 @@ export default {
         const title = node.title || node.name || 'Saved Entry';
         return escapeHtml(title + ' [' + getNodeCategory(node).toUpperCase() + ']');
       })
+      .nodeOpacity(BASE_NODE_OPACITY)
+      .linkOpacity(BASE_LINK_OPACITY)
       .linkWidth(link => link.type === 'ai' ? 1.2 : 0)
-      .onNodeClick(showNodeCard)
+      .linkDirectionalParticleSpeed(0.008)
+      .linkDirectionalParticleWidth(2.5)
+      .linkDirectionalParticleColor(() => '#00ffcc')
+      .onNodeClick(selectNode)
       .onBackgroundClick(hideNodeCard);
+
+    document.getElementById('card-close').addEventListener('click', hideNodeCard);
 
     // Short, stiff links inside a category and long, loose ones across categories keep islands apart.
     Graph.d3Force('charge').strength(-40).distanceMax(260);
@@ -827,8 +911,10 @@ export default {
       const filteredLinks = graphData.links.filter(link => visibleIds.has(linkEndId(link.source)) && visibleIds.has(linkEndId(link.target)));
 
       Graph.graphData({ nodes: filteredNodes, links: filteredLinks });
-      // Fresh accessors force a recolor when only the highlight or color mode changed.
-      Graph.nodeColor(node => getNodeColor(node)).linkColor(link => getLinkColor(link));
+      // A focused node that got filtered out drops the focus along with its card.
+      if (focus.node && !visibleIds.has(focus.node.id)) hideNodeCard();
+      else if (focus.node) setFocus(focus.node);
+      else refreshGraphStyles();
       renderLegend(filteredNodes);
     };
 
