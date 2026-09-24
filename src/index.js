@@ -1,3 +1,5 @@
+import { fetchLinkMetadata } from "./metadata.js";
+
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
 const VALID_CATEGORIES = ["note", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan", "general", "video"];
@@ -18,7 +20,7 @@ export default {
     if (url.pathname === "/api/graph" && request.method === "GET") {
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, category, url, created_at FROM saved_nodes"
+          "SELECT id, title, description, category, url, created_at FROM saved_nodes"
         ).all();
 
         const nodes = (results || []).map(node => {
@@ -31,6 +33,7 @@ export default {
             title,
             group: category,
             category,
+            description: node.description ? String(node.description) : null,
             url: rawUrl,
             type: category,
             created_at: toIsoTimestamp(node.created_at)
@@ -116,10 +119,16 @@ export default {
 
         const id = "node_" + crypto.randomUUID();
         let extractedTitle = text.length > 30 ? text.slice(0, 30) + "..." : text;
+        let description = null;
 
         let category = "note";
         if (text.startsWith("http://") || text.startsWith("https://")) {
           category = inferNodeCategory(text, "link");
+          const metadata = await fetchLinkMetadata(text.split(/\s+/)[0]);
+          if (metadata) {
+            extractedTitle = metadata.title;
+            description = metadata.description;
+          }
         } else if (text.length > 100) {
           category = "article";
         }
@@ -135,13 +144,14 @@ export default {
             } else {
               extractedTitle = String(contextualLink.title || extractedTitle);
             }
+            description = contextualLink.description || null;
             text = String(contextualLink.url || text);
           }
         }
 
         await env.DB.prepare(
-          "INSERT INTO saved_nodes (id, url, title, category) VALUES (?, ?, ?, ?)"
-        ).bind(id, text, extractedTitle, category).run();
+          "INSERT INTO saved_nodes (id, url, title, description, category) VALUES (?, ?, ?, ?, ?)"
+        ).bind(id, text, extractedTitle, description, category).run();
 
         await sendTelegram(
           token,
@@ -298,8 +308,21 @@ export default {
       backdrop-filter: blur(12px);
       box-shadow: 0 10px 30px rgba(0,0,0,0.8);
     }
-    #node-card h3 { margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; }
+    #node-card h3 { margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
     #node-card p { margin: 0 0 12px 0; font-size: 13px; color: #ccc; word-break: break-word; line-height: 1.4; }
+    #node-card .card-tag {
+      display: inline-block;
+      margin-bottom: 8px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,255,204,0.45);
+      background: rgba(0,255,204,0.1);
+      color: #00ffcc;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    #node-card .card-meta { font-size: 11px; color: #8a93a6; }
     #node-card a {
       display: inline-block;
       background: #00ffcc;
@@ -348,8 +371,10 @@ export default {
   </div>
 
   <div id="node-card">
+    <span id="card-tag" class="card-tag">NOTE</span>
     <h3 id="card-title">Node Details</h3>
-    <p id="card-body">Content text goes here...</p>
+    <p id="card-description"></p>
+    <p id="card-meta" class="card-meta"></p>
     <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">Open Link ↗</a>
   </div>
 
@@ -443,17 +468,41 @@ export default {
 
     const nodeCard = document.getElementById('node-card');
     const cardTitle = document.getElementById('card-title');
-    const cardBody = document.getElementById('card-body');
+    const cardTag = document.getElementById('card-tag');
+    const cardDescription = document.getElementById('card-description');
+    const cardMeta = document.getElementById('card-meta');
     const cardLink = document.getElementById('card-link');
 
+    const PREVIEW_LENGTH = 220;
+    const truncate = (text, max) => text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
+
+    const getHostname = url => {
+      try { return new URL(url).hostname.replace(/^www[.]/, ''); } catch (err) { return ''; }
+    };
+
+    // Links show their fetched description; notes store their full text in url, so preview that instead.
+    const getPreviewText = (node, isLink) => {
+      if (node.description) return truncate(String(node.description), PREVIEW_LENGTH);
+      if (!isLink && node.url && node.url !== node.title) return truncate(String(node.url), PREVIEW_LENGTH);
+      return '';
+    };
+
     const showNodeCard = node => {
+      const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       cardTitle.textContent = node.title || node.name || 'Saved Entry';
+      cardTag.textContent = getNodeCategory(node).replace(/_/g, ' ').toUpperCase();
+
+      const preview = getPreviewText(node, isLink);
+      cardDescription.textContent = preview;
+      cardDescription.style.display = preview ? 'block' : 'none';
+
       const created = node.created_at ? new Date(node.created_at) : null;
-      const details = [getNodeCategory(node).toUpperCase()];
-      if (created && !Number.isNaN(created.getTime())) details.push(created.toLocaleString());
-      if (node.url) details.push(node.url);
-      cardBody.textContent = details.join(' · ');
-      if (node.url && /^https?:/i.test(node.url)) {
+      const meta = [];
+      if (isLink) meta.push(getHostname(node.url));
+      if (created && !Number.isNaN(created.getTime())) meta.push(created.toLocaleString());
+      cardMeta.textContent = meta.filter(Boolean).join(' · ');
+
+      if (isLink) {
         cardLink.href = node.url;
         cardLink.style.display = 'inline-block';
       } else {
@@ -725,7 +774,7 @@ async function findRecentLinkContext(env, referenceTime, excludeId = null) {
   try {
     const ref = referenceTime ? String(referenceTime) : "now";
     return await env.DB.prepare(
-      "SELECT id, title, url, category FROM saved_nodes WHERE category IN ('link', 'article', 'video') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, '-60 seconds') ORDER BY created_at DESC LIMIT 1"
+      "SELECT id, title, description, url, category FROM saved_nodes WHERE category IN ('link', 'article', 'video') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, '-60 seconds') ORDER BY created_at DESC LIMIT 1"
     ).bind(excludeId || "", ref, ref).first();
   } catch (err) {
     console.error("Recent link context lookup failed:", err);
@@ -741,7 +790,9 @@ async function reclusterNode(env, apiKey, node) {
   const fallbackCategory = category === "link" ? "link" : "note";
   const currentTitle = String(node.title || "");
   const currentUrl = String(node.url || "");
-  const sourceText = (currentUrl || currentTitle).trim();
+  // For links, pass the stored (possibly fetched) title along so Gemini doesn't have to guess from the URL alone.
+  const hasDistinctLinkTitle = /^https?:/i.test(currentUrl) && currentTitle && currentTitle !== currentUrl;
+  const sourceText = (hasDistinctLinkTitle ? currentUrl + " | " + currentTitle : (currentUrl || currentTitle)).trim();
 
   let analysisText = sourceText;
   let nextUrl = currentUrl;

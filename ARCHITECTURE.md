@@ -8,9 +8,10 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 | --- | --- | --- |
 | Worker entry | `src/index.js` → `fetch()` | Path/method router, four endpoints |
 | Database | D1 `aether_context_db`, binding `DB` | Configured in [wrangler.jsonc](wrangler.jsonc) (worker name `lingering-water-de49`) |
+| Link metadata | [src/metadata.js](src/metadata.js) | YouTube oEmbed, otherwise OpenGraph / `<title>` from the first 256 KB of HTML; 4 s timeout |
 | AI | Gemini 2.5 Flash (`generateContent`) | Title/category cleanup only; thinking disabled, 512 max output tokens |
 | UI | Inline HTML in `fetch()` | [3d-force-graph](https://github.com/vasturiano/3d-force-graph) 1.80.0 loaded from unpkg |
-| Tests | [test/index.spec.js](test/index.spec.js) | `@cloudflare/vitest-plugin`, run with `npm test` |
+| Tests | [test/](test/) | `@cloudflare/vitest-plugin`, run with `npm test` |
 
 ## Endpoints
 
@@ -23,14 +24,15 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 
 ## Data model
 
-One table, `saved_nodes`, defined in [migrations/](migrations/) (`0001_init.sql` plus `0002_add_ai_processed_at.sql`). The columns the code relies on are:
+One table, `saved_nodes`, defined in [migrations/](migrations/) (`0001_init.sql` plus later `ALTER TABLE` migrations). The columns the code relies on are:
 
 | Column | Notes |
 | --- | --- |
 | `rowid` | Implicit SQLite rowid; used as the recluster cursor |
 | `id` | `node_<uuid>` |
 | `url` | The raw message text or URL |
-| `title` | First 30 chars, or Gemini-generated title |
+| `title` | Fetched page/video title for links, else first 30 chars; may be rewritten by Gemini |
+| `description` | Preview text for the node card: `og:description`, or "YouTube video by <author>"; NULL for notes |
 | `category` | One of `VALID_CATEGORIES`: note, link, article, dev_task, monetization, ai_tool, marketing, route_plan, general, video |
 | `updated_at` | Set when recluster rewrites a node |
 | `ai_processed_at` | Set once Gemini has classified the node in recluster; recluster only picks up rows where it is NULL |
@@ -44,6 +46,7 @@ Links are **not stored**. `buildGraphLinks()` computes them on every `/api/graph
 
 1. **Capture** — Telegram sends a message to `POST /`.
 2. **Classify (cheap, local)** — URL → `link` (or `video` via `VIDEO_URL_PATTERN`); text > 100 chars → `article`; else `note`.
+   URLs also get their title/description fetched (`fetchLinkMetadata`, no AI); on failure the 30-char title is kept.
 3. **Contextualize (conditional AI)** — only if the text is a placeholder like "look into this", the link saved in the previous 60 s is merged in and sent to Gemini once.
 4. **Persist** — insert into `saved_nodes`, reply to the chat.
 5. **Enrich (manual, batched AI)** — the UI's "Recluster Graph with AI" button walks `/api/recluster` in batches; each eligible node costs at most 1 context lookup + 1 Gemini call + 1 update.

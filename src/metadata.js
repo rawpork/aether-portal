@@ -1,0 +1,120 @@
+// Link metadata lookup for Telegram ingestion: YouTube oEmbed, otherwise OpenGraph / <title> parsing.
+
+const METADATA_FETCH_TIMEOUT_MS = 4000;
+// OpenGraph tags live in <head>; no need to download whole pages.
+const METADATA_MAX_HTML_BYTES = 256 * 1024;
+const MAX_TITLE_LENGTH = 200;
+const MAX_DESCRIPTION_LENGTH = 300;
+
+const NAMED_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+export function isYouTubeUrl(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "youtu.be" || host === "youtube.com" || host.endsWith(".youtube.com");
+  } catch {
+    return false;
+  }
+}
+
+// Returns { title, description } (description may be null), or null if nothing usable was found.
+export async function fetchLinkMetadata(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+
+  try {
+    return isYouTubeUrl(parsed.href) ? await fetchYouTubeMetadata(parsed.href) : await fetchOpenGraphMetadata(parsed.href);
+  } catch (err) {
+    console.error("Link metadata fetch failed:", url, err);
+    return null;
+  }
+}
+
+async function fetchYouTubeMetadata(url) {
+  const endpoint = "https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(url);
+  const response = await fetch(endpoint, { signal: AbortSignal.timeout(METADATA_FETCH_TIMEOUT_MS) });
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  const title = cleanText(data?.title, MAX_TITLE_LENGTH);
+  if (!title) return null;
+  const author = cleanText(data?.author_name, MAX_TITLE_LENGTH);
+  return { title, description: author ? "YouTube video by " + author : null };
+}
+
+async function fetchOpenGraphMetadata(url) {
+  const response = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; AetherPortalBot/1.0)",
+      Accept: "text/html,application/xhtml+xml"
+    },
+    signal: AbortSignal.timeout(METADATA_FETCH_TIMEOUT_MS)
+  });
+  const contentType = response.headers.get("Content-Type") || "";
+  if (!response.ok || !/html/i.test(contentType)) {
+    await response.body?.cancel();
+    return null;
+  }
+
+  return parseHtmlMetadata(await readTextPrefix(response, METADATA_MAX_HTML_BYTES));
+}
+
+async function readTextPrefix(response, maxBytes) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let received = 0;
+  while (received < maxBytes) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    received += value.byteLength;
+    text += decoder.decode(value, { stream: true });
+  }
+  await reader.cancel();
+  return text;
+}
+
+// Returns { title, description } or null. Prefers OpenGraph, then Twitter cards, then <title>/meta description.
+export function parseHtmlMetadata(html) {
+  const meta = {};
+  for (const [tag] of String(html || "").matchAll(/<meta\b[^>]*>/gi)) {
+    const attrs = parseAttributes(tag);
+    const key = String(attrs.property || attrs.name || "").toLowerCase();
+    if (key && attrs.content !== undefined && !(key in meta)) meta[key] = attrs.content;
+  }
+  const titleTag = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html || "")?.[1];
+
+  const title = cleanText(meta["og:title"] || meta["twitter:title"] || titleTag, MAX_TITLE_LENGTH);
+  if (!title) return null;
+  const description = cleanText(meta["og:description"] || meta["twitter:description"] || meta["description"], MAX_DESCRIPTION_LENGTH);
+  return { title, description: description || null };
+}
+
+function parseAttributes(tag) {
+  const attrs = {};
+  for (const m of tag.matchAll(/([a-zA-Z_:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) {
+    attrs[m[1].toLowerCase()] = m[2] ?? m[3] ?? m[4];
+  }
+  return attrs;
+}
+
+function decodeHtmlEntities(text) {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
+    if (entity[0] === "#") {
+      const code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    }
+    return NAMED_ENTITIES[entity.toLowerCase()] ?? match;
+  });
+}
+
+function cleanText(value, maxLength) {
+  if (!value) return "";
+  return decodeHtmlEntities(String(value)).replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
