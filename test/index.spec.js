@@ -54,6 +54,20 @@ describe("Aether Portal worker", () => {
 		expect(response.status).toBe(401);
 	});
 
+	it("only allows POST on /api/node", async () => {
+		const response = await SELF.fetch("http://example.com/api/node");
+		expect(response.status).toBe(405);
+	});
+
+	it("requires an admin token to create a node", async () => {
+		const response = await SELF.fetch("http://example.com/api/node", {
+			method: "POST",
+			headers: { Authorization: "Bearer wrong", "Content-Type": "application/json" },
+			body: JSON.stringify({ title: "hi", category: "note" }),
+		});
+		expect(response.status).toBe(401);
+	});
+
 	it("only allows DELETE on /api/node/:id", async () => {
 		const response = await SELF.fetch("http://example.com/api/node/abc");
 		expect(response.status).toBe(405);

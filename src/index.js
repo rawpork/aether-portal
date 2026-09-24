@@ -20,6 +20,9 @@ const GEMINI_RETRYABLE_STATUSES = [429, 503];
 const ASK_MAX_NODES = 150;
 const ASK_MAX_QUESTION_LENGTH = 1000;
 const ASK_DESCRIPTION_LENGTH = 300;
+// Limits for nodes created from the UI's "+" form.
+const NODE_TITLE_MAX = 200;
+const NODE_CONTENT_MAX = 5000;
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
@@ -152,7 +155,68 @@ export default {
       }
     }
 
-    // Endpoint 4: Delete a node and its mined edges
+    // Endpoint 4a: Create a node from the UI, optionally linked to an existing node
+    if (url.pathname === "/api/node") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      if (!isAuthorizedAdmin(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+
+      const body = await request.json().catch(() => null);
+      const title = String(body?.title || "").trim();
+      const category = String(body?.category || "").trim();
+      const content = String(body?.content || "").trim().slice(0, NODE_CONTENT_MAX);
+      const linkTargetId = body?.linkTargetId ? String(body.linkTargetId).trim() : "";
+      if (!title || title.length > NODE_TITLE_MAX) {
+        return jsonResponse({ error: `Title must be 1-${NODE_TITLE_MAX} characters.` }, 400);
+      }
+      if (!VALID_CATEGORIES.includes(category)) return jsonResponse({ error: "Unknown category." }, 400);
+
+      try {
+        if (linkTargetId) {
+          const target = await env.DB.prepare("SELECT id FROM saved_nodes WHERE id = ?").bind(linkTargetId).first();
+          if (!target) return jsonResponse({ error: "Link target not found." }, 404);
+        }
+
+        const id = "node_" + crypto.randomUUID();
+        const description = content || null;
+        // Marked as AI-processed so the daily cron keeps the category chosen by hand.
+        const statements = [
+          env.DB.prepare(
+            "INSERT INTO saved_nodes (id, url, title, description, category, ai_processed_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+          ).bind(id, "", title, description, category)
+        ];
+        if (linkTargetId) {
+          // node_edges is undirected and stored with source_id < target_id.
+          const [sourceId, targetId] = id < linkTargetId ? [id, linkTargetId] : [linkTargetId, id];
+          statements.push(env.DB.prepare(
+            "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation) VALUES (?, ?, ?)"
+          ).bind(sourceId, targetId, "manual"));
+        }
+        await env.DB.batch(statements);
+
+        const node = {
+          id,
+          name: title,
+          title,
+          group: category,
+          category,
+          description,
+          url: "",
+          type: category,
+          created_at: new Date().toISOString()
+        };
+        const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual" } : null;
+        return jsonResponse({ success: true, node, link });
+      } catch (err) {
+        console.error("Node Create Error:", err);
+        return jsonResponse({ error: "Create failed." }, 500);
+      }
+    }
+
+    // Endpoint 4b: Delete a node and its mined edges
     if (url.pathname.startsWith("/api/node/")) {
       if (request.method !== "DELETE") {
         return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "DELETE" });
@@ -407,6 +471,45 @@ export default {
     .toggle-button {
       font-weight: 600;
     }
+    #add-node-button { font-size: 18px; line-height: 1; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.55);
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal-panel {
+      width: min(420px, 92vw);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 18px;
+      border-radius: 12px;
+      background: rgba(9, 15, 25, 0.96);
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      color: #dffdf7;
+    }
+    .modal-panel h3 { margin: 0 0 4px; color: #00ffcc; font-size: 16px; }
+    .modal-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: rgba(223,253,247,0.75); }
+    .modal-panel input, .modal-panel select, .modal-panel textarea {
+      border: 1px solid rgba(0,255,204,0.25);
+      background: rgba(255,255,255,0.04);
+      color: #dffdf7;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+    .modal-panel select option { background: #0b1320; }
+    .modal-panel textarea { resize: vertical; }
+    .modal-error { margin: 0; min-height: 1em; font-size: 12px; color: #ff6b81; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-actions button { cursor: pointer; }
     .settings-wrap { position: relative; }
     .view-toggle.active { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
     .settings-menu {
@@ -715,6 +818,7 @@ export default {
     </details>
     <span class="bar-spacer"></span>
     <button class="view-toggle bar-btn" id="view-toggle">2D Canvas</button>
+    <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   <div class="settings-wrap">
     <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
     <div class="settings-menu" id="settings-menu">
@@ -758,6 +862,29 @@ export default {
       <div id="drawer-ask-answer" class="ask-answer"></div>
     </div>
   </aside>
+
+  <div id="add-node-modal" class="modal-backdrop" hidden>
+    <form id="add-node-form" class="modal-panel" autocomplete="off">
+      <h3>Add Node</h3>
+      <label>Title
+        <input id="add-node-title" type="text" required maxlength="200">
+      </label>
+      <label>Category
+        <select id="add-node-category"></select>
+      </label>
+      <label>Content
+        <textarea id="add-node-content" rows="4" maxlength="5000" placeholder="Note body (optional)"></textarea>
+      </label>
+      <label>Connect To
+        <select id="add-node-link"></select>
+      </label>
+      <p id="add-node-error" class="modal-error"></p>
+      <div class="modal-actions">
+        <button type="button" id="add-node-cancel" class="toggle-button">Cancel</button>
+        <button type="submit" id="add-node-submit" class="toggle-button active">Create Node</button>
+      </div>
+    </form>
+  </div>
 
   <details id="legend" open>
     <summary class="legend-title">Categories · tap to highlight</summary>
@@ -1695,7 +1822,7 @@ export default {
     });
 
     const clearFiltersButton = document.getElementById('clear-filters-button');
-    clearFiltersButton.addEventListener('click', () => {
+    const resetFilters = () => {
       filterState.type = 'all';
       filterState.horizon = 'all';
       filterState.query = '';
@@ -1712,7 +1839,8 @@ export default {
       settingsMenu.classList.remove('open');
       filterMenu.open = false;
       applyGraphFilters();
-    });
+    };
+    clearFiltersButton.addEventListener('click', resetFilters);
 
     const getAdminToken = () => {
       let token = localStorage.getItem(ADMIN_TOKEN_KEY);
@@ -1821,6 +1949,95 @@ export default {
         alert(err.message || 'Delete failed.');
       } finally {
         cardDelete.disabled = false;
+      }
+    });
+
+    const addNodeModal = document.getElementById('add-node-modal');
+    const addNodeForm = document.getElementById('add-node-form');
+    const addNodeTitle = document.getElementById('add-node-title');
+    const addNodeCategory = document.getElementById('add-node-category');
+    const addNodeContent = document.getElementById('add-node-content');
+    const addNodeLink = document.getElementById('add-node-link');
+    const addNodeError = document.getElementById('add-node-error');
+    const addNodeSubmit = document.getElementById('add-node-submit');
+    const categoryLabel = category => category.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+    addNodeCategory.replaceChildren(...CATEGORY_ORDER.map(category => new Option(categoryLabel(category), category)));
+
+    const openAddNodeModal = () => {
+      addNodeForm.reset();
+      addNodeCategory.value = 'note';
+      addNodeError.textContent = '';
+      const sorted = [...graphData.nodes].sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+      addNodeLink.replaceChildren(
+        new Option('— None —', ''),
+        ...sorted.map(node => new Option(truncate(String(node.title || node.name || node.id), 60), node.id))
+      );
+      // Connecting to the node being looked at is the likely intent.
+      if (focus.node) addNodeLink.value = focus.node.id;
+      filterMenu.open = false;
+      settingsMenu.classList.remove('open');
+      addNodeModal.hidden = false;
+      addNodeTitle.focus();
+    };
+    const closeAddNodeModal = () => { addNodeModal.hidden = true; };
+
+    document.getElementById('add-node-button').addEventListener('click', openAddNodeModal);
+    document.getElementById('add-node-cancel').addEventListener('click', closeAddNodeModal);
+    addNodeModal.addEventListener('click', event => { if (event.target === addNodeModal) closeAddNodeModal(); });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !addNodeModal.hidden) closeAddNodeModal();
+    });
+
+    // New nodes start next to their link target (or the camera's look-at point) instead of the origin.
+    const seedNodePosition = (node, target) => {
+      const hasTarget = target && [target.x, target.y, target.z].every(Number.isFinite);
+      const anchor = hasTarget ? target : Graph.controls().target;
+      const jitter = () => (Math.random() - 0.5) * 30;
+      node.x = anchor.x + jitter();
+      node.y = anchor.y + jitter();
+      node.z = filterState.flat ? 0 : anchor.z + jitter();
+      if (filterState.flat) node.fz = 0;
+    };
+
+    addNodeForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const title = addNodeTitle.value.trim();
+      if (!title) {
+        addNodeTitle.focus();
+        return;
+      }
+      const linkTargetId = addNodeLink.value || null;
+      addNodeSubmit.disabled = true;
+      addNodeSubmit.textContent = 'Creating…';
+      addNodeError.textContent = '';
+      try {
+        const body = await adminFetch('/api/node', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, category: addNodeCategory.value, content: addNodeContent.value.trim(), linkTargetId })
+        });
+        const node = safeGraphNode(body.node);
+        const target = linkTargetId ? Graph.graphData().nodes.find(item => item.id === linkTargetId) : null;
+        seedNodePosition(node, target);
+        graphData.nodes.push(node);
+        if (body.link) graphData.links.push(body.link);
+
+        applyGraphFilters();
+        // Active filters (type, time, search, Hide Unlinked) may hide the new node; clear them so it shows.
+        if (!Graph.graphData().nodes.some(item => item.id === node.id)) resetFilters();
+        closeAddNodeModal();
+        // Let the simulation settle the node briefly before framing it.
+        setTimeout(() => {
+          const live = Graph.graphData().nodes.find(item => item.id === node.id);
+          if (live) selectNode(live, { fly: true });
+        }, 600);
+      } catch (err) {
+        console.error('Create failed:', err);
+        addNodeError.textContent = err.message || 'Create failed.';
+      } finally {
+        addNodeSubmit.disabled = false;
+        addNodeSubmit.textContent = 'Create Node';
       }
     });
 
