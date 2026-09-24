@@ -9,7 +9,7 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 | Worker entry | `src/index.js` → `fetch()` | Path/method router, five endpoints |
 | Database | D1 `aether_context_db`, binding `DB` | Configured in [wrangler.jsonc](wrangler.jsonc) (worker name `lingering-water-de49`) |
 | Link metadata | [src/metadata.js](src/metadata.js) | YouTube oEmbed, otherwise OpenGraph / `<title>` from the first 256 KB of HTML; 4 s timeout |
-| AI | Gemini 2.5 Flash (`generateContent`) | Title/category cleanup only; thinking disabled, 512 max output tokens |
+| AI | Gemini 3.8 Flash, falling back to 3.7 Flash then 3.5 Flash-Lite on 503/429 (`generateContent`, `GEMINI_MODELS`) | Title/category cleanup and the daily miner; `thinkingLevel: "low"`, 2048 (cleanup) / 16384 (miner) max output tokens |
 | UI | Inline HTML in `fetch()` | [3d-force-graph](https://github.com/vasturiano/3d-force-graph) 1.80.0 loaded from unpkg |
 | Tests | [test/](test/) | `@cloudflare/vitest-plugin`, run with `npm test` |
 

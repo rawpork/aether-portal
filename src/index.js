@@ -12,6 +12,10 @@ const RECLUSTER_BATCH_SIZE = 10;
 // One metadata fetch (4 s timeout) + one update per link.
 const METADATA_BACKFILL_BATCH_SIZE = 10;
 const MAX_SEMANTIC_LINKS_PER_NODE = 5;
+// gemini-2.5-flash started returning 404 in July 2026; 3.x Flash models replace it.
+// Tried in order: a model answering 503 (high demand) or 429 falls through to the next.
+const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"];
+const GEMINI_RETRYABLE_STATUSES = [429, 503];
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
@@ -1067,7 +1071,7 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
   const prompt = `You are cleaning a saved knowledge item. Use the exact source content or URL to infer a better title and category. Return only valid JSON: {"title":"...","category":"note|link|article|dev_task|monetization|ai_tool|marketing|route_plan|general"}. Source: ${sourceText}`;
 
   try {
-    const parsed = await callGeminiJson(apiKey, prompt, 512);
+    const parsed = await callGeminiJson(apiKey, prompt, 2048);
     const title = String(parsed?.title || "").trim().slice(0, 200);
     if (!title) throw new Error("Gemini returned no title");
     const category = normalizeCategory(parsed.category, sourceText.startsWith("http") ? "link" : fallbackCategory);
@@ -1081,7 +1085,21 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
 
 // Sends one prompt to Gemini Flash in JSON mode and returns the parsed object. Throws on HTTP or parse errors.
 async function callGeminiJson(apiKey, prompt, maxOutputTokens) {
-  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+  let lastError;
+  for (const model of GEMINI_MODELS) {
+    try {
+      return await callGeminiModelJson(apiKey, model, prompt, maxOutputTokens);
+    } catch (err) {
+      lastError = err;
+      if (!GEMINI_RETRYABLE_STATUSES.includes(err.status)) throw err;
+      console.warn(`Gemini ${model} unavailable (${err.status}); trying next model.`);
+    }
+  }
+  throw lastError;
+}
+
+async function callGeminiModelJson(apiKey, model, prompt, maxOutputTokens) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -1093,14 +1111,16 @@ async function callGeminiJson(apiKey, prompt, maxOutputTokens) {
         temperature: 0.3,
         maxOutputTokens,
         responseMimeType: "application/json",
-        // 2.5 Flash thinks by default and thinking tokens count against maxOutputTokens.
-        thinkingConfig: { thinkingBudget: 0 }
+        // 3.x Flash can't disable thinking; "low" keeps it cheap. Thinking tokens count against maxOutputTokens,
+        // so callers leave headroom above the JSON they expect.
+        thinkingConfig: { thinkingLevel: "low" }
       }
     })
   });
 
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
+    const detail = (await response.text().catch(() => "")).slice(0, 300);
+    throw Object.assign(new Error(`Gemini API error (${model}): ${response.status} ${detail}`), { status: response.status });
   }
 
   const data = await response.json();
@@ -1130,7 +1150,7 @@ async function mineConnections(env) {
   let mined;
   try {
     const prompt = buildMinerPrompt(newNodes, contextRows || [], RECLUSTER_CATEGORIES);
-    const parsed = await callGeminiJson(env.GEMINI_API_KEY, prompt, 8192);
+    const parsed = await callGeminiJson(env.GEMINI_API_KEY, prompt, 16384);
     mined = parseMinerResponse(parsed, newNodes.length, allNodes.length, normalizeCategory);
   } catch (err) {
     console.error("Connection miner Gemini call failed:", err);
