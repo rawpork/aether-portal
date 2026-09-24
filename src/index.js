@@ -576,6 +576,13 @@ export default {
       cursor: pointer;
     }
     .mini-card:hover { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); }
+    .mini-card.active {
+      border-color: rgba(0,255,204,0.85);
+      background: rgba(0,255,204,0.12);
+      box-shadow: 0 0 0 1px rgba(0,255,204,0.5), 0 0 14px rgba(0,255,204,0.35);
+    }
+    /* Keep the node card clear of the drawer so both stay usable side by side. */
+    body.drawer-open #node-card { right: 364px; }
     .mini-card strong { display: block; font-size: 12px; color: #fff; line-height: 1.3; margin-bottom: 4px; }
     .mini-card span { display: block; font-size: 11px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
     .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #00ffcc; text-decoration: none; }
@@ -671,6 +678,7 @@ export default {
       #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
       #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
+      body.drawer-open #node-card { right: 15px; top: 62px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
     }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
@@ -1218,6 +1226,8 @@ export default {
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       const card = document.createElement('button');
       card.className = 'mini-card';
+      card.dataset.id = node.id;
+      card.classList.toggle('active', Boolean(focus.node && focus.node.id === node.id));
       const title = document.createElement('strong');
       title.textContent = node.title || node.name || 'Saved Entry';
       const detail = document.createElement('span');
@@ -1232,11 +1242,36 @@ export default {
         open.addEventListener('click', event => event.stopPropagation());
         card.append(open);
       }
-      card.addEventListener('click', () => {
-        closeClusterDrawer();
-        selectNode(node);
-      });
+      // The drawer stays open: the card lights up, the canvas focuses and flies to the node.
+      card.addEventListener('click', () => selectNode(node, { fly: true }));
       return card;
+    };
+
+    // Mirror the focused node onto the drawer list (either direction: card tap or canvas click).
+    const syncDrawerSelection = () => {
+      const activeId = focus.node ? focus.node.id : null;
+      let activeCard = null;
+      clusterCards.querySelectorAll('.mini-card').forEach(card => {
+        const isActive = card.dataset.id === activeId;
+        card.classList.toggle('active', isActive);
+        if (isActive) activeCard = card;
+      });
+      if (activeCard) activeCard.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    };
+
+    const flyToNode = node => {
+      if (![node.x, node.y, node.z].every(Number.isFinite)) return;
+      const distance = 90;
+      let position;
+      if (filterState.flat) {
+        position = { x: node.x, y: node.y, z: distance };
+      } else {
+        const cam = Graph.camera().position;
+        const dir = { x: cam.x - node.x, y: cam.y - node.y, z: cam.z - node.z };
+        const length = Math.hypot(dir.x, dir.y, dir.z) || 1;
+        position = { x: node.x + dir.x / length * distance, y: node.y + dir.y / length * distance, z: node.z + dir.z / length * distance };
+      }
+      Graph.cameraPosition(position, { x: node.x, y: node.y, z: node.z }, 1000);
     };
 
     // Visible nodes only, so the drawer agrees with the current filters.
@@ -1264,12 +1299,14 @@ export default {
       renderClusterDrawer();
       clusterCards.scrollTop = clusterCards.scrollLeft = 0;
       clusterDrawer.classList.add('open');
+      document.body.classList.add('drawer-open');
       legend.style.display = 'none';
     };
 
     const closeClusterDrawer = () => {
       if (!clusterDrawer.classList.contains('open')) return;
       clusterDrawer.classList.remove('open');
+      document.body.classList.remove('drawer-open');
       drawerCategory = null;
       if (nodeCard.style.display !== 'block') legend.style.display = 'block';
     };
@@ -1345,17 +1382,21 @@ export default {
       refreshGraphStyles();
     };
 
-    const selectNode = node => {
-      closeClusterDrawer();
+    const selectNode = (node, options = {}) => {
+      // Keep the drawer only when the node belongs to the cluster it lists.
+      if (drawerCategory !== getNodeCategory(node)) closeClusterDrawer();
       showNodeCard(node);
       setFocus(node);
+      syncDrawerSelection();
       pauseAutoRotate();
+      if (options.fly) flyToNode(node);
     };
 
     const hideNodeCard = () => {
       nodeCard.style.display = 'none';
       if (!clusterDrawer.classList.contains('open')) legend.style.display = 'block';
       clearFocus();
+      syncDrawerSelection();
       scheduleResume();
     };
 
@@ -1370,7 +1411,7 @@ export default {
       .linkDirectionalParticleSpeed(0.008)
       .linkDirectionalParticleWidth(2.5)
       .linkDirectionalParticleColor(() => '#00ffcc')
-      .onNodeClick(selectNode)
+      .onNodeClick(node => selectNode(node))
       .onBackgroundClick(handleBackgroundClick)
       .onEngineTick(onTerritoryTick)
       .onEngineStop(updateTerritories)
