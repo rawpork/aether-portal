@@ -308,7 +308,21 @@ export default {
       top: 16px;
       right: 16px;
       z-index: 30;
+      display: flex;
+      gap: 8px;
     }
+    .view-toggle {
+      border: 1px solid rgba(0,255,204,0.35);
+      background: rgba(8, 12, 20, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: #dffdf7;
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .view-toggle.active { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
     .settings-button {
       position: relative;
       z-index: 31;
@@ -473,6 +487,7 @@ export default {
   </div>
 
   <div class="settings-wrap">
+    <button class="view-toggle" id="view-toggle">2D Canvas</button>
     <button class="settings-button" id="settings-toggle">⚙️ Settings</button>
     <div class="settings-menu" id="settings-menu">
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
@@ -504,6 +519,8 @@ export default {
       horizon: 'all',
       query: '',
       clusterMode: 'category',
+      // Flat 2D canvas: nodes pinned to z = 0, camera faces the plane head-on.
+      flat: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
       highlighted: new Set()
     };
@@ -569,10 +586,39 @@ export default {
     const CLUSTER_RADIUS = 220;
     const CLUSTER_STRENGTH = 0.06;
     const clusterAnchors = new Map();
-    const getClusterAnchor = category => {
-      if (!clusterAnchors.has(category)) {
+    const clusterIndexes = new Map();
+    const getClusterIndex = category => {
+      if (!clusterIndexes.has(category)) {
         const known = CATEGORY_ORDER.indexOf(category);
-        const index = known >= 0 ? known : CATEGORY_ORDER.length + clusterAnchors.size;
+        clusterIndexes.set(category, known >= 0 ? known : CATEGORY_ORDER.length + clusterIndexes.size);
+      }
+      return clusterIndexes.get(category);
+    };
+
+    // In 2D mode categories sit on a flat grid of wide rows, like a node editor canvas.
+    const FLAT_COLUMNS = 4;
+    const FLAT_SPACING_X = 200;
+    const FLAT_SPACING_Y = 150;
+    const flatAnchors = new Map();
+    const getFlatAnchor = category => {
+      if (!flatAnchors.has(category)) {
+        const index = getClusterIndex(category);
+        const rows = Math.ceil(Math.max(CATEGORY_ORDER.length, index + 1) / FLAT_COLUMNS);
+        const col = index % FLAT_COLUMNS;
+        const row = Math.floor(index / FLAT_COLUMNS);
+        flatAnchors.set(category, {
+          x: (col - (FLAT_COLUMNS - 1) / 2) * FLAT_SPACING_X,
+          y: ((rows - 1) / 2 - row) * FLAT_SPACING_Y,
+          z: 0
+        });
+      }
+      return flatAnchors.get(category);
+    };
+
+    const getClusterAnchor = category => {
+      if (filterState.flat) return getFlatAnchor(category);
+      if (!clusterAnchors.has(category)) {
+        const index = getClusterIndex(category);
         const total = Math.max(CATEGORY_ORDER.length, index + 1);
         // Fibonacci sphere spreads anchors evenly around the origin.
         const y = 1 - (2 * (index + 0.5)) / total;
@@ -787,8 +833,44 @@ export default {
       const res = await fetch('/api/graph');
       if (!res.ok) throw new Error('Graph request failed: ' + res.status);
       graphData = normalizeGraphData(await res.json());
+      pinToPlane(graphData.nodes);
       applyGraphFilters();
     };
+
+    // fz is honored by the d3 simulation; null releases the node back into 3D.
+    const pinToPlane = nodes => {
+      nodes.forEach(node => {
+        if (filterState.flat) {
+          node.fz = 0;
+          node.z = 0;
+          node.vz = 0;
+        } else {
+          node.fz = null;
+        }
+      });
+    };
+
+    const viewToggle = document.getElementById('view-toggle');
+    viewToggle.addEventListener('click', () => {
+      filterState.flat = !filterState.flat;
+      viewToggle.textContent = filterState.flat ? '3D Graph' : '2D Canvas';
+      viewToggle.classList.toggle('active', filterState.flat);
+      pinToPlane(graphData.nodes);
+
+      const controls = Graph.controls();
+      // Trackball controls (the default) use noRotate; orbit controls use enableRotate.
+      controls.noRotate = filterState.flat;
+      controls.enableRotate = !filterState.flat;
+      // In 2D, left-drag pans instead of rotating (THREE.MOUSE: 0 = rotate, 2 = pan).
+      if (controls.mouseButtons) controls.mouseButtons.LEFT = filterState.flat ? 2 : 0;
+
+      if (filterState.flat) {
+        // Undo any roll left over from 3D rotation so the canvas sits square on screen.
+        Graph.camera().up.set(0, 1, 0);
+        Graph.cameraPosition({ x: 0, y: 0, z: 600 }, { x: 0, y: 0, z: 0 }, 800);
+      }
+      Graph.d3ReheatSimulation();
+    });
 
     document.querySelectorAll('.filter-pill').forEach(button => {
       button.addEventListener('click', () => {
