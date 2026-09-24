@@ -16,6 +16,10 @@ const MAX_SEMANTIC_LINKS_PER_NODE = 5;
 // Tried in order: a model answering 503 (high demand) or 429 falls through to the next.
 const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"];
 const GEMINI_RETRYABLE_STATUSES = [429, 503];
+// Caps the /api/ask prompt: one D1 lookup, at most this many nodes of ~300-char context each.
+const ASK_MAX_NODES = 150;
+const ASK_MAX_QUESTION_LENGTH = 1000;
+const ASK_DESCRIPTION_LENGTH = 300;
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
@@ -148,7 +152,83 @@ export default {
       }
     }
 
-    // Endpoint 4: Telegram Webhook POST
+    // Endpoint 4: Delete a node and its mined edges
+    if (url.pathname.startsWith("/api/node/")) {
+      if (request.method !== "DELETE") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "DELETE" });
+      }
+      if (!isAuthorizedAdmin(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+      let id = "";
+      try {
+        id = decodeURIComponent(url.pathname.slice("/api/node/".length)).trim();
+      } catch (err) {
+        id = "";
+      }
+      if (!id) return jsonResponse({ error: "Missing node id." }, 400);
+
+      try {
+        const [, nodeResult] = await env.DB.batch([
+          env.DB.prepare("DELETE FROM node_edges WHERE source_id = ? OR target_id = ?").bind(id, id),
+          env.DB.prepare("DELETE FROM saved_nodes WHERE id = ?").bind(id)
+        ]);
+        if (!nodeResult?.meta?.changes) return jsonResponse({ error: "Node not found." }, 404);
+        return jsonResponse({ deleted: id });
+      } catch (err) {
+        console.error("Node Delete Error:", err);
+        return jsonResponse({ error: "Delete failed." }, 500);
+      }
+    }
+
+    // Endpoint 5: Ask Elarion (Gemini) about a node's neighborhood or a whole cluster
+    if (url.pathname === "/api/ask") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      if (!isAuthorizedAdmin(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+      if (!env.GEMINI_API_KEY) {
+        return jsonResponse({ error: "Gemini API key is missing." }, 500);
+      }
+
+      const body = await request.json().catch(() => null);
+      const question = String(body?.question || "").trim();
+      const label = String(body?.label || "").trim().slice(0, 100);
+      const focusId = body?.focusId ? String(body.focusId) : null;
+      const nodeIds = Array.isArray(body?.nodeIds)
+        ? [...new Set(body.nodeIds.map(String).filter(Boolean))].slice(0, ASK_MAX_NODES)
+        : [];
+      if (!question || question.length > ASK_MAX_QUESTION_LENGTH) {
+        return jsonResponse({ error: `Question must be 1-${ASK_MAX_QUESTION_LENGTH} characters.` }, 400);
+      }
+      if (!nodeIds.length) return jsonResponse({ error: "No nodes to ask about." }, 400);
+
+      try {
+        // Context comes from D1, not the client, so the prompt only ever contains stored nodes.
+        const { results } = await env.DB.prepare(
+          `SELECT id, title, description, category, url FROM saved_nodes WHERE id IN (${nodeIds.map(() => "?").join(", ")})`
+        ).bind(...nodeIds).all();
+        if (!results?.length) return jsonResponse({ error: "None of those nodes exist." }, 404);
+
+        let parsed;
+        try {
+          parsed = await callGeminiJson(env.GEMINI_API_KEY, buildAskPrompt(question, label, focusId, results), 4096);
+        } catch (err) {
+          console.error("Ask Gemini Error:", err);
+          return jsonResponse({ error: "Elarion could not answer right now." }, 502);
+        }
+        const answer = String(parsed?.answer || "").trim();
+        if (!answer) return jsonResponse({ error: "Elarion returned an empty answer." }, 502);
+        return jsonResponse({ answer });
+      } catch (err) {
+        console.error("Ask Error:", err);
+        return jsonResponse({ error: "Ask failed." }, 500);
+      }
+    }
+
+    // Endpoint 6: Telegram Webhook POST
     if (request.method === "POST") {
       if (url.pathname !== "/") {
         return new Response("Not found", { status: 404 });
@@ -383,6 +463,115 @@ export default {
       padding: 2px 6px;
     }
     #node-card .card-close:hover { color: #00ffcc; }
+    #node-card .card-delete {
+      position: absolute;
+      top: 9px;
+      right: 40px;
+      background: none;
+      border: none;
+      font-size: 15px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 3px 6px;
+      opacity: 0.6;
+    }
+    #node-card .card-delete:hover { opacity: 1; }
+    #node-card .card-delete:disabled { opacity: 0.3; cursor: wait; }
+    .ask-box { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .ask-row { display: flex; gap: 6px; align-items: stretch; }
+    .ask-box textarea {
+      flex: 1;
+      min-height: 38px;
+      max-height: 120px;
+      resize: vertical;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,255,204,0.3);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      font: inherit;
+      font-size: 12px;
+    }
+    .ask-box button {
+      padding: 0 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,255,204,0.55);
+      background: rgba(0,255,204,0.12);
+      color: #00ffcc;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .ask-box button:disabled { opacity: 0.5; cursor: wait; }
+    .ask-answer {
+      display: none;
+      max-height: 30vh;
+      overflow-y: auto;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(0,255,204,0.06);
+      border-left: 2px solid #00ffcc;
+      color: #dffdf7;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .ask-answer.error { border-left-color: #ff4d6d; color: #ffb3c1; }
+    #cluster-drawer {
+      position: absolute;
+      top: 62px;
+      right: 12px;
+      bottom: 20px;
+      width: 340px;
+      z-index: 11;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(8, 12, 20, 0.72);
+      border: 1px solid rgba(0, 255, 204, 0.3);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      color: #fff;
+    }
+    #cluster-drawer.open { display: flex; }
+    #cluster-drawer .drawer-head { display: flex; align-items: center; gap: 8px; padding-right: 24px; }
+    #cluster-drawer .drawer-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    #cluster-drawer h3 { margin: 0; font-size: 15px; color: #00ffcc; text-transform: capitalize; }
+    #cluster-drawer .drawer-count { color: #8a93a6; font-size: 11px; }
+    #cluster-drawer .card-close {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: #8a93a6;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+    #cluster-drawer .card-close:hover { color: #00ffcc; }
+    #cluster-cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .mini-card {
+      appearance: none;
+      text-align: left;
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+    .mini-card:hover { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); }
+    .mini-card strong { display: block; font-size: 12px; color: #fff; line-height: 1.3; margin-bottom: 4px; }
+    .mini-card span { display: block; font-size: 11px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
+    .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #00ffcc; text-decoration: none; }
+    #cluster-drawer .ask-box { margin-top: 0; }
     #node-card h3 { padding-right: 24px; margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
     #node-card p { margin: 0 0 12px 0; font-size: 13px; color: #ccc; word-break: break-word; line-height: 1.4; }
     #node-card .card-tag {
@@ -471,6 +660,9 @@ export default {
       .bar-btn { padding: 0 10px; }
       #filter-menu { position: static; }
       .filter-dropdown { top: 50px; left: 0; right: 0; min-width: 0; }
+      #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
+      #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
+      .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
     }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
@@ -514,12 +706,37 @@ export default {
 
   <div id="node-card">
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
+    <button id="card-delete" class="card-delete" title="Delete node" aria-label="Delete node">🗑</button>
     <span id="card-tag" class="card-tag">NOTE</span>
     <h3 id="card-title">Node Details</h3>
     <p id="card-description"></p>
     <p id="card-meta" class="card-meta"></p>
     <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">Open Link ↗</a>
+    <div class="ask-box">
+      <div class="ask-row">
+        <textarea id="card-ask-input" rows="1" maxlength="1000" placeholder="Ask Elarion about this node"></textarea>
+        <button id="card-ask-button">Ask</button>
+      </div>
+      <div id="card-ask-answer" class="ask-answer"></div>
+    </div>
   </div>
+
+  <aside id="cluster-drawer" aria-label="Cluster reader">
+    <button id="drawer-close" class="card-close" title="Close" aria-label="Close">×</button>
+    <div class="drawer-head">
+      <span id="drawer-dot" class="drawer-dot"></span>
+      <h3 id="drawer-title">Cluster</h3>
+      <span id="drawer-count" class="drawer-count"></span>
+    </div>
+    <div id="cluster-cards"></div>
+    <div class="ask-box">
+      <div class="ask-row">
+        <textarea id="drawer-ask-input" rows="2" maxlength="1000" placeholder="Ask Elarion about this cluster"></textarea>
+        <button id="drawer-ask-button">Ask</button>
+      </div>
+      <div id="drawer-ask-answer" class="ask-answer"></div>
+    </div>
+  </aside>
 
   <details id="legend" open>
     <summary class="legend-title">Categories · tap to highlight</summary>
@@ -796,6 +1013,27 @@ export default {
     const cardDescription = document.getElementById('card-description');
     const cardMeta = document.getElementById('card-meta');
     const cardLink = document.getElementById('card-link');
+    const cardDelete = document.getElementById('card-delete');
+    const cardAskInput = document.getElementById('card-ask-input');
+    const cardAskButton = document.getElementById('card-ask-button');
+    const cardAskAnswer = document.getElementById('card-ask-answer');
+    const clusterDrawer = document.getElementById('cluster-drawer');
+    const drawerDot = document.getElementById('drawer-dot');
+    const drawerTitle = document.getElementById('drawer-title');
+    const drawerCount = document.getElementById('drawer-count');
+    const clusterCards = document.getElementById('cluster-cards');
+    const drawerAskInput = document.getElementById('drawer-ask-input');
+    const drawerAskButton = document.getElementById('drawer-ask-button');
+    const drawerAskAnswer = document.getElementById('drawer-ask-answer');
+    // Client-side mirror of the server's ASK_MAX_NODES.
+    const ASK_MAX_NODES = 150;
+    let drawerCategory = null;
+
+    const setAskAnswer = (output, text, isError) => {
+      output.textContent = text || '';
+      output.classList.toggle('error', Boolean(isError));
+      output.style.display = text ? 'block' : 'none';
+    };
 
     const PREVIEW_LENGTH = 220;
     const truncate = (text, max) => text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
@@ -833,6 +1071,8 @@ export default {
         cardLink.removeAttribute('href');
         cardLink.style.display = 'none';
       }
+      cardAskInput.value = '';
+      setAskAnswer(cardAskAnswer, '');
       nodeCard.style.display = 'block';
       // The card spans the bottom of the screen, so the legend steps aside while it's open.
       legend.style.display = 'none';
@@ -964,10 +1204,88 @@ export default {
       applyGraphFilters();
     };
 
+    const formatCategory = category => category.replace(/_/g, ' ');
+
+    const buildMiniCard = node => {
+      const isLink = Boolean(node.url && /^https?:/i.test(node.url));
+      const card = document.createElement('button');
+      card.className = 'mini-card';
+      const title = document.createElement('strong');
+      title.textContent = node.title || node.name || 'Saved Entry';
+      const detail = document.createElement('span');
+      detail.textContent = [isLink ? getHostname(node.url) : '', truncate(getPreviewText(node, isLink), 110)].filter(Boolean).join(' · ');
+      card.append(title, detail);
+      if (isLink) {
+        const open = document.createElement('a');
+        open.href = node.url;
+        open.target = '_blank';
+        open.rel = 'noopener noreferrer';
+        open.textContent = 'Open ↗';
+        open.addEventListener('click', event => event.stopPropagation());
+        card.append(open);
+      }
+      card.addEventListener('click', () => {
+        closeClusterDrawer();
+        selectNode(node);
+      });
+      return card;
+    };
+
+    // Visible nodes only, so the drawer agrees with the current filters.
+    const getClusterNodes = category => Graph.graphData().nodes
+      .filter(node => getNodeCategory(node) === category)
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+
+    const renderClusterDrawer = () => {
+      if (!drawerCategory) return;
+      const nodes = getClusterNodes(drawerCategory);
+      drawerCount.textContent = nodes.length + (nodes.length === 1 ? ' card' : ' cards');
+      clusterCards.replaceChildren(...nodes.map(buildMiniCard));
+    };
+
+    const openClusterDrawer = category => {
+      const changed = drawerCategory !== category;
+      drawerCategory = category;
+      drawerDot.style.background = getCategoryColor(category);
+      drawerTitle.textContent = formatCategory(category);
+      drawerAskInput.placeholder = 'Ask Elarion about ' + formatCategory(category);
+      if (changed) {
+        drawerAskInput.value = '';
+        setAskAnswer(drawerAskAnswer, '');
+      }
+      renderClusterDrawer();
+      clusterCards.scrollTop = clusterCards.scrollLeft = 0;
+      clusterDrawer.classList.add('open');
+      legend.style.display = 'none';
+    };
+
+    const closeClusterDrawer = () => {
+      if (!clusterDrawer.classList.contains('open')) return;
+      clusterDrawer.classList.remove('open');
+      drawerCategory = null;
+      if (nodeCard.style.display !== 'block') legend.style.display = 'block';
+    };
+
+    // Empty canvas resets everything: drawer, card, highlight, and the idle orbit restarts right away.
+    const resetSelection = () => {
+      closeClusterDrawer();
+      hideNodeCard();
+      if (filterState.highlighted.size) {
+        filterState.highlighted = new Set();
+        applyGraphFilters();
+      }
+      clearTimeout(idleTimer);
+      resumeAutoRotate();
+    };
+
     const handleBackgroundClick = () => {
       const category = pickLabel();
-      if (category) flyToCategory(category);
-      else hideNodeCard();
+      if (!category) {
+        resetSelection();
+        return;
+      }
+      flyToCategory(category);
+      openClusterDrawer(category);
     };
 
     // Slow idle orbit that yields to any interaction and resumes after a quiet spell.
@@ -1020,6 +1338,7 @@ export default {
     };
 
     const selectNode = node => {
+      closeClusterDrawer();
       showNodeCard(node);
       setFocus(node);
       pauseAutoRotate();
@@ -1027,7 +1346,7 @@ export default {
 
     const hideNodeCard = () => {
       nodeCard.style.display = 'none';
-      legend.style.display = 'block';
+      if (!clusterDrawer.classList.contains('open')) legend.style.display = 'block';
       clearFocus();
       scheduleResume();
     };
@@ -1135,6 +1454,7 @@ export default {
       else refreshGraphStyles();
       renderLegend(filteredNodes);
       syncTerritories(filteredNodes);
+      renderClusterDrawer();
     };
 
     const loadGraph = async () => {
@@ -1242,11 +1562,111 @@ export default {
     const getAdminToken = () => {
       let token = localStorage.getItem(ADMIN_TOKEN_KEY);
       if (!token) {
-        token = (window.prompt('Admin token required to recluster:') || '').trim();
+        token = (window.prompt('Admin token required:') || '').trim();
         if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
       }
       return token;
     };
+
+    // Authorized JSON request; a rejected token is forgotten so the next attempt prompts again.
+    const adminFetch = async (path, options) => {
+      const token = getAdminToken();
+      if (!token) throw new Error('Admin token required.');
+      const opts = options || {};
+      const res = await fetch(path, {
+        ...opts,
+        headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + token }
+      });
+      if (res.status === 401) {
+        localStorage.removeItem(ADMIN_TOKEN_KEY);
+        throw new Error('Admin token rejected.');
+      }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || ('Request failed: ' + res.status));
+      return body;
+    };
+
+    const askElarion = async ({ button, input, output, label, focusId, nodeIds }) => {
+      const question = input.value.trim();
+      if (!question) {
+        input.focus();
+        return;
+      }
+      if (!nodeIds.length) {
+        setAskAnswer(output, 'No visible nodes to ask about.', true);
+        return;
+      }
+      button.disabled = true;
+      setAskAnswer(output, 'Elarion is thinking…');
+      try {
+        const body = await adminFetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, label, focusId, nodeIds: nodeIds.slice(0, ASK_MAX_NODES) })
+        });
+        setAskAnswer(output, body.answer);
+      } catch (err) {
+        setAskAnswer(output, err.message || 'Elarion could not answer.', true);
+      } finally {
+        button.disabled = false;
+      }
+    };
+
+    // Ctrl/Cmd+Enter submits from either prompt box.
+    const bindAskShortcut = (input, button) => input.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        button.click();
+      }
+    });
+
+    cardAskButton.addEventListener('click', () => {
+      if (!focus.node) return;
+      askElarion({
+        button: cardAskButton,
+        input: cardAskInput,
+        output: cardAskAnswer,
+        label: focus.node.title || focus.node.name || '',
+        focusId: focus.node.id,
+        nodeIds: [focus.node.id, ...[...focus.nodeIds].filter(id => id !== focus.node.id)]
+      });
+    });
+    bindAskShortcut(cardAskInput, cardAskButton);
+
+    drawerAskButton.addEventListener('click', () => {
+      if (!drawerCategory) return;
+      askElarion({
+        button: drawerAskButton,
+        input: drawerAskInput,
+        output: drawerAskAnswer,
+        label: drawerCategory,
+        focusId: null,
+        nodeIds: getClusterNodes(drawerCategory).map(node => node.id)
+      });
+    });
+    bindAskShortcut(drawerAskInput, drawerAskButton);
+
+    document.getElementById('drawer-close').addEventListener('click', closeClusterDrawer);
+
+    cardDelete.addEventListener('click', async () => {
+      const node = focus.node;
+      if (!node) return;
+      const title = node.title || node.name || 'this node';
+      if (!window.confirm('Delete "' + truncate(String(title), 80) + '"? This cannot be undone.')) return;
+      cardDelete.disabled = true;
+      try {
+        await adminFetch('/api/node/' + encodeURIComponent(node.id), { method: 'DELETE' });
+        graphData.nodes = graphData.nodes.filter(item => item.id !== node.id);
+        graphData.links = graphData.links.filter(link => linkEndId(link.source) !== node.id && linkEndId(link.target) !== node.id);
+        hideNodeCard();
+        applyGraphFilters();
+      } catch (err) {
+        console.error('Delete failed:', err);
+        alert(err.message || 'Delete failed.');
+      } finally {
+        cardDelete.disabled = false;
+      }
+    });
 
     // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
     const runAdminBatches = async ({ button, path, busyLabel, summarize }) => {
@@ -1499,6 +1919,27 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
     console.error("Gemini analysis failed:", err);
     return null;
   }
+}
+
+// Focus node first, then its neighbors (or every node of a cluster), one line each.
+function buildAskPrompt(question, label, focusId, rows) {
+  const ordered = [...rows].sort((a, b) => (String(b.id) === focusId) - (String(a.id) === focusId));
+  const lines = ordered.map(row => {
+    const title = String(row.title || row.url || "Untitled").replace(/\s+/g, " ").slice(0, 200);
+    const url = String(row.url || "").split(/\s+/)[0];
+    const description = String(row.description || (url === row.url ? "" : row.url) || "").replace(/\s+/g, " ").slice(0, ASK_DESCRIPTION_LENGTH);
+    const marker = String(row.id) === focusId ? " (focus)" : "";
+    return `- [${row.category || "note"}]${marker} ${title}${url && url !== title ? ` — ${url}` : ""}${description ? ` — ${description}` : ""}`;
+  });
+  const scope = focusId
+    ? "a saved node (marked focus) and the nodes linked to it"
+    : `every saved node in the "${label || "selected"}" category`;
+  return `You are Elarion, the assistant of a personal knowledge graph. Below is ${scope}. Answer the user's question using only these nodes: synthesize, summarize or compare as asked, and say so if the nodes don't contain the answer. Keep it concise; plain text, short paragraphs or "- " bullets, no markdown headings. Return only valid JSON: {"answer":"..."}.
+
+Nodes:
+${lines.join("\n")}
+
+Question: ${question}`;
 }
 
 // Sends one prompt to Gemini Flash in JSON mode and returns the parsed object. Throws on HTTP or parse errors.

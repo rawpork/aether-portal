@@ -53,4 +53,31 @@ describe("Aether Portal worker", () => {
 		});
 		expect(response.status).toBe(401);
 	});
+
+	it("only allows DELETE on /api/node/:id", async () => {
+		const response = await SELF.fetch("http://example.com/api/node/abc");
+		expect(response.status).toBe(405);
+	});
+
+	it("requires an admin token to delete a node", async () => {
+		const response = await SELF.fetch("http://example.com/api/node/abc", {
+			method: "DELETE",
+			headers: { Authorization: "Bearer wrong" },
+		});
+		expect(response.status).toBe(401);
+	});
+
+	it("only allows POST on /api/ask", async () => {
+		const response = await SELF.fetch("http://example.com/api/ask");
+		expect(response.status).toBe(405);
+	});
+
+	it("requires an admin token for /api/ask", async () => {
+		const response = await SELF.fetch("http://example.com/api/ask", {
+			method: "POST",
+			headers: { Authorization: "Bearer wrong", "Content-Type": "application/json" },
+			body: JSON.stringify({ question: "hi", nodeIds: ["abc"] }),
+		});
+		expect(response.status).toBe(401);
+	});
 });
