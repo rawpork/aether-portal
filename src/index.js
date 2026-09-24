@@ -229,56 +229,80 @@ export default {
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     body { margin: 0; overflow: hidden; background-color: #080c14; font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
-    #info {
+    #topbar {
       position: absolute;
-      top: 15px;
-      left: 15px;
-      color: #00ffcc;
-      z-index: 10;
-      background: rgba(8, 12, 20, 0.85);
-      padding: 10px 14px;
-      border-radius: 10px;
-      border: 1px solid rgba(0, 255, 204, 0.2);
-      backdrop-filter: blur(8px);
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      height: 44px;
+      box-sizing: border-box;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border-radius: 14px;
+      background: rgba(8, 12, 20, 0.6);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    #topbar .brand { color: #00ffcc; font-size: 14px; font-weight: 600; white-space: nowrap; }
+    #topbar .bar-spacer { flex: 1; }
+    .bar-btn {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      height: 30px;
+      box-sizing: border-box;
+      padding: 0 12px;
+      border: 1px solid rgba(0,255,204,0.35);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      color: #dffdf7;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
     }
     #search-input {
       appearance: none;
+      flex: 0 1 180px;
+      min-width: 0;
+      height: 30px;
+      box-sizing: border-box;
       border: 1px solid rgba(0,255,204,0.25);
       background: rgba(255,255,255,0.04);
       color: #00ffcc;
       border-radius: 999px;
-      padding: 7px 12px;
+      padding: 0 12px;
       font-size: 12px;
       outline: none;
-      width: 150px;
     }
     #search-input::placeholder { color: rgba(0,255,204,0.4); }
-    .filter-panel {
+    #filter-menu { position: relative; }
+    #filter-menu summary { list-style: none; }
+    #filter-menu summary::-webkit-details-marker { display: none; }
+    #filter-menu[open] summary { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
+    .filter-dropdown {
       position: absolute;
-      left: 50%;
-      top: 76px;
-      transform: translateX(-50%);
-      z-index: 20;
+      top: 40px;
+      left: 0;
+      min-width: 300px;
       display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
-      border-radius: 16px;
-      background: rgba(12, 18, 30, 0.6);
-      border: 1px solid rgba(255,255,255,0.12);
-      box-shadow: 0 12px 32px rgba(0,0,0,0.28);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      flex-wrap: wrap;
-      justify-content: center;
-      max-width: min(92vw, 860px);
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(9, 15, 25, 0.96);
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
     }
     .filter-row {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
-      justify-content: center;
     }
     .filter-pill, .toggle-button, #time-filter {
       appearance: none;
@@ -303,41 +327,12 @@ export default {
     .toggle-button {
       font-weight: 600;
     }
-    .settings-wrap {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      z-index: 30;
-      display: flex;
-      gap: 8px;
-    }
-    .view-toggle {
-      border: 1px solid rgba(0,255,204,0.35);
-      background: rgba(8, 12, 20, 0.55);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      color: #dffdf7;
-      border-radius: 12px;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-size: 14px;
-    }
+    .settings-wrap { position: relative; }
     .view-toggle.active { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
-    .settings-button {
-      position: relative;
-      z-index: 31;
-      border: 1px solid rgba(0,255,204,0.35);
-      background: rgba(8, 12, 20, 0.85);
-      color: #dffdf7;
-      border-radius: 12px;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-size: 14px;
-    }
     .settings-menu {
       position: absolute;
       right: 0;
-      top: 52px;
+      top: 40px;
       width: 220px;
       background: rgba(9, 15, 25, 0.96);
       border: 1px solid rgba(255,255,255,0.1);
@@ -457,16 +452,23 @@ export default {
     #legend .legend-badge { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     #legend .legend-name { flex: 1; }
     #legend .legend-count { color: #8a93a6; font-variant-numeric: tabular-nums; }
+    @media (max-width: 600px) {
+      #topbar .brand { display: none; }
+      #topbar { gap: 6px; padding: 0 7px; }
+      .bar-btn { padding: 0 10px; }
+      #filter-menu { position: static; }
+      .filter-dropdown { top: 50px; left: 0; right: 0; min-width: 0; }
+    }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
 </head>
 <body>
-  <div id="info">
-    <h2 style="margin:0 0 2px 0; font-size:15px;">Aether Portal</h2>
-    <p style="margin:0; font-size:11px; color:#aaa;">Tap node to inspect</p>
-  </div>
-
-  <div class="filter-panel">
+  <header id="topbar">
+    <span class="brand">Aether Portal</span>
+    <input type="text" id="search-input" placeholder="🔍 Search nodes...">
+    <details id="filter-menu">
+      <summary class="bar-btn">Filter ▾</summary>
+      <div class="filter-dropdown">
     <div class="filter-row" id="type-filters">
       <button class="filter-pill active" data-filter="all">All</button>
       <button class="filter-pill" data-filter="link">Links</button>
@@ -475,7 +477,6 @@ export default {
       <button class="filter-pill" data-filter="note">Notes</button>
     </div>
     <div class="filter-row">
-      <input type="text" id="search-input" placeholder="🔍 Search nodes...">
       <select id="time-filter">
         <option value="all">All Time</option>
         <option value="day">Today</option>
@@ -484,17 +485,19 @@ export default {
       </select>
       <button id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button>
     </div>
-  </div>
-
+      </div>
+    </details>
+    <span class="bar-spacer"></span>
+    <button class="view-toggle bar-btn" id="view-toggle">2D Canvas</button>
   <div class="settings-wrap">
-    <button class="view-toggle" id="view-toggle">2D Canvas</button>
-    <button class="settings-button" id="settings-toggle">⚙️ Settings</button>
+    <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
     <div class="settings-menu" id="settings-menu">
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
       <button class="settings-option" id="backfill-button">🔗 Fetch Titles for Old Links</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
     </div>
   </div>
+  </header>
 
   <div id="node-card">
     <span id="card-tag" class="card-tag">NOTE</span>
@@ -906,6 +909,13 @@ export default {
       settingsMenu.classList.toggle('open');
     });
 
+    const filterMenu = document.getElementById('filter-menu');
+    const settingsWrap = document.querySelector('.settings-wrap');
+    document.addEventListener('pointerdown', event => {
+      if (filterMenu.open && !filterMenu.contains(event.target)) filterMenu.open = false;
+      if (!settingsWrap.contains(event.target)) settingsMenu.classList.remove('open');
+    });
+
     const clearFiltersButton = document.getElementById('clear-filters-button');
     clearFiltersButton.addEventListener('click', () => {
       filterState.type = 'all';
@@ -919,6 +929,7 @@ export default {
       clusterToggle.classList.add('active');
       document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
       settingsMenu.classList.remove('open');
+      filterMenu.open = false;
       applyGraphFilters();
     });
 
