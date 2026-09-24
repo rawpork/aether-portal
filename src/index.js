@@ -109,7 +109,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE description IS NULL AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR description IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, METADATA_BACKFILL_BATCH_SIZE).all();
 
         const nodes = results || [];
