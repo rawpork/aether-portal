@@ -708,6 +708,9 @@ export default {
       </select>
       <button id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button>
     </div>
+    <div class="filter-row">
+      <button id="orphan-toggle" class="toggle-button" aria-pressed="false">Hide Unlinked</button>
+    </div>
       </div>
     </details>
     <span class="bar-spacer"></span>
@@ -773,6 +776,8 @@ export default {
       clusterMode: 'category',
       // Flat 2D canvas: nodes pinned to z = 0, camera faces the plane head-on.
       flat: false,
+      // Hide nodes with no edges among the currently visible nodes.
+      hideOrphans: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
       highlighted: new Set()
     };
@@ -1560,11 +1565,33 @@ export default {
     };
 
     const applyGraphFilters = () => {
-      const filteredNodes = graphData.nodes.filter(node => matchesTypeFilter(node) && matchesTimeFilter(node) && matchesSearch(node));
-      const visibleIds = new Set(filteredNodes.map(node => node.id));
+      let filteredNodes = graphData.nodes.filter(node => matchesTypeFilter(node) && matchesTimeFilter(node) && matchesSearch(node));
+      let visibleIds = new Set(filteredNodes.map(node => node.id));
       const filteredLinks = graphData.links.filter(link => visibleIds.has(linkEndId(link.source)) && visibleIds.has(linkEndId(link.target)));
 
-      Graph.graphData({ nodes: filteredNodes, links: filteredLinks });
+      // Orphans are judged against what survives the other filters, so a node whose only neighbours were filtered out hides too.
+      const orphanButton = document.getElementById('orphan-toggle');
+      if (filterState.hideOrphans) {
+        const linkedIds = new Set();
+        filteredLinks.forEach(link => {
+          const sourceId = linkEndId(link.source);
+          const targetId = linkEndId(link.target);
+          if (sourceId === targetId) return;
+          linkedIds.add(sourceId);
+          linkedIds.add(targetId);
+        });
+        const before = filteredNodes.length;
+        filteredNodes = filteredNodes.filter(node => linkedIds.has(node.id));
+        visibleIds = new Set(filteredNodes.map(node => node.id));
+        orphanButton.textContent = 'Hide Unlinked · ' + (before - filteredNodes.length);
+      } else {
+        orphanButton.textContent = 'Hide Unlinked';
+      }
+      // Self-loops on a hidden orphan would otherwise point at a missing node.
+      const shownLinks = filterState.hideOrphans ? filteredLinks.filter(link => visibleIds.has(linkEndId(link.source))) : filteredLinks;
+
+      if (hover.id && !visibleIds.has(hover.id)) setHover(null);
+      Graph.graphData({ nodes: filteredNodes, links: shownLinks });
       // A focused node that got filtered out drops the focus along with its card.
       if (focus.node && !visibleIds.has(focus.node.id)) hideNodeCard();
       else if (focus.node) setFocus(focus.node);
@@ -1646,6 +1673,14 @@ export default {
       applyGraphFilters();
     });
 
+    const orphanToggle = document.getElementById('orphan-toggle');
+    orphanToggle.addEventListener('click', () => {
+      filterState.hideOrphans = !filterState.hideOrphans;
+      orphanToggle.classList.toggle('active', filterState.hideOrphans);
+      orphanToggle.setAttribute('aria-pressed', String(filterState.hideOrphans));
+      applyGraphFilters();
+    });
+
     const settingsToggle = document.getElementById('settings-toggle');
     const settingsMenu = document.getElementById('settings-menu');
     settingsToggle.addEventListener('click', () => {
@@ -1666,6 +1701,9 @@ export default {
       filterState.query = '';
       filterState.clusterMode = 'category';
       filterState.highlighted.clear();
+      filterState.hideOrphans = false;
+      orphanToggle.classList.remove('active');
+      orphanToggle.setAttribute('aria-pressed', 'false');
       timeFilter.value = 'all';
       searchInput.value = '';
       clusterToggle.textContent = 'Category View';
