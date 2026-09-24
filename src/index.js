@@ -16,6 +16,10 @@ const MAX_SEMANTIC_LINKS_PER_NODE = 5;
 // Tried in order: a model answering 503 (high demand) or 429 falls through to the next.
 const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"];
 const GEMINI_RETRYABLE_STATUSES = [429, 503];
+// Ask Elarion routing: Tier 1 answers note questions cheaply; Tier 2 adds Google Search for research questions.
+const ASK_TIER1_MODELS = ["gemini-3.5-flash-lite", "gemini-3.7-flash"]; // Flash only if Lite is busy (429/503)
+const ASK_TIER2_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash"];
+const WEB_RESEARCH_PATTERN = /\b(research(es|ed|ing)?|search(es|ed|ing)?|find online|latest|news|current rates?)\b/i;
 // Caps the /api/ask prompt: one D1 lookup, at most this many nodes of ~300-char context each.
 const ASK_MAX_NODES = 150;
 const ASK_MAX_QUESTION_LENGTH = 1000;
@@ -278,16 +282,14 @@ export default {
 
         let reply;
         try {
-          // Google Search grounding is on unless the ELARION_WEB_SEARCH var is set to "off".
-          const useSearch = String(env.ELARION_WEB_SEARCH || "").toLowerCase() !== "off";
-          reply = await callGeminiText(env.GEMINI_API_KEY, buildAskPrompt(question, label, focusId, results), 8192, useSearch);
+          reply = await askGemini(env, question, webSearch => buildAskPrompt(question, label, focusId, results, webSearch));
         } catch (err) {
           console.error("Ask Gemini Error:", err);
           return jsonResponse({ error: "Elarion could not answer right now." }, 502);
         }
         const answer = reply.text.trim();
         if (!answer) return jsonResponse({ error: "Elarion returned an empty answer." }, 502);
-        return jsonResponse({ answer, sources: reply.sources });
+        return jsonResponse({ answer, sources: reply.sources, tier: reply.tier });
       } catch (err) {
         console.error("Ask Error:", err);
         return jsonResponse({ error: "Ask failed." }, 500);
@@ -2302,7 +2304,7 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
 }
 
 // Focus node first, then its neighbors (or every node of a cluster), one line each.
-function buildAskPrompt(question, label, focusId, rows) {
+function buildAskPrompt(question, label, focusId, rows, webSearch) {
   const ordered = [...rows].sort((a, b) => (String(b.id) === focusId) - (String(a.id) === focusId));
   const lines = ordered.map(row => {
     const title = String(row.title || row.url || "Untitled").replace(/\s+/g, " ").slice(0, 200);
@@ -2316,7 +2318,9 @@ function buildAskPrompt(question, label, focusId, rows) {
     : `every saved node in the "${label || "selected"}" category`;
   return `You are Elarion, the research assistant of a personal knowledge graph. Below is ${scope}. These nodes are the user's own saved notes: treat them as the starting context and ground truth for what the user has saved, thinks, or plans.
 
-Do not limit yourself to the notes. Whenever the question needs outside context (for example relocation options, market or product comparisons, technology evaluations, current events, or general research), use your full analytical reasoning, general knowledge, and web search when it is available to bring in real, current information, and connect it back to the notes.
+Do not limit yourself to the notes. Whenever the question needs outside context (for example relocation options, market or product comparisons, technology evaluations, current events, or general research), use your full analytical reasoning and general knowledge, and connect it back to the notes. ${webSearch
+    ? "Web search is available: use it for current, real-world facts."
+    : "Web search is not available for this answer: rely on general knowledge, flag anything that may be out of date, and suggest the user ask again with 'research' or 'latest' for live information."}
 
 Structure every answer in these labeled sections, each starting on its own line:
 Notes in your graph: what the saved nodes say that is relevant, citing node titles. If nothing relevant, say so in one line.
@@ -2375,26 +2379,35 @@ async function callGeminiModelJson(apiKey, model, prompt, maxOutputTokens) {
   return JSON.parse(rawModelText.replace(/```json|```/gi, "").trim());
 }
 
+export function needsWebResearch(question) {
+  return WEB_RESEARCH_PATTERN.test(String(question || ""));
+}
+
+// Routes an Ask question: research-intent questions try search-grounded Flash (Tier 2) and fall back
+// to tool-free Flash-Lite (Tier 1) on any error; everything else goes straight to Tier 1.
+async function askGemini(env, question, buildPrompt) {
+  const searchAllowed = String(env.ELARION_WEB_SEARCH || "").toLowerCase() !== "off";
+  if (searchAllowed && needsWebResearch(question)) {
+    try {
+      return { ...(await callGeminiText(env.GEMINI_API_KEY, ASK_TIER2_MODELS, buildPrompt(true), 8192, true)), tier: 2 };
+    } catch (err) {
+      console.warn("Ask Tier 2 (search) failed; falling back to Tier 1:", err.message);
+    }
+  }
+  return { ...(await callGeminiText(env.GEMINI_API_KEY, ASK_TIER1_MODELS, buildPrompt(false), 4096, false)), tier: 1 };
+}
+
 // Sends one plain-text prompt to Gemini, optionally grounded with Google Search. Returns { text, sources }.
 // Plain text (not JSON mode) because older models reject JSON output combined with the search tool.
-async function callGeminiText(apiKey, prompt, maxOutputTokens, useSearch) {
+async function callGeminiText(apiKey, models, prompt, maxOutputTokens, useSearch) {
   let lastError;
-  for (const model of GEMINI_MODELS) {
+  for (const model of models) {
     try {
       return await callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch);
     } catch (err) {
       lastError = err;
-      // A 400 with search on usually means this model doesn't support the tool; answer ungrounded instead.
-      if (useSearch && err.status === 400) {
-        console.warn(`Gemini ${model} rejected search grounding; retrying without it.`);
-        try {
-          return await callGeminiModelText(apiKey, model, prompt, maxOutputTokens, false);
-        } catch (retryErr) {
-          lastError = retryErr;
-        }
-      }
-      if (!GEMINI_RETRYABLE_STATUSES.includes(lastError.status)) throw lastError;
-      console.warn(`Gemini ${model} unavailable (${lastError.status}); trying next model.`);
+      if (!GEMINI_RETRYABLE_STATUSES.includes(err.status)) throw err;
+      console.warn(`Gemini ${model} unavailable (${err.status}); trying next model.`);
     }
   }
   throw lastError;

@@ -1,5 +1,20 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
+import { needsWebResearch } from "../src/index.js";
+
+describe("needsWebResearch", () => {
+	it("routes research-intent questions to the search tier", () => {
+		for (const q of ["research moving to Lisbon", "what's the latest on Bun", "current rates for mortgages", "find online reviews", "any news about X", "Searching for options"]) {
+			expect(needsWebResearch(q), q).toBe(true);
+		}
+	});
+
+	it("keeps note, graph and coding questions on the fast tier", () => {
+		for (const q of ["summarize these notes", "how do these nodes relate", "write a function to sort", "newsletter ideas", ""]) {
+			expect(needsWebResearch(q), q).toBe(false);
+		}
+	});
+});
 
 describe("Aether Portal worker", () => {
 	it("serves the graph UI with a client script that parses", async () => {
