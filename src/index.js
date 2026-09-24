@@ -276,16 +276,18 @@ export default {
         ).bind(...nodeIds).all();
         if (!results?.length) return jsonResponse({ error: "None of those nodes exist." }, 404);
 
-        let parsed;
+        let reply;
         try {
-          parsed = await callGeminiJson(env.GEMINI_API_KEY, buildAskPrompt(question, label, focusId, results), 4096);
+          // Google Search grounding is on unless the ELARION_WEB_SEARCH var is set to "off".
+          const useSearch = String(env.ELARION_WEB_SEARCH || "").toLowerCase() !== "off";
+          reply = await callGeminiText(env.GEMINI_API_KEY, buildAskPrompt(question, label, focusId, results), 8192, useSearch);
         } catch (err) {
           console.error("Ask Gemini Error:", err);
           return jsonResponse({ error: "Elarion could not answer right now." }, 502);
         }
-        const answer = String(parsed?.answer || "").trim();
+        const answer = reply.text.trim();
         if (!answer) return jsonResponse({ error: "Elarion returned an empty answer." }, 502);
-        return jsonResponse({ answer });
+        return jsonResponse({ answer, sources: reply.sources });
       } catch (err) {
         console.error("Ask Error:", err);
         return jsonResponse({ error: "Ask failed." }, 500);
@@ -626,6 +628,7 @@ export default {
       font-size: 12px;
       line-height: 1.45;
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .ask-answer.error { border-left-color: #ff4d6d; color: #ffb3c1; }
     #cluster-drawer {
@@ -1887,7 +1890,11 @@ export default {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question, label, focusId, nodeIds: nodeIds.slice(0, ASK_MAX_NODES) })
         });
-        setAskAnswer(output, body.answer);
+        const sources = Array.isArray(body.sources) ? body.sources : [];
+        const sourceLines = sources.map(source => '- ' + source.title + ' — ' + source.uri);
+        setAskAnswer(output, sourceLines.length
+          ? [body.answer, '', 'Web sources:', ...sourceLines].join(String.fromCharCode(10))
+          : body.answer);
       } catch (err) {
         setAskAnswer(output, err.message || 'Elarion could not answer.', true);
       } finally {
@@ -2307,7 +2314,15 @@ function buildAskPrompt(question, label, focusId, rows) {
   const scope = focusId
     ? "a saved node (marked focus) and the nodes linked to it"
     : `every saved node in the "${label || "selected"}" category`;
-  return `You are Elarion, the assistant of a personal knowledge graph. Below is ${scope}. Answer the user's question using only these nodes: synthesize, summarize or compare as asked, and say so if the nodes don't contain the answer. Keep it concise; plain text, short paragraphs or "- " bullets, no markdown headings. Return only valid JSON: {"answer":"..."}.
+  return `You are Elarion, the research assistant of a personal knowledge graph. Below is ${scope}. These nodes are the user's own saved notes: treat them as the starting context and ground truth for what the user has saved, thinks, or plans.
+
+Do not limit yourself to the notes. Whenever the question needs outside context (for example relocation options, market or product comparisons, technology evaluations, current events, or general research), use your full analytical reasoning, general knowledge, and web search when it is available to bring in real, current information, and connect it back to the notes.
+
+Structure every answer in these labeled sections, each starting on its own line:
+Notes in your graph: what the saved nodes say that is relevant, citing node titles. If nothing relevant, say so in one line.
+Elarion External Synthesis: your own analysis, outside knowledge, and research findings, clearly separate from the notes. Flag uncertainty and anything time-sensitive. Omit this section only if the question is purely about the notes.
+
+Keep it concise; plain text, short paragraphs or "- " bullets, no markdown headings, bold, or tables.
 
 Nodes:
 ${lines.join("\n")}
@@ -2358,6 +2373,69 @@ async function callGeminiModelJson(apiKey, model, prompt, maxOutputTokens) {
   const data = await response.json();
   const rawModelText = data?.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
   return JSON.parse(rawModelText.replace(/```json|```/gi, "").trim());
+}
+
+// Sends one plain-text prompt to Gemini, optionally grounded with Google Search. Returns { text, sources }.
+// Plain text (not JSON mode) because older models reject JSON output combined with the search tool.
+async function callGeminiText(apiKey, prompt, maxOutputTokens, useSearch) {
+  let lastError;
+  for (const model of GEMINI_MODELS) {
+    try {
+      return await callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch);
+    } catch (err) {
+      lastError = err;
+      // A 400 with search on usually means this model doesn't support the tool; answer ungrounded instead.
+      if (useSearch && err.status === 400) {
+        console.warn(`Gemini ${model} rejected search grounding; retrying without it.`);
+        try {
+          return await callGeminiModelText(apiKey, model, prompt, maxOutputTokens, false);
+        } catch (retryErr) {
+          lastError = retryErr;
+        }
+      }
+      if (!GEMINI_RETRYABLE_STATUSES.includes(lastError.status)) throw lastError;
+      console.warn(`Gemini ${model} unavailable (${lastError.status}); trying next model.`);
+    }
+  }
+  throw lastError;
+}
+
+async function callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens,
+        thinkingConfig: { thinkingLevel: "low" }
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => "")).slice(0, 300);
+    throw Object.assign(new Error(`Gemini API error (${model}): ${response.status} ${detail}`), { status: response.status });
+  }
+
+  const data = await response.json();
+  const candidate = data?.candidates?.[0];
+  const text = candidate?.content?.parts?.map(part => part.text || "").join("") || "";
+  const sources = [];
+  const seen = new Set();
+  for (const chunk of candidate?.groundingMetadata?.groundingChunks || []) {
+    const uri = String(chunk?.web?.uri || "");
+    if (!/^https?:\/\//.test(uri) || seen.has(uri)) continue;
+    seen.add(uri);
+    sources.push({ title: String(chunk.web.title || uri).slice(0, 120), uri });
+    if (sources.length >= 8) break;
+  }
+  return { text, sources };
 }
 
 // Cron job: one batched Gemini prompt assigns categories to unanalyzed nodes and extracts edges
