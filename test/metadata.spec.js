@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isYouTubeUrl, parseHtmlMetadata } from "../src/metadata.js";
+import { cleanTitle, isYouTubeUrl, parseHtmlMetadata } from "../src/metadata.js";
 
 describe("parseHtmlMetadata", () => {
 	it("prefers OpenGraph tags regardless of attribute order", () => {
@@ -16,6 +16,27 @@ describe("parseHtmlMetadata", () => {
 
 	it("returns null when there is no title", () => {
 		expect(parseHtmlMetadata("<html><body>hi</body></html>")).toBeNull();
+	});
+
+	it("returns null when the title only names the site", () => {
+		expect(parseHtmlMetadata('<meta property="og:title" content="Reddit"><meta name="description" content="x">')).toBeNull();
+	});
+});
+
+describe("cleanTitle", () => {
+	it("strips engagement-count prefixes", () => {
+		expect(cleanTitle("26K reactions · 1.6K shares | The Truth About Streaming")).toBe("The Truth About Streaming");
+		expect(cleanTitle("1.5K views · 9.3K reactions | Just watch me")).toBe("Just watch me");
+		expect(cleanTitle("44 shares | The people moving fastest")).toBe("The people moving fastest");
+	});
+
+	it("leaves normal titles alone", () => {
+		expect(cleanTitle("Top 10 reactions | A list")).toBe("Top 10 reactions | A list");
+		expect(cleanTitle("Cloudflare D1")).toBe("Cloudflare D1");
+	});
+
+	it("rejects site-name-only titles", () => {
+		for (const name of ["Reddit", "Facebook", "Instagram", "X", " twitter "]) expect(cleanTitle(name)).toBe("");
 	});
 });
 

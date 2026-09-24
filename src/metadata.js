@@ -6,6 +6,11 @@ const METADATA_MAX_HTML_BYTES = 256 * 1024;
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 300;
 
+// Titles that only name the site: what bot-blocked / login-walled pages return. Treated as "no title".
+const GENERIC_SITE_TITLES = new Set(["reddit", "facebook", "instagram", "x", "twitter", "tiktok", "youtube", "linkedin"]);
+// Facebook-style "26K reactions · 1.6K shares | " prefixes: stale counts that bury the real caption.
+const ENGAGEMENT_PREFIX = /^(?:[\d.,]+[KMB]?\s+(?:views?|reactions?|shares?|comments?|likes?)\s*(?:·\s*)?)+\|\s*/i;
+
 const NAMED_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
 export function isYouTubeUrl(url) {
@@ -41,7 +46,7 @@ async function fetchYouTubeMetadata(url) {
   if (!response.ok) return null;
 
   const data = await response.json();
-  const title = cleanText(data?.title, MAX_TITLE_LENGTH);
+  const title = cleanTitle(data?.title);
   if (!title) return null;
   const author = cleanText(data?.author_name, MAX_TITLE_LENGTH);
   return { title, description: author ? "YouTube video by " + author : null };
@@ -90,7 +95,7 @@ export function parseHtmlMetadata(html) {
   }
   const titleTag = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html || "")?.[1];
 
-  const title = cleanText(meta["og:title"] || meta["twitter:title"] || titleTag, MAX_TITLE_LENGTH);
+  const title = cleanTitle(meta["og:title"] || meta["twitter:title"] || titleTag);
   if (!title) return null;
   const description = cleanText(meta["og:description"] || meta["twitter:description"] || meta["description"], MAX_DESCRIPTION_LENGTH);
   return { title, description: description || null };
@@ -112,6 +117,12 @@ function decodeHtmlEntities(text) {
     }
     return NAMED_ENTITIES[entity.toLowerCase()] ?? match;
   });
+}
+
+// Returns "" for titles that are only a site name, so callers keep their fallback title.
+export function cleanTitle(value) {
+  const title = cleanText(value, Infinity).replace(ENGAGEMENT_PREFIX, "").trim().slice(0, MAX_TITLE_LENGTH);
+  return GENERIC_SITE_TITLES.has(title.toLowerCase()) ? "" : title;
 }
 
 function cleanText(value, maxLength) {
