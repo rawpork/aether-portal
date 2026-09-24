@@ -8,6 +8,8 @@ const RECLUSTER_CATEGORIES = ["note", "general", "link", "article", "dev_task", 
 // Keeps each recluster request well under the Workers subrequest / D1 query limits:
 // per node at most 1 context lookup + 1 Gemini call + 1 update.
 const RECLUSTER_BATCH_SIZE = 10;
+// One metadata fetch (4 s timeout) + one update per link.
+const METADATA_BACKFILL_BATCH_SIZE = 10;
 const MAX_SEMANTIC_LINKS_PER_NODE = 5;
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
@@ -95,7 +97,46 @@ export default {
       }
     }
 
-    // Endpoint 3: Telegram Webhook POST
+    // Endpoint 3: Backfill fetched titles/descriptions for links saved before ingestion enrichment
+    if (url.pathname === "/api/backfill-metadata") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      if (!isAuthorizedAdmin(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+
+      try {
+        const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
+        const { results } = await env.DB.prepare(
+          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE description IS NULL AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
+        ).bind(cursor, METADATA_BACKFILL_BATCH_SIZE).all();
+
+        const nodes = results || [];
+        const fetched = await Promise.all(nodes.map(node => fetchLinkMetadata(String(node.url).split(/\s+/)[0])));
+        const updates = [];
+        nodes.forEach((node, i) => {
+          const metadata = fetched[i];
+          if (!metadata) return;
+          updates.push(env.DB.prepare(
+            "UPDATE saved_nodes SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          ).bind(metadata.title, metadata.description, node.id));
+        });
+        if (updates.length) await env.DB.batch(updates);
+
+        return jsonResponse({
+          processed: nodes.length,
+          updated: updates.length,
+          nextCursor: nodes.length ? nodes[nodes.length - 1].row_id : cursor,
+          done: nodes.length < METADATA_BACKFILL_BATCH_SIZE
+        });
+      } catch (err) {
+        console.error("Metadata Backfill Error:", err);
+        return jsonResponse({ error: "Metadata backfill failed." }, 500);
+      }
+    }
+
+    // Endpoint 4: Telegram Webhook POST
     if (request.method === "POST") {
       if (url.pathname !== "/") {
         return new Response("Not found", { status: 404 });
@@ -165,7 +206,7 @@ export default {
       }
     }
 
-    // Endpoint 4: Mobile-Optimized 3D Visualizer UI
+    // Endpoint 5: Mobile-Optimized 3D Visualizer UI
     // NOTE: this is a template literal - avoid backslashes and ${ } in the client script below.
     const html = `<!DOCTYPE html>
 <html>
@@ -366,6 +407,7 @@ export default {
     <button class="settings-button" id="settings-toggle">⚙️ Settings</button>
     <div class="settings-menu" id="settings-menu">
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
+      <button class="settings-option" id="backfill-button">🔗 Fetch Titles for Old Links</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
     </div>
   </div>
@@ -601,19 +643,20 @@ export default {
       return token;
     };
 
-    const reclusterButton = document.getElementById('recluster-button');
-    reclusterButton.addEventListener('click', async () => {
+    // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
+    const runAdminBatches = async ({ button, path, busyLabel, summarize }) => {
       const token = getAdminToken();
       if (!token) return;
 
-      reclusterButton.disabled = true;
+      const idleLabel = button.textContent;
+      button.disabled = true;
       let processed = 0;
       let updated = 0;
       let cursor = 0;
       try {
         while (true) {
-          reclusterButton.textContent = '🧠 Gemini is organizing nodes... (' + processed + ')';
-          const res = await fetch('/api/recluster?cursor=' + encodeURIComponent(cursor), {
+          button.textContent = busyLabel + ' (' + processed + ')';
+          const res = await fetch(path + '?cursor=' + encodeURIComponent(cursor), {
             method: 'POST',
             headers: { Authorization: 'Bearer ' + token }
           });
@@ -622,23 +665,39 @@ export default {
             throw new Error('Admin token rejected.');
           }
           const body = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(body.error || ('Recluster failed: ' + res.status));
+          if (!res.ok) throw new Error(body.error || ('Request failed: ' + res.status));
           processed += body.processed || 0;
           updated += body.updated || 0;
           if (body.done || body.nextCursor === cursor) break;
           cursor = body.nextCursor;
         }
         await loadGraph();
-        alert('Reclustered ' + updated + ' of ' + processed + ' nodes with Gemini AI.');
+        alert(summarize(updated, processed));
       } catch (err) {
-        console.error('Recluster failed:', err);
-        alert(err.message || 'Recluster failed.');
+        console.error(path + ' failed:', err);
+        alert(err.message || 'Request failed.');
       } finally {
-        reclusterButton.disabled = false;
-        reclusterButton.textContent = '⚡ Recluster Graph with AI';
+        button.disabled = false;
+        button.textContent = idleLabel;
         settingsMenu.classList.remove('open');
       }
-    });
+    };
+
+    const reclusterButton = document.getElementById('recluster-button');
+    reclusterButton.addEventListener('click', () => runAdminBatches({
+      button: reclusterButton,
+      path: '/api/recluster',
+      busyLabel: '🧠 Gemini is organizing nodes...',
+      summarize: (updated, processed) => 'Reclustered ' + updated + ' of ' + processed + ' nodes with Gemini AI.'
+    }));
+
+    const backfillButton = document.getElementById('backfill-button');
+    backfillButton.addEventListener('click', () => runAdminBatches({
+      button: backfillButton,
+      path: '/api/backfill-metadata',
+      busyLabel: '🔗 Fetching link titles...',
+      summarize: (updated, processed) => 'Fetched titles for ' + updated + ' of ' + processed + ' links.'
+    }));
 
     loadGraph().catch(err => console.error('Graph Load Error:', err));
   </script>

@@ -40,4 +40,17 @@ describe("Aether Portal worker", () => {
 		});
 		expect(response.status).toBe(401);
 	});
+
+	it("only allows POST on /api/backfill-metadata", async () => {
+		const response = await SELF.fetch("http://example.com/api/backfill-metadata");
+		expect(response.status).toBe(405);
+	});
+
+	it("requires an admin token for /api/backfill-metadata", async () => {
+		const response = await SELF.fetch("http://example.com/api/backfill-metadata", {
+			method: "POST",
+			headers: { Authorization: "Bearer wrong" },
+		});
+		expect(response.status).toBe(401);
+	});
 });

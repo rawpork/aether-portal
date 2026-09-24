@@ -6,7 +6,7 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 
 | Piece | Where | Notes |
 | --- | --- | --- |
-| Worker entry | `src/index.js` → `fetch()` | Path/method router, four endpoints |
+| Worker entry | `src/index.js` → `fetch()` | Path/method router, five endpoints |
 | Database | D1 `aether_context_db`, binding `DB` | Configured in [wrangler.jsonc](wrangler.jsonc) (worker name `lingering-water-de49`) |
 | Link metadata | [src/metadata.js](src/metadata.js) | YouTube oEmbed, otherwise OpenGraph / `<title>` from the first 256 KB of HTML; 4 s timeout |
 | AI | Gemini 2.5 Flash (`generateContent`) | Title/category cleanup only; thinking disabled, 512 max output tokens |
@@ -20,6 +20,7 @@ Aether Portal is a single Cloudflare Worker ([src/index.js](src/index.js)) backe
 | `POST /` | `X-Telegram-Bot-Api-Secret-Token` must equal `TELEGRAM_WEBHOOK_SECRET` (fails closed) | Telegram webhook: saves a text message as a node, replies with confirmation |
 | `GET /api/graph` | none | Returns `{ nodes, links }` for the whole graph |
 | `POST /api/recluster?cursor=N` | `Authorization: Bearer <ADMIN_TOKEN>` | Re-classifies one batch (10 rows) with Gemini; client pages via `nextCursor` until `done` |
+| `POST /api/backfill-metadata?cursor=N` | `Authorization: Bearer <ADMIN_TOKEN>` | Fetches title/description for up to 10 links with no `description`; same paging as recluster |
 | `GET` anything else | none | Serves the 3D graph UI |
 
 ## Data model
