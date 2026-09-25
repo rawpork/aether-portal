@@ -3160,6 +3160,8 @@ export default {
       controls.enableRotate = !filterState.flat;
       // In 2D, left-drag pans instead of rotating (THREE.MOUSE: 0 = rotate, 2 = pan).
       if (controls.mouseButtons) controls.mouseButtons.LEFT = filterState.flat ? 2 : 0;
+      // Same for one-finger touch, which would otherwise do nothing with rotation off (THREE.TOUCH: 0 = rotate, 1 = pan).
+      if (controls.touches) controls.touches.ONE = filterState.flat ? 1 : 0;
 
       pauseAutoRotate();
       Graph.d3ReheatSimulation();
