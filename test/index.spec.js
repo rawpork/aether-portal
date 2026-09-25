@@ -54,6 +54,12 @@ describe("Aether Portal worker", () => {
 		const html = await response.text();
 		expect(response.headers.get("Content-Type")).toContain("text/html");
 		expect(html).toContain("Aether Portal");
+		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal"]) {
+			expect(html, id).toContain(`id="${id}"`);
+		}
+		for (const view of ["graph", "list", "timeline"]) {
+			expect(html, view).toContain(`data-view="${view}"`);
+		}
 
 		const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 		expect(scripts.length).toBeGreaterThan(0);

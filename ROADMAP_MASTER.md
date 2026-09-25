@@ -25,37 +25,46 @@
 ## ??? Active Fixes & UI Enhancements (Immediate Priority)
 
 ### 1. Research Persistence UI Render Bug
-- [ ] **In-Memory State Sync:** Update POST /api/ask handler in src/index.js to immediately append { question, answer, sources, date } into graphData.nodes in local memory.
-- [ ] **Overlay Persistence:** Fix node overlay generator so closing and reopening a card preserves the "Past Research & Q&A" accordion and all past + Create Node from Answer buttons.
+- [x] **In-Memory State Sync:** Update POST /api/ask handler in src/index.js to immediately append { question, answer, sources, date } into graphData.nodes in local memory.
+- [x] **Overlay Persistence:** Fix node overlay generator so closing and reopening a card preserves the "Past Research & Q&A" accordion and all past + Create Node from Answer buttons.
 
 ### 2. Full Reader View (No Text Truncation)
-- [ ] **Remove Text Ellipses / Line-Clamping:** Eliminate CSS text-overflow: ellipsis and line-clamp on node detail views.
-- [ ] **Expandable Reader Modal:** Add a [ ? Expand Full Reader ] button to open long-form SOPs, briefs, and notes in an unclipped, scrollable glass modal.
+- [x] **Remove Text Ellipses / Line-Clamping:** Eliminate CSS text-overflow: ellipsis and line-clamp on node detail views.
+- [x] **Expandable Reader Modal:** Add a [ ? Expand Full Reader ] button to open long-form SOPs, briefs, and notes in an unclipped, scrollable glass modal.
 
 ### 3. Open Graph Link Previews
-- [ ] **Metadata Fetching:** Extract og:image, og:title, og:description, and source_url when links are saved via UI or Telegram.
-- [ ] **Card Header Preview:** Render cover image, site name, and a direct [ ?? Open Original Source ] link button at the top of the node card overlay.
+- [x] **Metadata Fetching:** Extract og:image, og:title, og:description, and source_url when links are saved via UI or Telegram.
+- [x] **Card Header Preview:** Render cover image, site name, and a direct [ ?? Open Original Source ] link button at the top of the node card overlay.
 
 ---
 
-## ?? Phase 1: Accounts & Multi-Tenancy (In Progress)
+## ?? Phase 1: Accounts & Multi-Tenancy (Deployed)
 
-- [ ] **Database Migration 0006_user_scoping.sql:**
+- [x] **Database Migration 0006_user_scoping.sql:**
   - Create users table with id, email, password_hash (PBKDF2), and telegram_chat_id.
   - Add user_id foreign key column to saved_nodes and node_edges.
-- [ ] **Admin-Only Account Provisioning:**
+- [x] **Admin-Only Account Provisioning:**
   - POST /api/auth/users protected by ADMIN_TOKEN to create user accounts securely.
-- [ ] **Authentication Middleware:**
+- [x] **Authentication Middleware:**
   - POST /api/auth/login returning HttpOnly session cookies / JWTs.
   - Require active authentication on all graph routes (GET /api/nodes, POST /api/node, POST /api/ask).
-- [ ] **Glass Login Gate UI:**
+- [x] **Glass Login Gate UI:**
   - Overlay login interface on the canvas when unauthenticated.
 
 ---
 
-## ?? Phase 2: Lightweight Agentic Quarterback & Dynamic Skill Engine
+## Phase 2: Enhanced Visualization & Custom Views (In Progress)
 
-- [ ] **Database Migration 0007_agent_skills.sql:**
+- [x] **View Mode Switcher:** Graph / List / Timeline segmented control in the top bar; choice remembered per browser. The 2D/3D toggle stays inside Graph view.
+- [x] **List & Grid View:** Scrollable glass cards with category chip, preview, site and date; List/Grid layout toggle; sort by newest, oldest, title or category; Open Graph cover images in Grid.
+- [x] **Timeline View:** Vertical date feed with sticky Today / Yesterday / Last 7 Days / month headers and a category-colored spine.
+- [x] **Shared Filters & Card:** Search, type, time and Hide Unlinked filters apply to every view; any item opens the regular node card (reader, Ask Elarion, spawn). Graph animation pauses while hidden.
+
+---
+
+## ?? Phase 3: Lightweight Agentic Quarterback & Dynamic Skill Engine
+
+- [ ] **Database Migration 0008_agent_skills.sql:**
   - Create agent_skills (holding skill_key, system_instructions, and required_tools) and agent_memory tables in D1.
 - [ ] **Telegram Chat Linking (POST /api/telegram):**
   - Map telegram_chat_id to users.id (unrecognized chats receive a "Not Authorized" reply).
@@ -72,7 +81,7 @@
 
 ---
 
-## ?? Phase 3: Project Boards & Navigation Views
+## ?? Phase 4: Project Boards & Navigation Views
 
 ### 1. Visual Project Board View (Milanote Canvas)
 - [ ] **D1 Position Coordinates:** Store canvas (X, Y) positions for nodes when in Board Mode.
@@ -87,7 +96,7 @@
 
 ---
 
-## ?? Phase 4: Future Major Release (v2.0 — WebXR Spatial VR)
+## ?? Phase 5: Future Major Release (v2.0 — WebXR Spatial VR)
 
 - [ ] **WebXR Headset Support:** Three.js VRButton integration for full 3D room-scale VR on Meta Quest, Vision Pro, and SteamVR.
 - [ ] **6DoF Physical Spatial Navigation:** Walk through category star systems in true physical room space.

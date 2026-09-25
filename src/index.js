@@ -503,7 +503,7 @@ export default {
       gap: 8px;
       flex-wrap: wrap;
     }
-    .filter-pill, .toggle-button, #time-filter {
+    .filter-pill, .toggle-button, #time-filter, #collection-sort {
       appearance: none;
       border: 1px solid rgba(0,255,204,0.25);
       background: rgba(255,255,255,0.04);
@@ -527,6 +527,137 @@ export default {
       font-weight: 600;
     }
     #add-node-button { font-size: 18px; line-height: 1; }
+    #view-switch {
+      display: inline-flex;
+      flex: none;
+      height: 30px;
+      box-sizing: border-box;
+      border: 1px solid rgba(0,255,204,0.35);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.04);
+    }
+    #view-switch button {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 11px;
+      border: none;
+      background: transparent;
+      color: #dffdf7;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    #view-switch button + button { border-left: 1px solid rgba(0,255,204,0.2); }
+    #view-switch button[aria-pressed="true"] { background: rgba(0,255,204,0.2); color: #fff; }
+    #view-switch .view-icon { font-size: 13px; line-height: 1; }
+    body.collection-mode #view-toggle,
+    body.collection-mode #legend { display: none !important; }
+    body.collection-mode [id="3d-graph"] { display: none; }
+    #collection-view {
+      display: none;
+      position: fixed;
+      top: 64px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 5;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      padding: 4px 16px 24px;
+      box-sizing: border-box;
+      color: #dffdf7;
+    }
+    body.collection-mode #collection-view { display: block; }
+    body.collection-mode.card-open #collection-view { padding-bottom: 55vh; }
+    .collection-inner { max-width: 1100px; margin: 0 auto; }
+    #collection-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px auto 12px; max-width: 820px; font-size: 12px; color: #8a93a6; }
+    #collection-toolbar.wide { max-width: none; }
+    #collection-count { flex: 1; min-width: 80px; }
+    #collection-toolbar [hidden] { display: none; }
+    #collection-sort option { background: #0b1320; }
+    .collection-list { display: flex; flex-direction: column; gap: 8px; max-width: 820px; margin: 0 auto; }
+    .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .item-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(8, 12, 20, 0.72);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #dffdf7;
+      text-align: left;
+      cursor: pointer;
+      overflow: hidden;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .item-card:hover, .item-card:focus-visible { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); outline: none; }
+    .item-card.active { border-color: #00ffcc; box-shadow: inset 0 0 0 1px #00ffcc; }
+    .item-card.timeline { padding: 9px 12px; gap: 4px; }
+    .item-cover { margin: -12px -14px 2px; height: 120px; background: rgba(0,0,0,0.3); }
+    .item-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .item-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; }
+    .item-chip {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--chip, #8a93a6);
+      color: var(--chip, #8a93a6);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .item-date { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .item-title { font-size: 14px; font-weight: 600; color: #fff; line-height: 1.3; overflow-wrap: anywhere; }
+    .item-preview { font-size: 12px; color: #aab3c5; line-height: 1.45; overflow-wrap: anywhere; }
+    .item-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; min-width: 0; }
+    .item-foot .item-site { min-width: 0; overflow-wrap: anywhere; }
+    .item-foot a { margin-left: auto; flex: none; color: #00ffcc; font-weight: 700; text-decoration: none; }
+    .collection-empty { text-align: center; color: #8a93a6; padding: 48px 16px; font-size: 13px; }
+    .collection-empty button { margin-top: 12px; }
+    .timeline { max-width: 820px; margin: 0 auto; }
+    .timeline-section h4 {
+      position: sticky;
+      top: -4px;
+      z-index: 1;
+      margin: 0;
+      padding: 10px 0 8px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #00ffcc;
+      background: linear-gradient(#080c14 75%, rgba(8,12,20,0));
+    }
+    .timeline-items {
+      list-style: none;
+      margin: 0 0 10px 6px;
+      padding: 0 0 0 18px;
+      border-left: 2px solid rgba(0,255,204,0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .timeline-items li { position: relative; }
+    .timeline-items li::before {
+      content: '';
+      position: absolute;
+      left: -25px;
+      top: 14px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--dot, #00ffcc);
+      box-shadow: 0 0 0 3px #080c14;
+    }
     .modal-backdrop {
       position: fixed;
       inset: 0;
@@ -994,6 +1125,11 @@ export default {
       #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
       body.drawer-open #node-card { right: 15px; top: 62px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
+      #view-switch .view-label { display: none; }
+      #view-switch button { padding: 0 9px; }
+      #collection-view { padding: 2px 10px 20px; }
+      .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .item-cover { height: 90px; }
     }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
@@ -1027,6 +1163,11 @@ export default {
       </div>
     </details>
     <span class="bar-spacer"></span>
+    <div id="view-switch" role="group" aria-label="View mode">
+      <button type="button" data-view="graph" aria-pressed="true" title="Graph view"><span class="view-icon">◉</span><span class="view-label">Graph</span></button>
+      <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
+      <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
+    </div>
     <button class="view-toggle bar-btn" id="view-toggle">2D Canvas</button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   <div class="settings-wrap">
@@ -1140,6 +1281,24 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
+  <main id="collection-view" aria-label="Node collection">
+    <div class="collection-inner">
+      <div id="collection-toolbar">
+        <span id="collection-count"></span>
+        <select id="collection-sort" aria-label="Sort nodes">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="title">Title A–Z</option>
+          <option value="category">Category</option>
+        </select>
+        <span id="layout-pills" class="filter-row" role="group" aria-label="Layout">
+          <button type="button" class="filter-pill" data-layout="list">☰ List</button>
+          <button type="button" class="filter-pill" data-layout="grid">▦ Grid</button>
+        </span>
+      </div>
+      <div id="collection-items"></div>
+    </div>
+  </main>
 
   <script>
     const ADMIN_TOKEN_KEY = 'aetherAdminToken';
@@ -1154,7 +1313,27 @@ export default {
       // Hide nodes with no edges among the currently visible nodes.
       hideOrphans: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
-      highlighted: new Set()
+      highlighted: new Set(),
+      // Active view (graph, list or timeline) and the list view's layout and sort; remembered per browser.
+      view: 'graph',
+      listLayout: 'list',
+      listSort: 'newest'
+    };
+
+    const VIEW_PREFS_KEY = 'aetherViewPrefs';
+    const VIEW_MODES = ['graph', 'list', 'timeline'];
+    const LIST_LAYOUTS = ['list', 'grid'];
+    const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
+    try {
+      const saved = JSON.parse(localStorage.getItem(VIEW_PREFS_KEY) || '{}') || {};
+      if (VIEW_MODES.includes(saved.view)) filterState.view = saved.view;
+      if (LIST_LAYOUTS.includes(saved.listLayout)) filterState.listLayout = saved.listLayout;
+      if (LIST_SORTS.includes(saved.listSort)) filterState.listSort = saved.listSort;
+    } catch (err) {}
+    const saveViewPrefs = () => {
+      try {
+        localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ view: filterState.view, listLayout: filterState.listLayout, listSort: filterState.listSort }));
+      } catch (err) {}
     };
 
     const CATEGORY_COLORS = {
@@ -1437,6 +1616,16 @@ export default {
 
     const nodeCard = document.getElementById('node-card');
     const legend = document.getElementById('legend');
+    const viewSwitch = document.getElementById('view-switch');
+    const collectionView = document.getElementById('collection-view');
+    const collectionToolbar = document.getElementById('collection-toolbar');
+    const collectionCount = document.getElementById('collection-count');
+    const collectionSort = document.getElementById('collection-sort');
+    const layoutPills = document.getElementById('layout-pills');
+    const collectionItems = document.getElementById('collection-items');
+    // Nodes that survived the filters on the last applyGraphFilters run; the list and timeline render these.
+    let currentVisibleNodes = [];
+    let graphLoaded = false;
     const legendItems = document.getElementById('legend-items');
     // Start collapsed on phones so the legend doesn't cover the graph.
     if (window.matchMedia('(max-width: 768px)').matches) legend.open = false;
@@ -1589,6 +1778,7 @@ export default {
       cardSpawnButton.style.display = 'none';
       renderResearch(node);
       nodeCard.style.display = 'block';
+      document.body.classList.add('card-open');
       // The card spans the bottom of the screen, so the legend steps aside while it's open.
       legend.style.display = 'none';
     };
@@ -1788,6 +1978,13 @@ export default {
         if (isActive) activeCard = card;
       });
       if (activeCard) activeCard.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      let activeItem = null;
+      collectionItems.querySelectorAll('.item-card').forEach(card => {
+        const isActive = card.dataset.id === activeId;
+        card.classList.toggle('active', isActive);
+        if (isActive) activeItem = card;
+      });
+      if (activeItem && filterState.view !== 'graph') activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
 
     const flyToNode = node => {
@@ -1918,12 +2115,15 @@ export default {
       showNodeCard(node);
       setFocus(node);
       syncDrawerSelection();
+      // The camera only matters while the graph is on screen.
+      if (filterState.view !== 'graph') return;
       pauseAutoRotate();
       if (options.fly) flyToNode(node);
     };
 
     const hideNodeCard = () => {
       nodeCard.style.display = 'none';
+      document.body.classList.remove('card-open');
       if (!clusterDrawer.classList.contains('open')) legend.style.display = 'block';
       clearFocus();
       syncDrawerSelection();
@@ -2057,6 +2257,8 @@ export default {
       renderLegend(filteredNodes);
       syncTerritories(filteredNodes);
       renderClusterDrawer();
+      currentVisibleNodes = filteredNodes;
+      renderActiveView();
     };
 
     const loadGraph = async () => {
@@ -2067,6 +2269,7 @@ export default {
       }
       if (!res.ok) throw new Error('Graph request failed: ' + res.status);
       graphData = normalizeGraphData(await res.json());
+      graphLoaded = true;
       pinToPlane(graphData.nodes);
       applyGraphFilters();
     };
@@ -2494,6 +2697,249 @@ export default {
       busyLabel: '🔗 Fetching link titles...',
       summarize: (updated, processed) => 'Fetched titles for ' + updated + ' of ' + processed + ' links.'
     }));
+
+    // ---- View modes: Graph (canvas), List/Grid and Timeline share the filters and the node card ----
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    const getNodeTime = node => {
+      const time = node.created_at ? new Date(node.created_at).getTime() : NaN;
+      return Number.isNaN(time) ? null : time;
+    };
+
+    // Undated nodes always sort last; direction 1 is newest first, -1 oldest first.
+    const compareByTime = (a, b, direction) => {
+      const ta = getNodeTime(a);
+      const tb = getNodeTime(b);
+      if (ta === null || tb === null) return (ta === null) - (tb === null);
+      return direction * (tb - ta);
+    };
+
+    const categoryRank = node => {
+      const index = CATEGORY_ORDER.indexOf(getNodeCategory(node));
+      return index === -1 ? CATEGORY_ORDER.length : index;
+    };
+
+    const sortNodes = (nodes, sort) => nodes.slice().sort((a, b) => {
+      if (sort === 'oldest') return compareByTime(a, b, -1);
+      if (sort === 'title') return String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
+      if (sort === 'category') return (categoryRank(a) - categoryRank(b)) || compareByTime(a, b, 1);
+      return compareByTime(a, b, 1);
+    });
+
+    const formatItemDate = (node, mode) => {
+      const time = getNodeTime(node);
+      if (time === null) return '';
+      const date = new Date(time);
+      if (mode === 'time') return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (mode === 'weekday') return date.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+      const sameYear = date.getFullYear() === new Date().getFullYear();
+      return date.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    const PREVIEW_CHARS = { list: 160, grid: 110, timeline: 140 };
+
+    // One card for list, grid and timeline rows; a click opens the regular node card.
+    const buildItemCard = (node, variant, dateMode) => {
+      const isLink = Boolean(node.url && /^https?:/i.test(node.url));
+      const card = document.createElement('article');
+      card.className = 'item-card ' + variant;
+      card.dataset.id = node.id;
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.classList.toggle('active', Boolean(focus.node && focus.node.id === node.id));
+
+      if (variant === 'grid' && isHttpUrl(node.image_url)) {
+        const cover = document.createElement('div');
+        cover.className = 'item-cover';
+        const img = document.createElement('img');
+        img.alt = '';
+        img.loading = 'lazy';
+        img.referrerPolicy = 'no-referrer';
+        img.src = node.image_url;
+        img.addEventListener('error', () => cover.remove());
+        cover.append(img);
+        card.append(cover);
+      }
+
+      const head = document.createElement('div');
+      head.className = 'item-head';
+      const chip = document.createElement('span');
+      chip.className = 'item-chip';
+      chip.textContent = formatCategory(getNodeCategory(node));
+      chip.style.setProperty('--chip', getCategoryColor(getNodeCategory(node)));
+      const date = document.createElement('span');
+      date.className = 'item-date';
+      date.textContent = formatItemDate(node, dateMode || 'date');
+      head.append(chip, date);
+
+      const title = document.createElement('div');
+      title.className = 'item-title';
+      title.textContent = node.title || node.name || 'Saved Entry';
+      card.append(head, title);
+
+      const text = getFullText(node, isLink);
+      if (text) {
+        const preview = document.createElement('div');
+        preview.className = 'item-preview';
+        preview.textContent = truncate(text.split(NEWLINE).join(' '), PREVIEW_CHARS[variant] || 140);
+        card.append(preview);
+      }
+
+      if (isLink) {
+        const foot = document.createElement('div');
+        foot.className = 'item-foot';
+        const site = document.createElement('span');
+        site.className = 'item-site';
+        site.textContent = node.site_name || getHostname(node.url);
+        const open = document.createElement('a');
+        open.href = node.url;
+        open.target = '_blank';
+        open.rel = 'noopener noreferrer';
+        open.textContent = 'Open ↗';
+        open.addEventListener('click', event => event.stopPropagation());
+        foot.append(site, open);
+        card.append(foot);
+      }
+
+      card.addEventListener('click', () => selectNode(node));
+      card.addEventListener('keydown', event => {
+        if (event.target !== card || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        selectNode(node);
+      });
+      return card;
+    };
+
+    // Today / Yesterday / Last 7 Days, then one bucket per calendar month; undated nodes go last.
+    const getTimelineBucket = (time, startOfToday) => {
+      if (time === null) return { key: 'undated', label: 'Undated', dateMode: 'date' };
+      if (time >= startOfToday) return { key: 'today', label: 'Today', dateMode: 'time' };
+      if (time >= startOfToday - DAY_MS) return { key: 'yesterday', label: 'Yesterday', dateMode: 'time' };
+      if (time >= startOfToday - 6 * DAY_MS) return { key: 'week', label: 'Last 7 Days', dateMode: 'weekday' };
+      const date = new Date(time);
+      return {
+        key: 'month-' + date.getFullYear() + '-' + date.getMonth(),
+        label: date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+        dateMode: 'date'
+      };
+    };
+
+    const buildTimeline = nodes => {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const timeline = document.createElement('div');
+      timeline.className = 'timeline';
+      let bucketKey = null;
+      let items = null;
+      sortNodes(nodes, 'newest').forEach(node => {
+        const bucket = getTimelineBucket(getNodeTime(node), startOfToday.getTime());
+        if (bucket.key !== bucketKey) {
+          bucketKey = bucket.key;
+          const section = document.createElement('section');
+          section.className = 'timeline-section';
+          const heading = document.createElement('h4');
+          heading.textContent = bucket.label;
+          items = document.createElement('ol');
+          items.className = 'timeline-items';
+          section.append(heading, items);
+          timeline.append(section);
+        }
+        const row = document.createElement('li');
+        row.style.setProperty('--dot', getCategoryColor(getNodeCategory(node)));
+        row.append(buildItemCard(node, 'timeline', bucket.dateMode));
+        items.append(row);
+      });
+      return timeline;
+    };
+
+    const renderCollection = () => {
+      const nodes = currentVisibleNodes;
+      const isTimeline = filterState.view === 'timeline';
+      const isGrid = !isTimeline && filterState.listLayout === 'grid';
+      collectionCount.textContent = nodes.length + (nodes.length === 1 ? ' node' : ' nodes');
+      collectionSort.hidden = isTimeline;
+      layoutPills.hidden = isTimeline;
+      collectionSort.value = filterState.listSort;
+      layoutPills.querySelectorAll('[data-layout]').forEach(pill => pill.classList.toggle('active', pill.dataset.layout === filterState.listLayout));
+      collectionToolbar.classList.toggle('wide', isGrid);
+
+      if (!nodes.length) {
+        const empty = document.createElement('div');
+        empty.className = 'collection-empty';
+        const message = document.createElement('div');
+        message.textContent = !graphLoaded ? 'Loading nodes…' : graphData.nodes.length ? 'No nodes match these filters.' : 'No nodes yet. Add one with +.';
+        empty.append(message);
+        if (graphData.nodes.length) {
+          const clear = document.createElement('button');
+          clear.type = 'button';
+          clear.className = 'toggle-button';
+          clear.textContent = 'Clear Filters';
+          clear.addEventListener('click', resetFilters);
+          empty.append(clear);
+        }
+        collectionItems.replaceChildren(empty);
+        return;
+      }
+
+      if (isTimeline) {
+        collectionItems.replaceChildren(buildTimeline(nodes));
+        return;
+      }
+      const list = document.createElement('div');
+      list.className = isGrid ? 'collection-grid' : 'collection-list';
+      list.append(...sortNodes(nodes, filterState.listSort).map(node => buildItemCard(node, isGrid ? 'grid' : 'list')));
+      collectionItems.replaceChildren(list);
+    };
+
+    // The canvas keeps its data up to date in every view, but only animates while it is visible.
+    function renderActiveView() {
+      const isGraph = filterState.view === 'graph';
+      document.body.classList.toggle('collection-mode', !isGraph);
+      viewSwitch.querySelectorAll('[data-view]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.view === filterState.view));
+      });
+      if (isGraph) {
+        Graph.resumeAnimation();
+        return;
+      }
+      Graph.pauseAnimation();
+      closeClusterDrawer();
+      if (hover.id) setHover(null);
+      renderCollection();
+    }
+
+    const setView = view => {
+      if (!VIEW_MODES.includes(view) || view === filterState.view) return;
+      filterState.view = view;
+      saveViewPrefs();
+      renderActiveView();
+      if (view === 'graph') {
+        if (focus.node) setFocus(focus.node);
+        scheduleResume();
+      } else {
+        collectionView.scrollTop = 0;
+        syncDrawerSelection();
+      }
+    };
+
+    viewSwitch.addEventListener('click', event => {
+      const button = event.target.closest('[data-view]');
+      if (button) setView(button.dataset.view);
+    });
+    collectionSort.addEventListener('change', () => {
+      filterState.listSort = LIST_SORTS.includes(collectionSort.value) ? collectionSort.value : 'newest';
+      saveViewPrefs();
+      renderCollection();
+    });
+    layoutPills.addEventListener('click', event => {
+      const pill = event.target.closest('[data-layout]');
+      if (!pill || pill.dataset.layout === filterState.listLayout) return;
+      filterState.listLayout = pill.dataset.layout;
+      saveViewPrefs();
+      renderCollection();
+    });
+    // Restored view applies before the first graph load, so there is no flash of the wrong view.
+    renderActiveView();
 
     const loginGate = document.getElementById('login-gate');
     const loginForm = document.getElementById('login-form');
