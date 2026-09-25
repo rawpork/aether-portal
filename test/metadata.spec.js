@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanTitle, isYouTubeUrl, parseHtmlMetadata } from "../src/metadata.js";
+import { cleanLinkUrl, cleanTitle, fallbackLinkTitle, getYouTubeVideoId, isYouTubeUrl, parseHtmlMetadata } from "../src/metadata.js";
 
 describe("parseHtmlMetadata", () => {
 	it("prefers OpenGraph tags regardless of attribute order", () => {
@@ -73,5 +73,73 @@ describe("isYouTubeUrl", () => {
 		expect(isYouTubeUrl("https://m.youtube.com/shorts/abc")).toBe(true);
 		expect(isYouTubeUrl("https://notyoutube.com/watch")).toBe(false);
 		expect(isYouTubeUrl("not a url")).toBe(false);
+	});
+});
+
+describe("getYouTubeVideoId", () => {
+	it("reads the id from every common URL shape", () => {
+		for (const url of [
+			"https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42",
+			"https://youtu.be/dQw4w9WgXcQ?si=abc",
+			"https://m.youtube.com/shorts/dQw4w9WgXcQ",
+			"https://www.youtube.com/embed/dQw4w9WgXcQ",
+			"https://www.youtube.com/live/dQw4w9WgXcQ?feature=share"
+		]) expect(getYouTubeVideoId(url), url).toBe("dQw4w9WgXcQ");
+	});
+
+	it("rejects non-YouTube hosts and malformed ids", () => {
+		expect(getYouTubeVideoId("https://vimeo.com/dQw4w9WgXcQ")).toBeNull();
+		expect(getYouTubeVideoId("https://www.youtube.com/watch?v=short")).toBeNull();
+		expect(getYouTubeVideoId("nope")).toBeNull();
+	});
+});
+
+describe("cleanLinkUrl", () => {
+	it("drops Facebook and ad tracking parameters but keeps meaningful ones", () => {
+		expect(cleanLinkUrl("https://www.facebook.com/share/r/1ByXqcB56g/?mibextid=wwXIfr")).toBe("https://www.facebook.com/share/r/1ByXqcB56g/");
+		expect(cleanLinkUrl("https://example.com/p?utm_source=fb&utm_medium=paid&fbclid=Iw&id=7")).toBe("https://example.com/p?id=7");
+		expect(cleanLinkUrl("https://www.google.com/search?q=best+routes&gclid=x")).toBe("https://www.google.com/search?q=best+routes");
+	});
+
+	it("drops YouTube share ids only on YouTube", () => {
+		expect(cleanLinkUrl("https://youtu.be/dQw4w9WgXcQ?si=abc&t=42")).toBe("https://youtu.be/dQw4w9WgXcQ?t=42");
+		expect(cleanLinkUrl("https://example.com/?si=keep")).toBe("https://example.com/?si=keep");
+	});
+
+	it("leaves non-URLs alone", () => {
+		expect(cleanLinkUrl("  just text ")).toBe("just text");
+	});
+});
+
+describe("fallbackLinkTitle", () => {
+	it("names Facebook links by kind instead of showing the share URL", () => {
+		expect(fallbackLinkTitle("https://www.facebook.com/share/r/1ByXqcB56g/")).toBe("Facebook Reel");
+		expect(fallbackLinkTitle("https://www.facebook.com/reel/1635289831288212/")).toBe("Facebook Reel");
+		expect(fallbackLinkTitle("https://fb.watch/abc123/")).toBe("Facebook Video");
+		expect(fallbackLinkTitle("https://www.facebook.com/page/videos/some-clip/123")).toBe("Facebook Video");
+		expect(fallbackLinkTitle("https://www.facebook.com/share/p/1Bx1Jh5d18/")).toBe("Facebook Post");
+		expect(fallbackLinkTitle("https://m.facebook.com/groups/123/posts/456")).toBe("Facebook Group Post");
+	});
+
+	it("uses the search query, the YouTube kind, or a readable path segment", () => {
+		expect(fallbackLinkTitle("https://www.google.com/search?q=best+routes+to+nashville")).toBe("Google search: best routes to nashville");
+		expect(fallbackLinkTitle("https://youtube.com/shorts/xcxbOcc36dM")).toBe("YouTube Short");
+		expect(fallbackLinkTitle("https://youtu.be/dQw4w9WgXcQ")).toBe("YouTube Video");
+		expect(fallbackLinkTitle("https://go.stripe.global/rs/072-MDK-283/images/Pricing_AI_products.pdf")).toBe("Pricing AI products · go.stripe.global");
+		expect(fallbackLinkTitle("https://www.reddit.com/r/promoteMyApp/s/jpMwoJ66of")).toBe("PromoteMyApp · reddit.com");
+		expect(fallbackLinkTitle("https://share.google/eSMugMLxOwla4YARF")).toBe("share.google");
+	});
+});
+
+describe("cleanTitle placeholders", () => {
+	it("rejects login walls, share placeholders and bare URLs", () => {
+		for (const title of ["Facebook", "facebook/share", "Log in or sign up to view", "Log into Facebook", "Facebook - Log In or Sign Up", "https://www.facebook.com/share/r/x/"]) {
+			expect(cleanTitle(title), title).toBe("");
+		}
+	});
+
+	it("keeps real titles that merely mention logging in", () => {
+		expect(cleanTitle("Login flows explained")).toBe("Login flows explained");
+		expect(cleanTitle("How to log in to your router")).toBe("How to log in to your router");
 	});
 });

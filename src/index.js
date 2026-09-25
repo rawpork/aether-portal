@@ -1,7 +1,7 @@
-import { fetchLinkMetadata } from "./metadata.js";
+import { cleanLinkUrl, fallbackLinkTitle, fetchLinkMetadata } from "./metadata.js";
 import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerResponse } from "./miner.js";
 
-const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
+const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch|share\/[rv]\/)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
 const VALID_CATEGORIES = ["note", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan", "general", "video"];
 const RECLUSTER_CATEGORIES = ["note", "general", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan"];
@@ -177,7 +177,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR description IS NULL OR source_url IS NULL OR favicon_url IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR title LIKE 'http%' OR description IS NULL OR source_url IS NULL OR favicon_url IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, METADATA_BACKFILL_BATCH_SIZE).all();
 
         const nodes = results || [];
@@ -185,10 +185,16 @@ export default {
         const updates = [];
         nodes.forEach((node, i) => {
           const metadata = fetched[i];
-          if (!metadata) return;
+          if (!metadata) {
+            // Nothing fetched: still replace a raw-URL title with a readable one ("Facebook Reel", "Page · site.com").
+            updates.push(env.DB.prepare(
+              "UPDATE saved_nodes SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND (title = url OR title LIKE 'http%')"
+            ).bind(fallbackLinkTitle(String(node.url).split(/\s+/)[0]), node.id));
+            return;
+          }
           // Rows picked only for a missing preview keep their (possibly AI-assigned) title and description.
           updates.push(env.DB.prepare(
-            "UPDATE saved_nodes SET title = CASE WHEN title = url THEN ? ELSE title END, description = COALESCE(description, ?), image_url = ?, site_name = ?, source_url = ?, favicon_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+            "UPDATE saved_nodes SET title = CASE WHEN title = url OR title LIKE 'http%' THEN ? ELSE title END, description = COALESCE(description, ?), image_url = ?, site_name = ?, source_url = ?, favicon_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
           ).bind(metadata.title, metadata.description, metadata.image, metadata.siteName, metadata.sourceUrl, metadata.favicon, node.id));
         });
         if (updates.length) await env.DB.batch(updates);
@@ -232,7 +238,7 @@ export default {
 
         const id = "node_" + crypto.randomUUID();
         // Content that is only a URL makes a link node, with its Open Graph preview fetched now.
-        const linkUrl = /^https?:\/\/\S+$/i.test(content) ? content : "";
+        const linkUrl = /^https?:\/\/\S+$/i.test(content) ? cleanLinkUrl(content) : "";
         const metadata = linkUrl ? await fetchLinkMetadata(linkUrl) : null;
         const description = linkUrl ? (metadata?.description || null) : (content || null);
         const preview = {
@@ -640,8 +646,9 @@ export default {
     .item-card:hover, .item-card:focus-visible { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); outline: none; }
     .item-card.active { border-color: #00ffcc; box-shadow: inset 0 0 0 1px #00ffcc; }
     .item-card.timeline { padding: 9px 12px; gap: 4px; }
-    .item-cover { position: relative; margin: -12px -14px 2px; height: 120px; background: rgba(0,0,0,0.3); }
-    .item-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    /* 16:9 frames with contain: YouTube thumbnails and link previews show uncropped, letterboxed if needed. */
+    .item-cover { position: relative; margin: -12px -14px 2px; aspect-ratio: 16 / 9; height: auto; max-height: 220px; overflow: hidden; background: rgba(0,0,0,0.45); }
+    .item-cover img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
     .item-cover.placeholder {
       display: flex;
       align-items: center;
@@ -670,9 +677,9 @@ export default {
       font-size: 16px;
       pointer-events: none;
     }
-    .item-card.list.has-thumb { display: grid; grid-template-columns: minmax(0, 1fr) 72px; column-gap: 12px; row-gap: 6px; align-items: start; }
+    .item-card.list.has-thumb { display: grid; grid-template-columns: minmax(0, 1fr) 112px; column-gap: 12px; row-gap: 6px; align-items: start; }
     .item-card.list.has-thumb > :not(.item-thumb) { grid-column: 1; }
-    .item-thumb { grid-column: 2; grid-row: 1 / span 5; width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: rgba(0,0,0,0.3); }
+    .item-thumb { grid-column: 2; grid-row: 1 / span 5; width: 112px; aspect-ratio: 16 / 9; height: auto; border-radius: 8px; object-fit: contain; object-position: center; background: rgba(0,0,0,0.45); }
     .item-note { font-size: 12px; color: #fff3d1; line-height: 1.4; overflow-wrap: anywhere; padding-left: 8px; border-left: 2px solid rgba(255,209,102,0.6); }
     .item-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; }
     .item-chip {
@@ -973,7 +980,7 @@ export default {
       border: 1px solid rgba(255,255,255,0.1);
       background: rgba(255,255,255,0.03);
     }
-    #node-card .card-preview img { display: block; width: 100%; max-height: 180px; object-fit: cover; background: rgba(0,0,0,0.3); }
+    #node-card .card-preview img { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; max-height: 220px; object-fit: contain; object-position: center; background: rgba(0,0,0,0.45); }
     #node-card .card-preview img[hidden] { display: none; }
     #node-card .card-preview-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
     #node-card .card-site { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; color: #dffdf7; overflow-wrap: anywhere; }
@@ -1228,9 +1235,8 @@ export default {
       #view-switch button { padding: 0 9px; }
       #collection-view { padding: 2px 10px 20px; }
       .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-      .item-cover { height: 90px; }
-      .item-card.list.has-thumb { grid-template-columns: minmax(0, 1fr) 56px; }
-      .item-thumb { width: 56px; height: 56px; }
+      .item-card.list.has-thumb { grid-template-columns: minmax(0, 1fr) 88px; }
+      .item-thumb { width: 88px; }
     }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
@@ -3629,9 +3635,10 @@ async function handleTelegramCommand(env, chatId, userId, { command, args }) {
 // Saves a link node (metadata fetched now) and confirms it unless `quiet`. Returns the saved row's fields.
 async function saveTelegramLink(env, chatId, userId, linkUrl, noteText, { quiet = false } = {}) {
   const id = "node_" + crypto.randomUUID();
+  linkUrl = cleanLinkUrl(linkUrl);
   const category = inferNodeCategory(linkUrl, "link");
   const metadata = await fetchLinkMetadata(linkUrl);
-  const title = metadata?.title || (linkUrl.length > 60 ? linkUrl.slice(0, 60) + "..." : linkUrl);
+  const title = metadata?.title || fallbackLinkTitle(linkUrl);
   const description = metadata?.description || null;
   const note = noteText ? noteText.slice(0, USER_NOTE_MAX) : null;
   await env.DB.prepare(

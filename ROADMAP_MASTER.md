@@ -64,6 +64,8 @@
 - [x] **Telegram Command Shortcuts:** `/research <topic or link>` (search-grounded research; a link keeps the answer in its card's Past Research, a topic is saved as a new article node), `/ask <question>` (keyword-ranked graph context), `/link <url> [note]`, `/note <text>`, and `/help` / `/start` (command guide + pairing info). Long answers are split under Telegram's 4,096-character limit.
 - [x] **Bot Autocomplete Registration:** `setMyCommands` publishes the "/" command list on the first webhook each worker instance handles (Workers have no startup hook) and again on the daily cron.
 - [x] **Telegram Commands Help Modal:** Paper-plane button next to search opens a glass modal listing the commands and explaining the 2-minute link + comment pairing; built from the same command list as `/help`.
+- [x] **Facebook Metadata & Link Cleaning:** Share/ad tracking parameters (mibextid, fbclid, utm_*, YouTube si/is) are stripped before fetching and saving; Facebook links that return a login wall or placeholder title ("Facebook", "facebook/share", "Log in or sign up") are retried once with Facebook's link-preview crawler user agent; when a page still gives nothing, titles fall back to readable names ("Facebook Reel", "Google search: ...", "Page · site.com") instead of the raw URL. The metadata backfill also replaces existing URL-shaped titles.
+- [x] **16:9 Thumbnails:** Grid covers, list thumbnails and the node card header use 16:9 frames (card header capped at 220px) with object-fit: contain, so YouTube frames and link images show uncropped; YouTube uses maxresdefault.jpg when the video has one, else hqdefault.jpg.
 
 ---
 
