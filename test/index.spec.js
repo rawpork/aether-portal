@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { needsWebResearch, parseResearch } from "../src/index.js";
+import { hashPassword, needsWebResearch, parseResearch, signSession, verifyPassword, verifySession } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -26,6 +26,25 @@ describe("parseResearch", () => {
 		for (const value of [null, "", "not json", "{}"]) {
 			expect(parseResearch(value), String(value)).toEqual([]);
 		}
+	});
+});
+
+describe("password hashing", () => {
+	it("verifies the right password and rejects others", async () => {
+		const stored = await hashPassword("correct horse battery");
+		expect(await verifyPassword("correct horse battery", stored)).toBe(true);
+		expect(await verifyPassword("wrong password", stored)).toBe(false);
+		expect(await verifyPassword("anything", "not-a-hash")).toBe(false);
+	});
+});
+
+describe("session tokens", () => {
+	it("round-trips a signed session and rejects tampering, other secrets and expiry", async () => {
+		const token = await signSession("user_owner", "secret-a", 1_000_000);
+		expect(await verifySession(token, "secret-a", 1_000_000)).toEqual({ id: "user_owner" });
+		expect(await verifySession(token, "secret-b", 1_000_000)).toBeNull();
+		expect(await verifySession(token.slice(0, -2) + "xx", "secret-a", 1_000_000)).toBeNull();
+		expect(await verifySession(token, "secret-a", 1_000_000 + 31 * 24 * 60 * 60 * 1000)).toBeNull();
 	});
 });
 

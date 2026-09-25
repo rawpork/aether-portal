@@ -582,6 +582,61 @@ export default {
     .settings-menu.open {
       display: block;
     }
+    #login-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+      background: radial-gradient(circle at 50% 35%, rgba(0,255,204,0.08), rgba(8,12,20,0.7) 60%);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    #login-gate[hidden] { display: none; }
+    .login-panel {
+      width: min(360px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 26px 24px 22px;
+      border-radius: 16px;
+      background: rgba(8, 12, 20, 0.72);
+      border: 1px solid rgba(0, 255, 204, 0.3);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.65);
+      color: #dffdf7;
+      box-sizing: border-box;
+    }
+    .login-panel h2 { margin: 0; font-size: 20px; color: #00ffcc; letter-spacing: 0.04em; }
+    .login-panel .login-sub { margin: -6px 0 4px; font-size: 12px; color: #8a93a6; }
+    .login-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: rgba(223,253,247,0.75); }
+    .login-panel input {
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,255,204,0.3);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+    }
+    .login-panel input:focus { outline: none; border-color: #00ffcc; }
+    .login-panel button {
+      margin-top: 4px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,255,204,0.6);
+      background: rgba(0,255,204,0.18);
+      color: #00ffcc;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .login-panel button:disabled { opacity: 0.5; cursor: wait; }
+    .login-error { margin: 0; min-height: 1em; font-size: 12px; color: #ff6b81; }
     .settings-option {
       width: 100%;
       border: 1px solid rgba(0,255,204,0.2);
@@ -980,6 +1035,7 @@ export default {
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
       <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
+      <button class="settings-option" id="logout-button">⎋ Sign Out</button>
     </div>
   </div>
   </header>
@@ -1029,6 +1085,21 @@ export default {
       <div id="drawer-ask-answer" class="ask-answer"></div>
     </div>
   </aside>
+
+  <div id="login-gate" hidden>
+    <form id="login-form" class="login-panel" autocomplete="on">
+      <h2>Aether Portal</h2>
+      <p class="login-sub">Sign in to open your knowledge graph.</p>
+      <label>Username
+        <input id="login-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
+      </label>
+      <label>Password
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="200">
+      </label>
+      <p id="login-error" class="login-error" role="alert"></p>
+      <button type="submit" id="login-submit">Sign In</button>
+    </form>
+  </div>
 
   <div id="reader-modal" class="modal-backdrop" hidden>
     <article class="reader-panel" role="dialog" aria-modal="true" aria-labelledby="reader-title">
@@ -1990,6 +2061,10 @@ export default {
 
     const loadGraph = async () => {
       const res = await fetch('/api/graph');
+      if (res.status === 401) {
+        showLoginGate();
+        return;
+      }
       if (!res.ok) throw new Error('Graph request failed: ' + res.status);
       graphData = normalizeGraphData(await res.json());
       pinToPlane(graphData.nodes);
@@ -2111,18 +2186,12 @@ export default {
       return token;
     };
 
-    // Authorized JSON request; a rejected token is forgotten so the next attempt prompts again.
-    const adminFetch = async (path, options) => {
-      const token = getAdminToken();
-      if (!token) throw new Error('Admin token required.');
-      const opts = options || {};
-      const res = await fetch(path, {
-        ...opts,
-        headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + token }
-      });
+    // Signed-in JSON request (session cookie); an expired session brings back the login screen.
+    const apiFetch = async (path, options) => {
+      const res = await fetch(path, options);
       if (res.status === 401) {
-        localStorage.removeItem(ADMIN_TOKEN_KEY);
-        throw new Error('Admin token rejected.');
+        showLoginGate();
+        throw new Error('Please sign in again.');
       }
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || ('Request failed: ' + res.status));
@@ -2142,7 +2211,7 @@ export default {
       button.disabled = true;
       setAskAnswer(output, 'Elarion is thinking…');
       try {
-        const body = await adminFetch('/api/ask', {
+        const body = await apiFetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question, label, focusId, nodeIds: nodeIds.slice(0, ASK_MAX_NODES) })
@@ -2263,7 +2332,7 @@ export default {
       if (!window.confirm('Delete "' + truncate(String(title), 80) + '"? This cannot be undone.')) return;
       cardDelete.disabled = true;
       try {
-        await adminFetch('/api/node/' + encodeURIComponent(node.id), { method: 'DELETE' });
+        await apiFetch('/api/node/' + encodeURIComponent(node.id), { method: 'DELETE' });
         if (hover.id === node.id) setHover(null);
         graphData.nodes = graphData.nodes.filter(item => item.id !== node.id);
         graphData.links = graphData.links.filter(link => linkEndId(link.source) !== node.id && linkEndId(link.target) !== node.id);
@@ -2341,7 +2410,7 @@ export default {
       addNodeSubmit.textContent = 'Creating…';
       addNodeError.textContent = '';
       try {
-        const body = await adminFetch('/api/node', {
+        const body = await apiFetch('/api/node', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title, category: addNodeCategory.value, content: addNodeContent.value.trim(), linkTargetId })
@@ -2425,6 +2494,55 @@ export default {
       busyLabel: '🔗 Fetching link titles...',
       summarize: (updated, processed) => 'Fetched titles for ' + updated + ' of ' + processed + ' links.'
     }));
+
+    const loginGate = document.getElementById('login-gate');
+    const loginForm = document.getElementById('login-form');
+    const loginUsername = document.getElementById('login-username');
+    const loginPassword = document.getElementById('login-password');
+    const loginError = document.getElementById('login-error');
+    const loginSubmit = document.getElementById('login-submit');
+
+    function showLoginGate() {
+      if (!loginGate.hidden) return;
+      closeReader();
+      closeAddNodeModal();
+      settingsMenu.classList.remove('open');
+      loginError.textContent = '';
+      loginPassword.value = '';
+      loginGate.hidden = false;
+      (loginUsername.value ? loginPassword : loginUsername).focus();
+    }
+
+    loginForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      loginSubmit.disabled = true;
+      loginSubmit.textContent = 'Signing in…';
+      loginError.textContent = '';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: loginUsername.value.trim(), password: loginPassword.value })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || ('Sign-in failed: ' + res.status));
+        loginPassword.value = '';
+        loginGate.hidden = true;
+        await loadGraph();
+      } catch (err) {
+        loginError.textContent = err.message || 'Sign-in failed.';
+        loginPassword.select();
+      } finally {
+        loginSubmit.disabled = false;
+        loginSubmit.textContent = 'Sign In';
+      }
+    });
+
+    // Reloading after sign-out drops every in-memory node; the empty session then shows the gate.
+    document.getElementById('logout-button').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
+      window.location.reload();
+    });
 
     loadGraph().catch(err => console.error('Graph Load Error:', err));
   </script>
