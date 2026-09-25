@@ -4,6 +4,8 @@ import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerRespo
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch|share\/[rv]\/)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
 const VALID_CATEGORIES = ["note", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan", "general", "video", "image"];
+// Board view columns (migration 0010). A NULL or unknown status reads as inbox, so new nodes land there.
+export const NODE_STATUSES = ["inbox", "active", "reference", "done"];
 const RECLUSTER_CATEGORIES = ["note", "general", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan"];
 
 // Keeps each recluster request well under the Workers subrequest / D1 query limits:
@@ -86,7 +88,7 @@ export default {
       if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note FROM saved_nodes WHERE user_id = ?"
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status FROM saved_nodes WHERE user_id = ?"
         ).bind(auth.user.id).all();
 
         const nodes = (results || []).map(node => {
@@ -108,7 +110,8 @@ export default {
             site_name: node.site_name || null,
             source_url: node.source_url || null,
             favicon_url: node.favicon_url || null,
-            user_note: node.user_note ? String(node.user_note) : null
+            user_note: node.user_note ? String(node.user_note) : null,
+            status: normalizeNodeStatus(node.status)
           };
         });
 
@@ -322,10 +325,10 @@ export default {
       }
     }
 
-    // Endpoint 4b: Delete a node and its mined edges
+    // Endpoint 4b: Move a node to another board column (PATCH), or delete it and its mined edges (DELETE)
     if (url.pathname.startsWith("/api/node/")) {
-      if (request.method !== "DELETE") {
-        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "DELETE" });
+      if (request.method !== "DELETE" && request.method !== "PATCH") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "PATCH, DELETE" });
       }
       const auth = await authenticateUser(request, env, url);
       if (auth.error) return auth.error;
@@ -337,6 +340,24 @@ export default {
         id = "";
       }
       if (!id) return jsonResponse({ error: "Missing node id." }, 400);
+
+      if (request.method === "PATCH") {
+        const body = await request.json().catch(() => null);
+        const status = typeof body?.status === "string" ? body.status.trim().toLowerCase() : "";
+        if (!NODE_STATUSES.includes(status)) {
+          return jsonResponse({ error: `status must be one of: ${NODE_STATUSES.join(", ")}.` }, 400);
+        }
+        try {
+          const result = await env.DB.prepare(
+            "UPDATE saved_nodes SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
+          ).bind(status, id, userId).run();
+          if (!result?.meta?.changes) return jsonResponse({ error: "Node not found." }, 404);
+          return jsonResponse({ id, status });
+        } catch (err) {
+          console.error("Node Status Update Error:", err);
+          return jsonResponse({ error: "Update failed." }, 500);
+        }
+      }
 
       try {
         const [, nodeResult] = await env.DB.batch([
@@ -733,6 +754,47 @@ export default {
     .item-card:hover, .item-card:focus-visible { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); outline: none; }
     .item-card.active { border-color: #00ffcc; box-shadow: inset 0 0 0 1px #00ffcc; }
     .item-card.timeline { padding: 9px 12px; gap: 4px; }
+    /* Board view: four status columns; cards move between them by drag and drop or the card's status pills. */
+    body.board-mode #collection-view { touch-action: pan-x pan-y; }
+    .board-view { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 12px; align-items: start; overflow-x: auto; padding-bottom: 6px; }
+    .board-column {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-top: 3px solid var(--column);
+      background: rgba(8, 12, 20, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    }
+    .board-column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; font-size: 13px; font-weight: 600; color: #fff; }
+    .board-count { min-width: 22px; padding: 1px 7px; box-sizing: border-box; border-radius: 999px; background: rgba(255,255,255,0.08); color: #aab3c5; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+    .board-column-body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; min-height: 90px; }
+    .board-empty { display: flex; align-items: center; justify-content: center; min-height: 72px; border: 1px dashed rgba(255,255,255,0.12); border-radius: 10px; color: #6b7385; font-size: 12px; }
+    .board-column.drop-target { border-color: var(--column); background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px var(--column); }
+    .item-card.board { padding: 10px 12px; gap: 4px; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, opacity 0.15s ease; }
+    .item-card.board .item-title { font-size: 13px; }
+    .item-card.board.pressing { transform: scale(0.97); }
+    .item-card.drag-source { opacity: 0.35; }
+    /* The card following the pointer; above the node card (20), below the top bar (30). */
+    .item-card.board-ghost { position: fixed; left: 0; top: 0; z-index: 25; margin: 0; pointer-events: none; transition: none; border-color: #00ffcc; box-shadow: 0 14px 34px rgba(0,0,0,0.6); opacity: 0.95; }
+    body.board-dragging, body.board-dragging * { cursor: grabbing !important; }
+    .card-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+    .card-status-label { font-size: 11px; color: #8a93a6; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+    .card-status button {
+      appearance: none;
+      padding: 3px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+      color: #aab3c5;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .card-status button:hover, .card-status button:focus-visible { border-color: var(--column); color: #fff; outline: none; }
+    .card-status button[aria-pressed="true"] { border-color: var(--column); background: rgba(255,255,255,0.1); color: #fff; box-shadow: inset 0 0 0 1px var(--column); }
     /* 16:9 frames with contain: YouTube thumbnails and link previews show uncropped, letterboxed if needed. */
     .item-cover { position: relative; margin: -12px -14px 2px; aspect-ratio: 16 / 9; height: auto; max-height: 220px; overflow: hidden; background: rgba(0,0,0,0.45); }
     .item-cover img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
@@ -1392,6 +1454,9 @@ export default {
       .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .item-card.list.has-thumb { grid-template-columns: minmax(0, 1fr) 88px; }
       .item-thumb { width: 88px; }
+      /* Phones: one column per screen, swiped sideways. */
+      .board-view { grid-template-columns: repeat(4, 82vw); scroll-snap-type: x proximity; }
+      .board-column { scroll-snap-align: start; }
     }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
@@ -1431,6 +1496,7 @@ export default {
       <button type="button" data-view="graph" aria-pressed="true" title="Graph view"><span class="view-icon">◉</span><span class="view-label">Graph</span></button>
       <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
       <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
+      <button type="button" data-view="board" aria-pressed="false" title="Board view: drag cards between Inbox, Active, Reference and Done"><span class="view-icon">▥</span><span class="view-label">Board</span></button>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D"><span class="bar-label">2D Canvas</span></button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
@@ -1484,6 +1550,7 @@ export default {
     <p id="card-description" class="card-description"></p>
     <button type="button" id="card-reader-button" class="reader-button">⤢ Expand Full Reader</button>
     <p id="card-meta" class="card-meta"></p>
+    <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
       <div class="ask-row">
         <textarea id="card-ask-input" rows="1" maxlength="1000" placeholder="Ask Elarion about this node"></textarea>
@@ -1615,14 +1682,14 @@ export default {
       highlighted: new Set(),
       // Platform bar: 'all' or one platform; the graph dims the rest, list and timeline show only matches.
       platform: 'all',
-      // Active view (graph, list or timeline) and the list view's layout and sort; remembered per browser.
+      // Active view (graph, list, timeline or board) and the list view's layout and sort; remembered per browser.
       view: 'graph',
       listLayout: 'list',
       listSort: 'newest'
     };
 
     const VIEW_PREFS_KEY = 'aetherViewPrefs';
-    const VIEW_MODES = ['graph', 'list', 'timeline'];
+    const VIEW_MODES = ['graph', 'list', 'timeline', 'board'];
     const LIST_LAYOUTS = ['list', 'grid'];
     const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
     try {
@@ -1651,6 +1718,14 @@ export default {
       image: '#4cc9f0'
     };
     const CATEGORY_ORDER = Object.keys(CATEGORY_COLORS);
+    const BOARD_COLUMNS = [
+      { status: 'inbox', label: 'Inbox', icon: '📥', color: '#8ecae6' },
+      { status: 'active', label: 'Active', icon: '⚡', color: '#ffd166' },
+      { status: 'reference', label: 'Reference', icon: '📚', color: '#c77dff' },
+      { status: 'done', label: 'Done', icon: '✅', color: '#7ae582' }
+    ];
+    const NODE_STATUSES = BOARD_COLUMNS.map(column => column.status);
+    const getNodeStatus = node => NODE_STATUSES.includes(node.status) ? node.status : 'inbox';
     const FALLBACK_CATEGORY_COLOR = '#cccccc';
     const DIM_NODE_COLOR = 'rgba(90, 100, 120, 0.18)';
     const DIM_LINK_COLOR = 'rgba(90, 100, 120, 0.06)';
@@ -1920,7 +1995,8 @@ export default {
         group: category,
         type: category,
         created_at,
-        url: node.url || ''
+        url: node.url || '',
+        status: NODE_STATUSES.includes(node.status) ? node.status : 'inbox'
       };
     };
 
@@ -1933,6 +2009,7 @@ export default {
     let graphData = { nodes: [], links: [] };
 
     const nodeCard = document.getElementById('node-card');
+    const cardStatus = document.getElementById('card-status');
     const legend = document.getElementById('legend');
     const viewSwitch = document.getElementById('view-switch');
     const collectionView = document.getElementById('collection-view');
@@ -2154,6 +2231,7 @@ export default {
       lastCardAnswer = null;
       cardSpawnButton.style.display = 'none';
       renderResearch(node);
+      renderCardStatus(node);
       nodeCard.style.display = 'block';
       document.body.classList.add('card-open');
       // On phones the card is a bottom sheet over the legend, so the legend steps aside while it's open.
@@ -3387,7 +3465,7 @@ export default {
       return date.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
-    const PREVIEW_CHARS = { list: 160, grid: 110, timeline: 140 };
+    const PREVIEW_CHARS = { list: 160, grid: 110, timeline: 140, board: 90 };
 
     // One card for list, grid and timeline rows; a click opens the regular node card.
     const buildItemCard = (node, variant, dateMode) => {
@@ -3553,16 +3631,248 @@ export default {
       return timeline;
     };
 
+    // Board drag and drop runs on pointer events, so mouse, pen and touch share one path. A mouse drag starts
+    // after a few pixels of movement; touch waits for a long press, so a normal swipe still scrolls the board.
+    const DRAG_START_PX = 6;
+    const TOUCH_SLOP_PX = 10;
+    const LONG_PRESS_MS = 350;
+    const DRAG_EDGE_PX = 48;
+    const DRAG_SCROLL_STEP = 14;
+    const boardDrag = { node: null, card: null, ghost: null, pointerId: null, startX: 0, startY: 0, offsetX: 0, offsetY: 0, active: false, timer: null, target: null, suppressUntil: 0 };
+
+    const setBoardDropTarget = column => {
+      if (boardDrag.target === column) return;
+      if (boardDrag.target) boardDrag.target.classList.remove('drop-target');
+      boardDrag.target = column;
+      if (column) column.classList.add('drop-target');
+    };
+
+    // The visible column nearest the pointer horizontally, so drops below a short column, in the gaps or at
+    // the screen edge still land; nothing above the board.
+    const findBoardColumn = (x, y) => {
+      const board = collectionItems.querySelector('.board-view');
+      if (!board) return null;
+      const area = board.getBoundingClientRect();
+      if (y < area.top) return null;
+      let best = null;
+      let bestDistance = Infinity;
+      board.querySelectorAll('.board-column').forEach(column => {
+        const rect = column.getBoundingClientRect();
+        const left = Math.max(rect.left, area.left);
+        const right = Math.min(rect.right, area.right);
+        if (right <= left) return;
+        const distance = x < left ? left - x : x > right ? x - right : 0;
+        if (distance < bestDistance) {
+          best = column;
+          bestDistance = distance;
+        }
+      });
+      return best;
+    };
+
+    const moveBoardGhost = (x, y) => {
+      boardDrag.ghost.style.transform = 'translate(' + (x - boardDrag.offsetX) + 'px, ' + (y - boardDrag.offsetY) + 'px) rotate(2deg)';
+      // Near an edge, scroll the board sideways (phones) or the view up and down.
+      const board = collectionItems.querySelector('.board-view');
+      if (board) {
+        const rect = board.getBoundingClientRect();
+        if (x < rect.left + DRAG_EDGE_PX) board.scrollLeft -= DRAG_SCROLL_STEP;
+        else if (x > rect.right - DRAG_EDGE_PX) board.scrollLeft += DRAG_SCROLL_STEP;
+      }
+      const view = collectionView.getBoundingClientRect();
+      if (y < view.top + DRAG_EDGE_PX) collectionView.scrollTop -= DRAG_SCROLL_STEP;
+      else if (y > view.bottom - DRAG_EDGE_PX) collectionView.scrollTop += DRAG_SCROLL_STEP;
+      const column = findBoardColumn(x, y);
+      setBoardDropTarget(column && column.dataset.status !== getNodeStatus(boardDrag.node) ? column : null);
+    };
+
+    const startBoardDrag = () => {
+      const card = boardDrag.card;
+      const rect = card.getBoundingClientRect();
+      boardDrag.active = true;
+      boardDrag.offsetX = boardDrag.startX - rect.left;
+      boardDrag.offsetY = boardDrag.startY - rect.top;
+      const ghost = card.cloneNode(true);
+      ghost.classList.remove('active', 'pressing');
+      ghost.classList.add('board-ghost');
+      ghost.removeAttribute('tabindex');
+      ghost.removeAttribute('role');
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.width = rect.width + 'px';
+      document.body.append(ghost);
+      boardDrag.ghost = ghost;
+      card.classList.remove('pressing');
+      card.classList.add('drag-source');
+      document.body.classList.add('board-dragging');
+      try { card.setPointerCapture(boardDrag.pointerId); } catch (err) {}
+      moveBoardGhost(boardDrag.startX, boardDrag.startY);
+    };
+
+    const endBoardDrag = drop => {
+      clearTimeout(boardDrag.timer);
+      const { node, card, ghost, active, target } = boardDrag;
+      if (card) card.classList.remove('drag-source', 'pressing');
+      if (ghost) ghost.remove();
+      setBoardDropTarget(null);
+      document.body.classList.remove('board-dragging');
+      Object.assign(boardDrag, { node: null, card: null, ghost: null, pointerId: null, active: false, timer: null });
+      if (!active) return;
+      // The click that follows the pointerup must not open the card.
+      boardDrag.suppressUntil = Date.now() + 400;
+      if (drop && target && node) moveNodeToStatus(node, target.dataset.status);
+    };
+
+    const attachBoardDrag = (card, node) => {
+      card.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || boardDrag.card || event.target.closest('a, button')) return;
+        Object.assign(boardDrag, { node, card, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, active: false });
+        if (event.pointerType === 'mouse') return;
+        card.classList.add('pressing');
+        boardDrag.timer = setTimeout(() => {
+          if (boardDrag.card === card && !boardDrag.active) startBoardDrag();
+        }, LONG_PRESS_MS);
+      });
+      card.addEventListener('pointermove', event => {
+        if (boardDrag.card !== card || event.pointerId !== boardDrag.pointerId) return;
+        if (!boardDrag.active) {
+          const moved = Math.hypot(event.clientX - boardDrag.startX, event.clientY - boardDrag.startY);
+          if (event.pointerType !== 'mouse') {
+            // Moving before the long press completes is a swipe: let the board scroll.
+            if (moved > TOUCH_SLOP_PX) endBoardDrag(false);
+            return;
+          }
+          if (moved < DRAG_START_PX) return;
+          startBoardDrag();
+        }
+        moveBoardGhost(event.clientX, event.clientY);
+      });
+      card.addEventListener('pointerup', event => {
+        if (boardDrag.card === card && event.pointerId === boardDrag.pointerId) endBoardDrag(true);
+      });
+      card.addEventListener('pointercancel', () => {
+        if (boardDrag.card === card) endBoardDrag(false);
+      });
+      // Once a touch drag has started, the finger moves the card instead of scrolling the page.
+      card.addEventListener('touchmove', event => {
+        if (boardDrag.active && boardDrag.card === card) event.preventDefault();
+      }, { passive: false });
+      card.addEventListener('contextmenu', event => {
+        if (boardDrag.card === card) event.preventDefault();
+      });
+      card.addEventListener('dragstart', event => event.preventDefault());
+    };
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && boardDrag.active) endBoardDrag(false);
+    });
+    // A press released off its card before a drag began (the card only captures the pointer once dragging).
+    document.addEventListener('pointerup', () => {
+      if (boardDrag.card && !boardDrag.active) endBoardDrag(false);
+    });
+
+    const buildBoard = nodes => {
+      const board = document.createElement('div');
+      board.className = 'board-view';
+      const sorted = sortNodes(nodes, filterState.listSort);
+      BOARD_COLUMNS.forEach(column => {
+        const items = sorted.filter(node => getNodeStatus(node) === column.status);
+        const section = document.createElement('section');
+        section.className = 'board-column';
+        section.dataset.status = column.status;
+        section.style.setProperty('--column', column.color);
+        section.setAttribute('aria-label', column.label);
+        const head = document.createElement('header');
+        head.className = 'board-column-head';
+        const name = document.createElement('span');
+        name.textContent = column.icon + ' ' + column.label;
+        const count = document.createElement('span');
+        count.className = 'board-count';
+        count.textContent = String(items.length);
+        head.append(name, count);
+        const body = document.createElement('div');
+        body.className = 'board-column-body';
+        if (!items.length) {
+          const empty = document.createElement('div');
+          empty.className = 'board-empty';
+          empty.textContent = 'Drop cards here';
+          body.append(empty);
+        }
+        items.forEach(node => {
+          const card = buildItemCard(node, 'board');
+          attachBoardDrag(card, node);
+          body.append(card);
+        });
+        section.append(head, body);
+        board.append(section);
+      });
+      board.addEventListener('click', event => {
+        if (Date.now() < boardDrag.suppressUntil) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }, true);
+      return board;
+    };
+
+    const renderCardStatus = node => {
+      const status = getNodeStatus(node);
+      cardStatus.querySelectorAll('[data-status]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.status === status));
+      });
+    };
+
+    const refreshStatusViews = node => {
+      if (filterState.view === 'board') renderCollection();
+      if (focus.node && focus.node.id === node.id) renderCardStatus(node);
+    };
+
+    // Optimistic: the card moves at once and moves back if the save fails.
+    const moveNodeToStatus = async (node, status) => {
+      const previous = getNodeStatus(node);
+      if (!NODE_STATUSES.includes(status) || status === previous) return;
+      node.status = status;
+      refreshStatusViews(node);
+      try {
+        await apiFetch('/api/node/' + encodeURIComponent(node.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+      } catch (err) {
+        console.error('Status update failed:', err);
+        if (node.status === status) {
+          node.status = previous;
+          refreshStatusViews(node);
+        }
+        alert(err.message || 'Could not move the card.');
+      }
+    };
+
+    BOARD_COLUMNS.forEach(column => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.status = column.status;
+      button.style.setProperty('--column', column.color);
+      button.setAttribute('aria-pressed', 'false');
+      button.textContent = column.icon + ' ' + column.label;
+      cardStatus.append(button);
+    });
+    cardStatus.addEventListener('click', event => {
+      const button = event.target.closest('[data-status]');
+      if (button && focus.node) moveNodeToStatus(focus.node, button.dataset.status);
+    });
+
     const renderCollection = () => {
       const nodes = currentVisibleNodes.filter(matchesPlatform);
       const isTimeline = filterState.view === 'timeline';
-      const isGrid = !isTimeline && filterState.listLayout === 'grid';
+      const isBoard = filterState.view === 'board';
+      const isGrid = !isTimeline && !isBoard && filterState.listLayout === 'grid';
       collectionCount.textContent = nodes.length + (nodes.length === 1 ? ' node' : ' nodes');
       collectionSort.hidden = isTimeline;
-      layoutPills.hidden = isTimeline;
+      layoutPills.hidden = isTimeline || isBoard;
       collectionSort.value = filterState.listSort;
       layoutPills.querySelectorAll('[data-layout]').forEach(pill => pill.classList.toggle('active', pill.dataset.layout === filterState.listLayout));
-      collectionToolbar.classList.toggle('wide', isGrid);
+      collectionToolbar.classList.toggle('wide', isGrid || isBoard);
 
       if (!nodes.length) {
         const empty = document.createElement('div');
@@ -3586,6 +3896,15 @@ export default {
         collectionItems.replaceChildren(buildTimeline(nodes));
         return;
       }
+      if (isBoard) {
+        // Re-rendering after a move keeps the phone's sideways scroll position.
+        const previous = collectionItems.querySelector('.board-view');
+        const scrollLeft = previous ? previous.scrollLeft : 0;
+        const board = buildBoard(nodes);
+        collectionItems.replaceChildren(board);
+        board.scrollLeft = scrollLeft;
+        return;
+      }
       const list = document.createElement('div');
       list.className = isGrid ? 'collection-grid' : 'collection-list';
       list.append(...sortNodes(nodes, filterState.listSort).map(node => buildItemCard(node, isGrid ? 'grid' : 'list')));
@@ -3596,6 +3915,7 @@ export default {
     function renderActiveView() {
       const isGraph = filterState.view === 'graph';
       document.body.classList.toggle('collection-mode', !isGraph);
+      document.body.classList.toggle('board-mode', filterState.view === 'board');
       viewSwitch.querySelectorAll('[data-view]').forEach(button => {
         button.setAttribute('aria-pressed', String(button.dataset.view === filterState.view));
       });
@@ -3917,6 +4237,11 @@ function toIsoTimestamp(value) {
 }
 
 // The research column is a JSON array; anything unreadable counts as no history.
+export function normalizeNodeStatus(value) {
+  const status = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return NODE_STATUSES.includes(status) ? status : "inbox";
+}
+
 export function parseResearch(value) {
   if (!value) return [];
   try {

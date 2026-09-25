@@ -75,9 +75,19 @@
 
 ---
 
-## ?? Phase 3: Lightweight Agentic Quarterback & Dynamic Skill Engine
+## Phase 3: Project & Task Board View (Active)
 
-- [ ] **Database Migration 0010_agent_skills.sql:**
+- [x] **Board View Toggle:** A fourth "Board" button in the top-bar view switcher (next to Graph, List and Timeline; icon-only on phones), remembered per browser like the other views.
+- [x] **Kanban Status Columns:** Inbox, Active, Reference and Done columns with live counts. Each node's status is stored in D1 (migration 0010: status); nodes without one, including everything saved from Telegram or +, land in Inbox. Search, type, time, orphan and platform filters and the sort menu all apply to the board; on phones each column fills the screen and the board swipes sideways.
+- [x] **Drag & Drop:** Drag a card to another column with the mouse, or long-press (350 ms) and drag on touch; a quick swipe still scrolls. The card moves at once and saves through `PATCH /api/node/:id` (signed-in, same-origin, status validated), moving back with an alert if the save fails. Drops land on the nearest visible column, the board scrolls when the card nears an edge, and Esc cancels.
+- [x] **Inspector Integration:** Tapping a board card opens the node card inspector; the card also has Board status pills (Inbox / Active / Reference / Done) as a non-drag way to move a node from any view.
+- [ ] **Next:** checklist items inside cards, custom columns, and per-column ordering.
+
+---
+
+## ?? Phase 4: Lightweight Agentic Quarterback & Dynamic Skill Engine
+
+- [ ] **Database Migration 0011_agent_skills.sql:**
   - Create agent_skills (holding skill_key, system_instructions, and required_tools) and agent_memory tables in D1.
 - [ ] **Telegram Chat Linking (POST /api/telegram):**
   - Map telegram_chat_id to users.id (unrecognized chats receive a "Not Authorized" reply).
@@ -94,7 +104,7 @@
 
 ---
 
-## ?? Phase 4: Project Boards & Navigation Views
+## ?? Phase 5: Project Boards & Navigation Views
 
 ### 1. Visual Project Board View (Milanote Canvas)
 - [ ] **D1 Position Coordinates:** Store canvas (X, Y) positions for nodes when in Board Mode.
@@ -109,7 +119,7 @@
 
 ---
 
-## ?? Phase 5: Future Major Release (v2.0 — WebXR Spatial VR)
+## ?? Phase 6: Future Major Release (v2.0 — WebXR Spatial VR)
 
 - [ ] **WebXR Headset Support:** Three.js VRButton integration for full 3D room-scale VR on Meta Quest, Vision Pro, and SteamVR.
 - [ ] **6DoF Physical Spatial Navigation:** Walk through category star systems in true physical room space.

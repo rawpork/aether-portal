@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, parseImageDescription, parseResearch, parseTelegramCommand, pickTelegramImage, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
+import { NODE_STATUSES, TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, normalizeNodeStatus, parseImageDescription, parseResearch, parseTelegramCommand, pickTelegramImage, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -143,6 +143,15 @@ describe("formatTelegramAnswer and chunkTelegramMessage", () => {
 	});
 });
 
+describe("normalizeNodeStatus", () => {
+	it("keeps the four board columns and files everything else under inbox", () => {
+		expect(NODE_STATUSES).toEqual(["inbox", "active", "reference", "done"]);
+		for (const status of NODE_STATUSES) expect(normalizeNodeStatus(status)).toBe(status);
+		expect(normalizeNodeStatus(" Done ")).toBe("done");
+		for (const value of [null, undefined, "", "archived", 3]) expect(normalizeNodeStatus(value)).toBe("inbox");
+	});
+});
+
 describe("password hashing", () => {
 	it("verifies the right password and rejects others", async () => {
 		const stored = await hashPassword("correct horse battery");
@@ -168,13 +177,13 @@ describe("Aether Portal worker", () => {
 		const html = await response.text();
 		expect(response.headers.get("Content-Type")).toContain("text/html");
 		expect(html).toContain("Aether Portal");
-		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar"]) {
+		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status"]) {
 			expect(html, id).toContain(`id="${id}"`);
 		}
 		for (const usage of ["/research &lt;topic or link&gt;", "/ask &lt;question&gt;", "/link &lt;url&gt; [note]", "/help"]) {
 			expect(html, usage).toContain(usage);
 		}
-		for (const view of ["graph", "list", "timeline"]) {
+		for (const view of ["graph", "list", "timeline", "board"]) {
 			expect(html, view).toContain(`data-view="${view}"`);
 		}
 
@@ -238,9 +247,19 @@ describe("Aether Portal worker", () => {
 		expect(response.status).toBe(401);
 	});
 
-	it("only allows DELETE on /api/node/:id", async () => {
+	it("only allows PATCH and DELETE on /api/node/:id", async () => {
 		const response = await SELF.fetch("http://example.com/api/node/abc");
 		expect(response.status).toBe(405);
+		expect(response.headers.get("Allow")).toBe("PATCH, DELETE");
+	});
+
+	it("requires sign-in to move a node between board columns", async () => {
+		const response = await SELF.fetch("http://example.com/api/node/abc", {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ status: "done" }),
+		});
+		expect(response.status).toBe(401);
 	});
 
 	it("requires an admin token to delete a node", async () => {
