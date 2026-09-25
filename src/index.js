@@ -789,6 +789,45 @@ export default {
     /* The card following the pointer; above the node card (20), below the top bar (30). */
     .item-card.board-ghost { position: fixed; left: 0; top: 0; z-index: 25; margin: 0; pointer-events: none; transition: none; border-color: #00ffcc; box-shadow: 0 14px 34px rgba(0,0,0,0.6); opacity: 0.95; }
     body.board-dragging, body.board-dragging * { cursor: grabbing !important; }
+    /* Carousel view: one card on top of a stack, dragged or swiped sideways to page. Cards past the top one sit
+       lower, smaller and fainter; the previous card waits off-screen left. Transforms are set from script. */
+    .deck-view { display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: hidden; padding: 6px 0 4px; }
+    .deck-stage { position: relative; width: 100%; max-width: 440px; height: clamp(300px, calc(100vh - 270px), 580px); touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+    .item-card.carousel {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 40px;
+      gap: 8px;
+      /* Opaque so the cards underneath don't show through the top one. */
+      background: #0b1320;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      border-color: rgba(0,255,204,0.18);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+      transform-origin: 50% 100%;
+      transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.34s ease, border-color 0.15s ease;
+      will-change: transform, opacity;
+    }
+    .item-card.carousel:hover, .item-card.carousel:focus-visible { background: #0e1a27; }
+    .item-card.carousel.active { box-shadow: inset 0 0 0 1px #00ffcc, 0 18px 40px rgba(0,0,0,0.55); }
+    .item-card.carousel.behind { pointer-events: none; }
+    .item-card.carousel img { -webkit-user-drag: none; }
+    .item-card.carousel .item-cover { flex: none; }
+    .item-card.carousel .item-title { font-size: 17px; }
+    .item-card.carousel .item-preview { flex: 1 1 auto; min-height: 0; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+    .item-card.carousel .item-foot { margin-top: auto; }
+    .deck-stage.dragging .item-card.carousel { transition: none; cursor: grabbing; }
+    .deck-controls { display: flex; align-items: center; gap: 14px; }
+    .deck-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 20px; line-height: 1; cursor: pointer; }
+    .deck-btn:hover, .deck-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
+    .deck-btn:disabled { opacity: 0.3; cursor: default; }
+    .deck-counter { min-width: 72px; text-align: center; font-size: 13px; color: #aab3c5; font-variant-numeric: tabular-nums; }
+    .deck-hint { font-size: 11px; color: #6b7385; }
+    @media (prefers-reduced-motion: reduce) {
+      .item-card.carousel { transition: none; }
+    }
     .card-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
     .card-status-label { font-size: 11px; color: #8a93a6; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
     .card-status button {
@@ -1298,6 +1337,9 @@ export default {
     #node-card .card-head .card-tag { margin-bottom: 0; }
     .card-carousel { display: inline-flex; align-items: center; gap: 6px; }
     .card-carousel[hidden] { display: none; }
+    .card-to-deck { appearance: none; padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 11px; cursor: pointer; }
+    .card-to-deck:hover, .card-to-deck:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
+    body.carousel-mode .card-to-deck { display: none; }
     .carousel-btn {
       width: 26px;
       height: 26px;
@@ -1488,6 +1530,7 @@ export default {
       <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
       <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
       <button type="button" data-view="board" aria-pressed="false" title="Board view: drag cards between Inbox, Active, Reference and Done"><span class="view-icon">▥</span><span class="view-label">Board</span></button>
+      <button type="button" data-view="carousel" aria-pressed="false" title="Carousel view: swipe through cards one at a time"><span class="view-icon">❐</span><span class="view-label">Carousel</span></button>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D"><span class="bar-label">2D Canvas</span></button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
@@ -1553,6 +1596,7 @@ export default {
         <span id="card-counter" class="card-counter" aria-live="polite"></span>
         <button type="button" id="card-next" class="carousel-btn" title="Next card (→)" aria-label="Next card in cluster">›</button>
       </div>
+      <button type="button" id="card-to-deck" class="card-to-deck" title="Show this node in Carousel view">❐ Carousel</button>
     </div>
     <div id="card-preview" class="card-preview">
       <img id="card-preview-image" alt="" loading="lazy" referrerpolicy="no-referrer" hidden>
@@ -1702,14 +1746,14 @@ export default {
       highlighted: new Set(),
       // Platform bar: 'all' or one platform; the graph dims the rest, list and timeline show only matches.
       platform: 'all',
-      // Active view (graph, list, timeline or board) and the list view's layout and sort; remembered per browser.
+      // Active view (graph, list, timeline, board or carousel) and the list view's layout and sort; remembered per browser.
       view: 'graph',
       listLayout: 'list',
       listSort: 'newest'
     };
 
     const VIEW_PREFS_KEY = 'aetherViewPrefs';
-    const VIEW_MODES = ['graph', 'list', 'timeline', 'board'];
+    const VIEW_MODES = ['graph', 'list', 'timeline', 'board', 'carousel'];
     const LIST_LAYOUTS = ['list', 'grid'];
     const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
     try {
@@ -2509,7 +2553,8 @@ export default {
         card.classList.toggle('active', isActive);
         if (isActive) activeItem = card;
       });
-      if (activeItem && filterState.view !== 'graph') activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      // The carousel places its own cards; scrolling to one would jump the deck.
+      if (activeItem && filterState.view !== 'graph' && filterState.view !== 'carousel') activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
 
     const flyToNode = node => {
@@ -2864,6 +2909,7 @@ export default {
       renderCarousel(node);
       setFocus(node);
       syncDrawerSelection();
+      syncDeck(node);
       // The camera only matters while the graph is on screen.
       if (filterState.view !== 'graph') return;
       pauseAutoRotate();
@@ -2910,6 +2956,12 @@ export default {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
       if (document.querySelector('.modal-backdrop:not([hidden])') || !loginGate.hidden) return;
+      // Carousel view: the arrows page the deck (and the open card follows it).
+      if (filterState.view === 'carousel') {
+        event.preventDefault();
+        stepDeck(event.key === 'ArrowRight' ? 1 : -1);
+        return;
+      }
       if (nodeCard.style.display !== 'block' || cardCarousel.hidden) return;
       event.preventDefault();
       stepCarousel(event.key === 'ArrowRight' ? 1 : -1);
@@ -3618,9 +3670,9 @@ export default {
       return date.toLocaleDateString(undefined, sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
-    const PREVIEW_CHARS = { list: 160, grid: 110, timeline: 140, board: 90 };
+    const PREVIEW_CHARS = { list: 160, grid: 110, timeline: 140, board: 90, carousel: 480 };
 
-    // One card for list, grid and timeline rows; a click opens the regular node card.
+    // One card for list, grid, timeline, board and carousel; a click opens the regular node card.
     const buildItemCard = (node, variant, dateMode) => {
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       const card = document.createElement('article');
@@ -3635,7 +3687,7 @@ export default {
       const favicon = isLink ? getFaviconUrl(node) : null;
       const hasImage = isImageSrc(node.image_url);
 
-      if (variant === 'grid') {
+      if (variant === 'grid' || variant === 'carousel') {
         const cover = document.createElement('div');
         cover.className = 'item-cover';
         // Hex colors get a translucent alpha suffix for the placeholder glow.
@@ -4015,14 +4067,220 @@ export default {
       if (button && focus.node) moveNodeToStatus(focus.node, button.dataset.status);
     });
 
+    // Carousel view: the visible nodes (in the list sort) as a card deck. deck.id is the top card and survives
+    // re-renders and view changes, so the deck reopens where it was, or on the node selected in the graph.
+    const DECK_BEHIND = 3;
+    const DECK_STEP_PX = 12;
+    const DECK_SCALE_STEP = 0.05;
+    const DECK_FADE_STEP = 0.18;
+    const DECK_TILT_DEG = 8;
+    const DECK_DRAG_START_PX = 8;
+    const DECK_COMMIT_SHARE = 0.25;
+    const DECK_FLICK_PX = 30;
+    const DECK_FLICK_SPEED = 0.45;
+    const DECK_CLICK_GUARD_MS = 400;
+    const deck = { nodes: [], index: 0, id: null, cards: new Map(), stage: null, counter: null, prev: null, next: null, throwX: 0, suppressClickUntil: 0 };
+    let deckDrag = null;
+
+    // depth 0 is the top card, 1..DECK_BEHIND the stack under it, DECK_BEHIND + 1 an invisible slot at the back;
+    // fractional depths are used mid-drag. x slides a card sideways and tilts it with the distance.
+    const placeDeckCard = (card, depth, x) => {
+      const width = deck.stage.clientWidth || 1;
+      const opacity = depth <= DECK_BEHIND ? 1 - DECK_FADE_STEP * depth : (1 - DECK_FADE_STEP * DECK_BEHIND) * Math.max(0, DECK_BEHIND + 1 - depth);
+      card.style.transform = 'translate(' + x + 'px, ' + (depth * DECK_STEP_PX) + 'px) rotate(' + (x / width * DECK_TILT_DEG) + 'deg) scale(' + (1 - DECK_SCALE_STEP * depth) + ')';
+      card.style.opacity = String(opacity);
+    };
+
+    const layoutDeck = () => {
+      if (!deck.stage || !deck.stage.isConnected) return;
+      // Far enough left that a card with the previous offset is fully off-screen.
+      deck.throwX = deck.stage.getBoundingClientRect().right + 24;
+      const wanted = new Map();
+      for (let offset = -1; offset <= DECK_BEHIND + 1; offset++) {
+        const node = deck.nodes[deck.index + offset];
+        if (node) wanted.set(node.id, { node, offset });
+      }
+      deck.cards.forEach((card, id) => {
+        if (wanted.has(id)) return;
+        card.remove();
+        deck.cards.delete(id);
+      });
+      wanted.forEach(({ node, offset }, id) => {
+        let card = deck.cards.get(id);
+        if (!card) {
+          card = buildItemCard(node, 'carousel');
+          card.querySelectorAll('img').forEach(img => { img.draggable = false; });
+          deck.stage.append(card);
+          deck.cards.set(id, card);
+        }
+        card.dataset.offset = String(offset);
+        card.classList.toggle('behind', offset !== 0);
+        card.tabIndex = offset === 0 ? 0 : -1;
+        card.setAttribute('aria-hidden', String(offset !== 0));
+        // The previous card sits above the stack so it slides back in over the top one.
+        card.style.zIndex = String(offset < 0 ? 20 : 10 - offset);
+        if (offset < 0) placeDeckCard(card, 0, -deck.throwX);
+        else placeDeckCard(card, offset, 0);
+      });
+      deck.counter.textContent = (deck.index + 1) + ' / ' + deck.nodes.length;
+      deck.prev.disabled = deck.index <= 0;
+      deck.next.disabled = deck.index >= deck.nodes.length - 1;
+    };
+
+    // Mid-drag: left pulls the top card with the finger and lifts the stack; right slides the previous card
+    // back in and pushes the stack down. Past either end the top card only gives a little.
+    const dragDeck = dx => {
+      const atEnd = dx < 0 ? deck.index >= deck.nodes.length - 1 : deck.index <= 0;
+      const progress = Math.min(Math.abs(dx) / (deck.stage.clientWidth || 1), 1);
+      deck.cards.forEach(card => {
+        const offset = Number(card.dataset.offset);
+        if (atEnd) {
+          if (offset === 0) placeDeckCard(card, 0, dx * 0.25);
+        } else if (dx < 0) {
+          if (offset === 0) placeDeckCard(card, 0, dx);
+          else if (offset > 0) placeDeckCard(card, offset - progress, 0);
+        } else if (offset < 0) {
+          placeDeckCard(card, 0, -deck.throwX * (1 - progress));
+        } else {
+          placeDeckCard(card, offset + progress, 0);
+        }
+      });
+    };
+
+    const setDeckIndex = index => {
+      deck.index = index;
+      deck.id = deck.nodes[index].id;
+      layoutDeck();
+    };
+
+    // An open node card follows the deck; selectNode then moves the deck through syncDeck.
+    const stepDeck = delta => {
+      if (!deck.stage || !deck.stage.isConnected) return;
+      const index = deck.index + delta;
+      if (index < 0 || index >= deck.nodes.length) {
+        layoutDeck();
+        return;
+      }
+      if (focus.node && nodeCard.style.display === 'block') selectNode(deck.nodes[index], { keepCarousel: true });
+      else setDeckIndex(index);
+    };
+
+    function syncDeck(node) {
+      deck.id = node.id;
+      if (filterState.view !== 'carousel') return;
+      const index = deck.nodes.findIndex(item => item.id === node.id);
+      if (index !== -1 && index !== deck.index) setDeckIndex(index);
+    }
+
+    const endDeckDrag = (event, cancelled) => {
+      if (!deckDrag || event.pointerId !== deckDrag.pointerId) return;
+      const drag = deckDrag;
+      deckDrag = null;
+      if (!drag.active) return;
+      deck.stage.classList.remove('dragging');
+      deck.suppressClickUntil = performance.now() + DECK_CLICK_GUARD_MS;
+      const flick = Math.abs(drag.dx) > DECK_FLICK_PX && Math.abs(drag.speed) > DECK_FLICK_SPEED && Math.sign(drag.speed) === Math.sign(drag.dx);
+      if (!cancelled && (flick || Math.abs(drag.dx) > deck.stage.clientWidth * DECK_COMMIT_SHARE)) stepDeck(drag.dx < 0 ? 1 : -1);
+      else layoutDeck();
+    };
+
+    const buildDeck = nodes => {
+      deck.nodes = sortNodes(nodes, filterState.listSort);
+      const found = deck.nodes.findIndex(node => node.id === deck.id);
+      deck.index = found !== -1 ? found : Math.min(deck.index, deck.nodes.length - 1);
+      deck.id = deck.nodes[deck.index].id;
+      deck.cards = new Map();
+      deckDrag = null;
+
+      const view = document.createElement('div');
+      view.className = 'deck-view';
+      const stage = document.createElement('div');
+      stage.className = 'deck-stage';
+      stage.setAttribute('role', 'region');
+      stage.setAttribute('aria-roledescription', 'carousel');
+      stage.setAttribute('aria-label', 'Node cards');
+
+      const controls = document.createElement('div');
+      controls.className = 'deck-controls';
+      const makeButton = (label, text, delta) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'deck-btn';
+        button.setAttribute('aria-label', label);
+        button.textContent = text;
+        button.addEventListener('click', () => stepDeck(delta));
+        return button;
+      };
+      const prev = makeButton('Previous card', '‹', -1);
+      const next = makeButton('Next card', '›', 1);
+      const counter = document.createElement('span');
+      counter.className = 'deck-counter';
+      counter.setAttribute('aria-live', 'polite');
+      controls.append(prev, counter, next);
+      const hint = document.createElement('div');
+      hint.className = 'deck-hint';
+      hint.textContent = 'Swipe or use ← → · tap the card for details';
+      view.append(stage, controls, hint);
+      Object.assign(deck, { stage, counter, prev, next });
+
+      // A sideways drag pages the deck; a mostly vertical one is left to the page scroll (touch-action: pan-y).
+      stage.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        deckDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, speed: 0, lastX: event.clientX, lastTime: event.timeStamp, active: false };
+      });
+      stage.addEventListener('pointermove', event => {
+        if (!deckDrag || event.pointerId !== deckDrag.pointerId) return;
+        const dx = event.clientX - deckDrag.x;
+        const dy = event.clientY - deckDrag.y;
+        if (!deckDrag.active) {
+          if (Math.abs(dy) > DECK_DRAG_START_PX && Math.abs(dy) > Math.abs(dx)) {
+            deckDrag = null;
+            return;
+          }
+          if (Math.abs(dx) < DECK_DRAG_START_PX) return;
+          deckDrag.active = true;
+          stage.setPointerCapture(event.pointerId);
+          stage.classList.add('dragging');
+        }
+        const elapsed = event.timeStamp - deckDrag.lastTime;
+        if (elapsed > 0) deckDrag.speed = (event.clientX - deckDrag.lastX) / elapsed;
+        deckDrag.lastX = event.clientX;
+        deckDrag.lastTime = event.timeStamp;
+        deckDrag.dx = dx;
+        dragDeck(dx);
+      });
+      stage.addEventListener('pointerup', event => endDeckDrag(event, false));
+      stage.addEventListener('pointercancel', event => endDeckDrag(event, true));
+      stage.addEventListener('dragstart', event => event.preventDefault());
+      // A drag that ends over the card must not also open it or follow its link.
+      stage.addEventListener('click', event => {
+        if (performance.now() >= deck.suppressClickUntil) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }, true);
+      return view;
+    };
+
+    document.getElementById('card-to-deck').addEventListener('click', () => {
+      if (!focus.node) return;
+      deck.id = focus.node.id;
+      // On phones the card is a bottom sheet over the deck, so it closes; the deck's top card reopens it.
+      if (compactLayout.matches) hideNodeCard();
+      setView('carousel');
+    });
+    window.addEventListener('resize', () => {
+      if (filterState.view === 'carousel') layoutDeck();
+    });
+
     const renderCollection = () => {
       const nodes = currentVisibleNodes.filter(matchesPlatform);
       const isTimeline = filterState.view === 'timeline';
       const isBoard = filterState.view === 'board';
-      const isGrid = !isTimeline && !isBoard && filterState.listLayout === 'grid';
+      const isCarousel = filterState.view === 'carousel';
+      const isGrid = !isTimeline && !isBoard && !isCarousel && filterState.listLayout === 'grid';
       collectionCount.textContent = nodes.length + (nodes.length === 1 ? ' node' : ' nodes');
       collectionSort.hidden = isTimeline;
-      layoutPills.hidden = isTimeline || isBoard;
+      layoutPills.hidden = isTimeline || isBoard || isCarousel;
       collectionSort.value = filterState.listSort;
       layoutPills.querySelectorAll('[data-layout]').forEach(pill => pill.classList.toggle('active', pill.dataset.layout === filterState.listLayout));
       collectionToolbar.classList.toggle('wide', isGrid || isBoard);
@@ -4058,6 +4316,11 @@ export default {
         board.scrollLeft = scrollLeft;
         return;
       }
+      if (isCarousel) {
+        collectionItems.replaceChildren(buildDeck(nodes));
+        layoutDeck();
+        return;
+      }
       const list = document.createElement('div');
       list.className = isGrid ? 'collection-grid' : 'collection-list';
       list.append(...sortNodes(nodes, filterState.listSort).map(node => buildItemCard(node, isGrid ? 'grid' : 'list')));
@@ -4069,6 +4332,7 @@ export default {
       const isGraph = filterState.view === 'graph';
       document.body.classList.toggle('collection-mode', !isGraph);
       document.body.classList.toggle('board-mode', filterState.view === 'board');
+      document.body.classList.toggle('carousel-mode', filterState.view === 'carousel');
       viewSwitch.querySelectorAll('[data-view]').forEach(button => {
         button.setAttribute('aria-pressed', String(button.dataset.view === filterState.view));
       });
@@ -4085,6 +4349,8 @@ export default {
     const setView = view => {
       if (!VIEW_MODES.includes(view) || view === filterState.view) return;
       filterState.view = view;
+      // Entering the carousel with a node selected (in the graph or any other view) opens the deck on it.
+      if (view === 'carousel' && focus.node) deck.id = focus.node.id;
       saveViewPrefs();
       renderActiveView();
       if (view === 'graph') {
