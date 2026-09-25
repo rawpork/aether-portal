@@ -89,7 +89,7 @@ export default {
       if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status FROM saved_nodes WHERE user_id = ?"
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript FROM saved_nodes WHERE user_id = ?"
         ).bind(auth.user.id).all();
 
         const nodes = (results || []).map(node => {
@@ -112,7 +112,9 @@ export default {
             source_url: node.source_url || null,
             favicon_url: node.favicon_url || null,
             user_note: node.user_note ? String(node.user_note) : null,
-            status: normalizeNodeStatus(node.status)
+            status: normalizeNodeStatus(node.status),
+            synopsis: node.synopsis ? String(node.synopsis) : null,
+            has_transcript: Boolean(node.has_transcript)
           };
         });
 
@@ -1267,6 +1269,19 @@ export default {
     #node-card .card-note-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd166; }
     #node-card .card-note-text { font-size: 13px; color: #fff3d1; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
     #node-card .card-preview-bar a { flex: none; }
+    /* YouTube nodes: synopsis and transcript actions from /api/transcript. */
+    #node-card .card-transcript { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; border-left: 2px solid #ff5a5a; background: rgba(255, 90, 90, 0.07); }
+    #node-card .card-transcript[hidden] { display: none; }
+    #node-card .card-transcript-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ff8a8a; }
+    #node-card .card-synopsis { margin-bottom: 8px; font-size: 13px; color: #ffe4e4; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
+    #node-card .card-synopsis:empty { display: none; }
+    #node-card .card-transcript-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    #node-card .card-transcript-actions button { appearance: none; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,138,138,0.5); background: rgba(255,90,90,0.1); color: #ffd9d9; font-size: 12px; cursor: pointer; }
+    #node-card .card-transcript-actions button:hover:not(:disabled), #node-card .card-transcript-actions button:focus-visible { background: rgba(255,90,90,0.22); outline: none; }
+    #node-card .card-transcript-actions button:disabled { opacity: 0.55; cursor: progress; }
+    #node-card .card-transcript-actions button[hidden] { display: none; }
+    #node-card .card-transcript-status { font-size: 11px; color: #aab3c5; }
+    #node-card .card-transcript-status.error { color: #ff8a8a; }
     #node-card .card-description { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; }
     .reader-button {
       display: none;
@@ -1674,6 +1689,15 @@ export default {
     </div>
     <p id="card-description" class="card-description"></p>
     <button type="button" id="card-reader-button" class="reader-button">⤢ Expand Full Reader</button>
+    <div id="card-transcript" class="card-transcript" hidden>
+      <span class="card-transcript-label">🎬 Video synopsis</span>
+      <div id="card-synopsis" class="card-synopsis"></div>
+      <div class="card-transcript-actions">
+        <button type="button" id="card-transcript-button">🎬 Get Transcript</button>
+        <button type="button" id="card-transcript-read" hidden>⤢ Read Transcript</button>
+        <span id="card-transcript-status" class="card-transcript-status" aria-live="polite"></span>
+      </div>
+    </div>
     <p id="card-meta" class="card-meta"></p>
     <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
@@ -2196,6 +2220,11 @@ export default {
     const cardNote = document.getElementById('card-note');
     const cardNoteText = document.getElementById('card-note-text');
     const cardReaderButton = document.getElementById('card-reader-button');
+    const cardTranscript = document.getElementById('card-transcript');
+    const cardSynopsis = document.getElementById('card-synopsis');
+    const cardTranscriptButton = document.getElementById('card-transcript-button');
+    const cardTranscriptRead = document.getElementById('card-transcript-read');
+    const cardTranscriptStatus = document.getElementById('card-transcript-status');
     const readerModal = document.getElementById('reader-modal');
     const readerTitle = document.getElementById('reader-title');
     const readerMeta = document.getElementById('reader-meta');
@@ -2390,6 +2419,7 @@ export default {
       cardSpawnButton.style.display = 'none';
       renderResearch(node);
       renderCardStatus(node);
+      renderCardTranscript(node);
       nodeCard.style.display = 'block';
       document.body.classList.add('card-open');
       // On phones the card is a bottom sheet over the legend, so the legend steps aside while it's open.
@@ -3470,12 +3500,10 @@ export default {
       });
     }
 
-    const openReader = () => {
-      const site = cardPreview.style.display === 'none' ? '' : cardSite.textContent;
-      readerTitle.textContent = cardTitle.textContent;
-      readerMeta.textContent = [cardTag.textContent, site, cardMeta.textContent].filter(Boolean).join(' · ');
-      const note = cardNote.style.display === 'none' ? '' : cardNoteText.textContent;
-      readerBody.textContent = [note ? '📝 Your note' + NEWLINE + note : '', cardDescription.textContent].filter(Boolean).join(NEWLINE + NEWLINE);
+    const showReader = (title, meta, body) => {
+      readerTitle.textContent = title;
+      readerMeta.textContent = meta;
+      readerBody.textContent = body;
       if (cardLink.getAttribute('href')) {
         readerLink.href = cardLink.href;
         readerLink.style.display = 'inline-block';
@@ -3487,8 +3515,103 @@ export default {
       readerBody.scrollTop = 0;
       readerClose.focus();
     };
+    const openReader = () => {
+      const site = cardPreview.style.display === 'none' ? '' : cardSite.textContent;
+      const note = cardNote.style.display === 'none' ? '' : cardNoteText.textContent;
+      showReader(
+        cardTitle.textContent,
+        [cardTag.textContent, site, cardMeta.textContent].filter(Boolean).join(' · '),
+        [note ? '📝 Your note' + NEWLINE + note : '', cardDescription.textContent].filter(Boolean).join(NEWLINE + NEWLINE)
+      );
+    };
     const closeReader = () => { readerModal.hidden = true; };
     cardReaderButton.addEventListener('click', openReader);
+
+    // YouTube Transcript Pipeline. The graph carries each video's synopsis and whether a transcript is stored;
+    // the transcript text is only downloaded (and then kept here) when someone opens it.
+    const transcriptTexts = new Map();
+    const transcriptBusy = new Set();
+
+    function renderCardTranscript(node) {
+      const isVideo = getPlatform(node) === 'youtube';
+      cardTranscript.hidden = !isVideo;
+      if (!isVideo) return;
+      const busy = transcriptBusy.has(node.id);
+      const hasResult = Boolean(node.synopsis || node.has_transcript);
+      cardSynopsis.textContent = node.synopsis || '';
+      cardTranscriptButton.disabled = busy;
+      cardTranscriptButton.textContent = busy ? '⏳ Fetching…' : hasResult ? '↻ Refresh' : '🎬 Get Transcript';
+      cardTranscriptButton.title = hasResult ? 'Fetch the captions and synopsis again' : 'Fetch the captions and write a synopsis with Gemini';
+      cardTranscriptRead.hidden = !node.has_transcript;
+      cardTranscriptStatus.classList.remove('error');
+      cardTranscriptStatus.textContent = busy
+        ? 'This can take up to a minute.'
+        : hasResult && !node.has_transcript ? 'No captions; synopsis written from the video.' : '';
+    }
+
+    const isCardFor = node => Boolean(focus.node && focus.node.id === node.id && nodeCard.style.display === 'block');
+
+    const showTranscriptError = (node, message) => {
+      if (!isCardFor(node)) return;
+      cardTranscriptStatus.textContent = message;
+      cardTranscriptStatus.classList.add('error');
+    };
+
+    // Results land on the node object, so they show again whenever its card reopens.
+    const fetchTranscript = async node => {
+      if (transcriptBusy.has(node.id)) return;
+      const refresh = Boolean(node.synopsis || node.has_transcript);
+      transcriptBusy.add(node.id);
+      renderCardTranscript(node);
+      try {
+        const result = await apiFetch('/api/transcript', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: node.id, refresh })
+        });
+        node.synopsis = result.synopsis || null;
+        node.has_transcript = Boolean(result.transcript);
+        if (result.transcript) transcriptTexts.set(node.id, result.transcript);
+        transcriptBusy.delete(node.id);
+        if (isCardFor(node)) renderCardTranscript(node);
+      } catch (err) {
+        console.error('Transcript failed:', err);
+        transcriptBusy.delete(node.id);
+        if (isCardFor(node)) renderCardTranscript(node);
+        showTranscriptError(node, err.message || 'Could not get the transcript.');
+      }
+    };
+
+    const openTranscript = async node => {
+      let text = transcriptTexts.get(node.id);
+      if (!text) {
+        cardTranscriptRead.disabled = true;
+        try {
+          const result = await apiFetch('/api/transcript?id=' + encodeURIComponent(node.id));
+          text = result.transcript || '';
+          if (text) transcriptTexts.set(node.id, text);
+        } catch (err) {
+          console.error('Transcript load failed:', err);
+          showTranscriptError(node, err.message || 'Could not load the transcript.');
+          return;
+        } finally {
+          cardTranscriptRead.disabled = false;
+        }
+      }
+      if (!text) {
+        showTranscriptError(node, 'No transcript is stored for this video.');
+        return;
+      }
+      // The card may have moved on while the text loaded.
+      if (isCardFor(node)) showReader('Transcript: ' + (node.title || node.name || 'Video'), 'YouTube transcript', text);
+    };
+
+    cardTranscriptButton.addEventListener('click', () => {
+      if (focus.node) fetchTranscript(focus.node);
+    });
+    cardTranscriptRead.addEventListener('click', () => {
+      if (focus.node) openTranscript(focus.node);
+    });
 
     const telegramHelpModal = document.getElementById('telegram-help-modal');
     const telegramHelpButton = document.getElementById('telegram-help-button');
