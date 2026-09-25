@@ -1908,7 +1908,15 @@ export default {
       getNodeCategory(link.source) === getNodeCategory(link.target);
 
     // Each category gets a fixed anchor on a sphere; a weak pull toward it turns categories into separate islands.
+    // The sphere is at least CLUSTER_RADIUS, and larger when needed so neighbouring anchors sit two cluster radii
+    // plus CLUSTER_MARGIN apart (never less than MIN_CLUSTER_GAP), sized for the largest visible category.
     const CLUSTER_RADIUS = 220;
+    const MIN_CLUSTER_GAP = 240;
+    const CLUSTER_MARGIN = 60;
+    const SPHERE_STEP = 40;
+    // Measured outer radius of a settled cluster of n nodes: about 100 at 10 nodes, 180 at 100, 230 at 200.
+    const estimateClusterRadius = count => 60 + 12 * Math.sqrt(count);
+    let clusterGap = MIN_CLUSTER_GAP;
     const CLUSTER_STRENGTH = 0.06;
     const clusterAnchors = new Map();
     const clusterIndexes = new Map();
@@ -1940,18 +1948,43 @@ export default {
       return flatAnchors.get(category);
     };
 
+    // Fibonacci sphere: unit points spread evenly around the origin.
+    const getSpherePoint = (index, total) => {
+      const y = 1 - (2 * (index + 0.5)) / total;
+      const r = Math.sqrt(1 - y * y);
+      const theta = index * Math.PI * (3 - Math.sqrt(5));
+      return { x: Math.cos(theta) * r, y, z: Math.sin(theta) * r };
+    };
+    const closestSpacing = new Map();
+    const getSphereRadius = total => {
+      if (!closestSpacing.has(total)) {
+        const points = Array.from({ length: total }, (_, index) => getSpherePoint(index, total));
+        let closest = 2;
+        points.forEach((a, i) => points.slice(i + 1).forEach(b => {
+          closest = Math.min(closest, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
+        }));
+        closestSpacing.set(total, closest);
+      }
+      // Rounded up in steps so small filter changes don't nudge every cluster.
+      return Math.max(CLUSTER_RADIUS, Math.ceil(clusterGap / closestSpacing.get(total) / SPHERE_STEP) * SPHERE_STEP);
+    };
+    const updateClusterSpacing = nodes => {
+      const counts = new Map();
+      nodes.forEach(node => counts.set(getNodeCategory(node), (counts.get(getNodeCategory(node)) || 0) + 1));
+      const largest = Math.max(0, ...counts.values());
+      clusterGap = Math.max(MIN_CLUSTER_GAP, 2 * estimateClusterRadius(largest) + CLUSTER_MARGIN);
+    };
+
     const getClusterAnchor = category => {
       if (filterState.flat) return getFlatAnchor(category);
       if (!clusterAnchors.has(category)) {
         const index = getClusterIndex(category);
         const total = Math.max(CATEGORY_ORDER.length, index + 1);
-        // Fibonacci sphere spreads anchors evenly around the origin.
-        const y = 1 - (2 * (index + 0.5)) / total;
-        const r = Math.sqrt(1 - y * y);
-        const theta = index * Math.PI * (3 - Math.sqrt(5));
-        clusterAnchors.set(category, { x: Math.cos(theta) * r * CLUSTER_RADIUS, y: y * CLUSTER_RADIUS, z: Math.sin(theta) * r * CLUSTER_RADIUS });
+        clusterAnchors.set(category, { point: getSpherePoint(index, total), total });
       }
-      return clusterAnchors.get(category);
+      const { point, total } = clusterAnchors.get(category);
+      const radius = getSphereRadius(total);
+      return { x: point.x * radius, y: point.y * radius, z: point.z * radius };
     };
 
     const clusterForce = () => {
@@ -2569,6 +2602,91 @@ export default {
       Graph.cameraPosition({ x: center.x, y: center.y, z: center.z + distance }, center, 900);
     };
 
+    // Layout health. Categories settle around anchors spread away from the origin; a layout that never ran leaves
+    // every node in d3's starting spiral at the origin, so the category centres bunch up there. Collapsed means
+    // their average distance from the origin is under COLLAPSE_SHARE of their anchors' average (or a node has no
+    // position), and the nodes are then re-seeded at the anchors.
+    const COLLAPSE_SHARE = 0.35;
+    const SEED_SPREAD = 14;
+    let layoutDirty = false;
+
+    const countByCategory = nodes => {
+      const counts = new Map();
+      nodes.forEach(node => counts.set(getNodeCategory(node), (counts.get(getNodeCategory(node)) || 0) + 1));
+      return counts;
+    };
+
+    const isLayoutCollapsed = nodes => {
+      if (!nodes.length) return false;
+      const sums = new Map();
+      for (const node of nodes) {
+        if (![node.x, node.y, node.z].every(Number.isFinite)) return true;
+        const category = getNodeCategory(node);
+        const sum = sums.get(category) || { x: 0, y: 0, z: 0, n: 0 };
+        sum.x += node.x;
+        sum.y += node.y;
+        sum.z += node.z;
+        sum.n += 1;
+        sums.set(category, sum);
+      }
+      let centreDistance = 0;
+      let anchorDistance = 0;
+      sums.forEach((sum, category) => {
+        const anchor = getClusterAnchor(category);
+        centreDistance += Math.hypot(sum.x / sum.n, sum.y / sum.n, sum.z / sum.n);
+        anchorDistance += Math.hypot(anchor.x, anchor.y, anchor.z);
+      });
+      return centreDistance < anchorDistance * COLLAPSE_SHARE;
+    };
+
+    // Each node starts in a small cloud around its category anchor, so the graph is spread out from the first frame.
+    const seedLayout = nodes => {
+      const counts = countByCategory(nodes);
+      nodes.forEach(node => {
+        const category = getNodeCategory(node);
+        const anchor = getClusterAnchor(category);
+        const spread = SEED_SPREAD * Math.sqrt(counts.get(category));
+        const jitter = () => (Math.random() - 0.5) * 2 * spread;
+        node.x = anchor.x + jitter();
+        node.y = anchor.y + jitter();
+        node.z = filterState.flat ? 0 : anchor.z + jitter();
+        node.vx = 0;
+        node.vy = 0;
+        node.vz = 0;
+      });
+    };
+
+    // Camera fits after a mode change: once right away, and again when the layout has mostly settled, unless the
+    // user has started moving the camera in between.
+    const FIT_SETTLE_MS = 1600;
+    let fitTimer = null;
+    const cancelPendingFit = () => {
+      clearTimeout(fitTimer);
+      fitTimer = null;
+    };
+    const scheduleFit = (delay = FIT_SETTLE_MS) => {
+      cancelPendingFit();
+      fitTimer = setTimeout(() => {
+        fitTimer = null;
+        if (filterState.view === 'graph' && !focus.node) resetCameraView();
+      }, delay);
+    };
+    const graphElement = document.getElementById('3d-graph');
+    graphElement.addEventListener('pointerdown', cancelPendingFit, { passive: true });
+    graphElement.addEventListener('wheel', cancelPendingFit, { passive: true });
+
+    // Called whenever the graph comes back on screen: restarts a layout that stalled while hidden and frames it.
+    const wakeLayout = () => {
+      const nodes = Graph.graphData().nodes;
+      const collapsed = isLayoutCollapsed(nodes);
+      if (collapsed) seedLayout(nodes);
+      if (collapsed || layoutDirty) Graph.d3ReheatSimulation();
+      layoutDirty = false;
+      if (focus.node) return;
+      resetCameraView();
+      scheduleFit();
+    };
+
     // Double-click / double-tap on empty canvas resets the view: two background clicks close together in time
     // and space. Node clicks go to onNodeClick and edge clicks never reach here; a label click opens its cluster.
     const DOUBLE_TAP_MS = 350;
@@ -2862,7 +2980,9 @@ export default {
       .catch(err => console.error('three.js failed to load; keeping default node spheres', err));
 
     // Short, stiff links inside a category and long, loose ones across categories keep islands apart.
-    Graph.d3Force('charge').strength(-40).distanceMax(260);
+    // Repulsion is strong for small graphs (-120) and eases off for big ones so a thousand nodes don't explode.
+    const getChargeStrength = count => -Math.max(40, Math.min(120, 1200 / Math.sqrt(Math.max(count, 1))));
+    Graph.d3Force('charge').strength(getChargeStrength(0)).distanceMax(260);
     Graph.d3Force('link')
       .distance(link => isSameCategoryLink(link) ? 22 : 110)
       .strength(link => isSameCategoryLink(link) ? 0.5 : 0.03);
@@ -2971,7 +3091,12 @@ export default {
       const shownLinks = filterState.hideOrphans ? filteredLinks.filter(link => visibleIds.has(linkEndId(link.source))) : filteredLinks;
 
       if (hover.id && !visibleIds.has(hover.id)) setHover(null);
+      Graph.d3Force('charge').strength(getChargeStrength(filteredNodes.length));
+      updateClusterSpacing(filteredNodes);
       Graph.graphData({ nodes: filteredNodes, links: shownLinks });
+      // The engine's 15 s cooldown runs even while the canvas is hidden, so a layout started behind
+      // List/Timeline/Board can stop before it ever ran; returning to the graph restarts it.
+      if (filterState.view !== 'graph') layoutDirty = true;
       // A focused node that got filtered out drops the focus along with its card.
       if (focus.node && !visibleIds.has(focus.node.id)) hideNodeCard();
       else if (focus.node) {
@@ -3002,6 +3127,8 @@ export default {
       graphLoaded = true;
       pinToPlane(graphData.nodes);
       applyGraphFilters();
+      // First load in graph view: the layout grows out from the origin, so frame it once it has spread.
+      if (filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
     };
 
     // fz is honored by the d3 simulation; null releases the node back into 3D.
@@ -3013,6 +3140,8 @@ export default {
           node.vz = 0;
         } else {
           node.fz = null;
+          // Leaving the flat canvas every z is 0; a small nudge lets repulsion work in depth again.
+          if (node.z === 0) node.z = (Math.random() - 0.5) * 10;
         }
       });
     };
@@ -3032,13 +3161,12 @@ export default {
       // In 2D, left-drag pans instead of rotating (THREE.MOUSE: 0 = rotate, 2 = pan).
       if (controls.mouseButtons) controls.mouseButtons.LEFT = filterState.flat ? 2 : 0;
 
-      if (filterState.flat) {
-        // Undo any roll left over from 3D rotation so the canvas sits square on screen.
-        Graph.camera().up.set(0, 1, 0);
-        Graph.cameraPosition({ x: 0, y: 0, z: 600 }, { x: 0, y: 0, z: 0 }, 800);
-      }
       pauseAutoRotate();
       Graph.d3ReheatSimulation();
+      // resetCameraView squares the camera up (no roll left over from 3D) and fits what is there now;
+      // the second fit frames the layout after it has moved onto the plane or back into depth.
+      resetCameraView();
+      scheduleFit();
     });
 
     const typeFilter = document.getElementById('type-filter');
@@ -3959,8 +4087,10 @@ export default {
       renderActiveView();
       if (view === 'graph') {
         if (focus.node) setFocus(focus.node);
+        wakeLayout();
         scheduleResume();
       } else {
+        cancelPendingFit();
         collectionView.scrollTop = 0;
         syncDrawerSelection();
       }
