@@ -5,6 +5,8 @@ const METADATA_FETCH_TIMEOUT_MS = 4000;
 const METADATA_MAX_HTML_BYTES = 256 * 1024;
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 300;
+const MAX_SITE_NAME_LENGTH = 100;
+const MAX_URL_LENGTH = 2000;
 
 // Titles that only name the site: what bot-blocked / login-walled pages return. Treated as "no title".
 const GENERIC_SITE_TITLES = new Set(["reddit", "facebook", "instagram", "x", "twitter", "tiktok", "youtube", "linkedin"]);
@@ -22,7 +24,7 @@ export function isYouTubeUrl(url) {
   }
 }
 
-// Returns { title, description } (description may be null), or null if nothing usable was found.
+// Returns { title, description, image, siteName, sourceUrl } (all but title may be null), or null if nothing usable was found.
 export async function fetchLinkMetadata(url) {
   let parsed;
   try {
@@ -49,7 +51,13 @@ async function fetchYouTubeMetadata(url) {
   const title = cleanTitle(data?.title);
   if (!title) return null;
   const author = cleanText(data?.author_name, MAX_TITLE_LENGTH);
-  return { title, description: author ? "YouTube video by " + author : null };
+  return {
+    title,
+    description: author ? "YouTube video by " + author : null,
+    image: resolveHttpUrl(data?.thumbnail_url, url),
+    siteName: "YouTube",
+    sourceUrl: url
+  };
 }
 
 async function fetchOpenGraphMetadata(url) {
@@ -66,7 +74,7 @@ async function fetchOpenGraphMetadata(url) {
     return null;
   }
 
-  return parseHtmlMetadata(await readTextPrefix(response, METADATA_MAX_HTML_BYTES));
+  return parseHtmlMetadata(await readTextPrefix(response, METADATA_MAX_HTML_BYTES), response.url || url);
 }
 
 async function readTextPrefix(response, maxBytes) {
@@ -85,8 +93,9 @@ async function readTextPrefix(response, maxBytes) {
   return text;
 }
 
-// Returns { title, description } or null. Prefers OpenGraph, then Twitter cards, then <title>/meta description.
-export function parseHtmlMetadata(html) {
+// Returns { title, description, image, siteName, sourceUrl } or null. Prefers OpenGraph, then Twitter cards,
+// then <title>/meta description. Relative image/canonical URLs resolve against pageUrl; non-http(s) ones are dropped.
+export function parseHtmlMetadata(html, pageUrl = null) {
   const meta = {};
   for (const [tag] of String(html || "").matchAll(/<meta\b[^>]*>/gi)) {
     const attrs = parseAttributes(tag);
@@ -98,7 +107,26 @@ export function parseHtmlMetadata(html) {
   const title = cleanTitle(meta["og:title"] || meta["twitter:title"] || titleTag);
   if (!title) return null;
   const description = cleanText(meta["og:description"] || meta["twitter:description"] || meta["description"], MAX_DESCRIPTION_LENGTH);
-  return { title, description: description || null };
+  return {
+    title,
+    description: description || null,
+    image: resolveHttpUrl(meta["og:image:secure_url"] || meta["og:image"] || meta["og:image:url"] || meta["twitter:image"] || meta["twitter:image:src"], pageUrl),
+    siteName: cleanText(meta["og:site_name"], MAX_SITE_NAME_LENGTH) || null,
+    sourceUrl: resolveHttpUrl(meta["og:url"], pageUrl) || resolveHttpUrl(pageUrl, null)
+  };
+}
+
+// Absolute http(s) URL or null; anything else (javascript:, data:, garbage) never reaches the card.
+function resolveHttpUrl(value, base) {
+  const text = decodeHtmlEntities(String(value || "")).trim();
+  if (!text) return null;
+  try {
+    const resolved = base ? new URL(text, base) : new URL(text);
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") return null;
+    return resolved.href.length <= MAX_URL_LENGTH ? resolved.href : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseAttributes(tag) {

@@ -30,6 +30,14 @@ const NODE_CONTENT_MAX = 5000;
 // Ask history saved on the focused node: newest entries kept, answers trimmed so the graph payload stays small.
 const RESEARCH_MAX_ENTRIES = 10;
 const RESEARCH_ANSWER_MAX = 4000;
+// Daily cron mines at most this many users' backlogs (one Gemini call each).
+const MINER_USERS_PER_RUN = 3;
+// Session cookie auth: stateless HMAC-signed token; PBKDF2 at the Workers iteration cap.
+const SESSION_COOKIE = "aether_session";
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+const PBKDF2_ITERATIONS = 100000;
+const PASSWORD_MIN_LENGTH = 10;
+const USERNAME_PATTERN = /^[a-z0-9_.-]{3,32}$/i;
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
@@ -42,12 +50,19 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Endpoint 1: API returning JSON graph data
+    // Endpoint 0: Session auth (HttpOnly cookie) and admin-managed accounts
+    if (url.pathname.startsWith("/api/auth/")) {
+      return handleAuthRoute(request, env, url);
+    }
+
+    // Endpoint 1: API returning the signed-in user's JSON graph data
     if (url.pathname === "/api/graph" && request.method === "GET") {
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research FROM saved_nodes"
-        ).all();
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url FROM saved_nodes WHERE user_id = ?"
+        ).bind(auth.user.id).all();
 
         const nodes = (results || []).map(node => {
           const rawUrl = String(node.url || "");
@@ -63,12 +78,15 @@ export default {
             url: rawUrl,
             type: category,
             created_at: toIsoTimestamp(node.created_at),
-            research: parseResearch(node.research)
+            research: parseResearch(node.research),
+            image_url: node.image_url || null,
+            site_name: node.site_name || null,
+            source_url: node.source_url || null
           };
         });
 
         const links = buildGraphLinks(nodes);
-        mergeMinedEdges(links, nodes, await loadMinedEdges(env));
+        mergeMinedEdges(links, nodes, await loadMinedEdges(env, auth.user.id));
         return jsonResponse({ nodes, links });
       } catch (e) {
         console.error("D1 Graph Fetch Error:", e);
@@ -92,7 +110,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, title, url, category, created_at FROM saved_nodes WHERE ai_processed_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, user_id, title, url, category, created_at FROM saved_nodes WHERE ai_processed_at IS NULL AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, RECLUSTER_BATCH_SIZE).all();
 
         const nodes = results || [];
@@ -136,7 +154,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR description IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR description IS NULL OR source_url IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, METADATA_BACKFILL_BATCH_SIZE).all();
 
         const nodes = results || [];
@@ -145,9 +163,10 @@ export default {
         nodes.forEach((node, i) => {
           const metadata = fetched[i];
           if (!metadata) return;
+          // Rows picked only for a missing preview keep their (possibly AI-assigned) title and description.
           updates.push(env.DB.prepare(
-            "UPDATE saved_nodes SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-          ).bind(metadata.title, metadata.description, node.id));
+            "UPDATE saved_nodes SET title = CASE WHEN title = url THEN ? ELSE title END, description = COALESCE(description, ?), image_url = ?, site_name = ?, source_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          ).bind(metadata.title, metadata.description, metadata.image, metadata.siteName, metadata.sourceUrl, node.id));
         });
         if (updates.length) await env.DB.batch(updates);
 
@@ -168,9 +187,9 @@ export default {
       if (request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
       }
-      if (!isAuthorizedAdmin(request, env)) {
-        return jsonResponse({ error: "Unauthorized" }, 401);
-      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
 
       const body = await request.json().catch(() => null);
       const title = String(body?.title || "").trim();
@@ -184,24 +203,32 @@ export default {
 
       try {
         if (linkTargetId) {
-          const target = await env.DB.prepare("SELECT id FROM saved_nodes WHERE id = ?").bind(linkTargetId).first();
+          const target = await env.DB.prepare("SELECT id FROM saved_nodes WHERE id = ? AND user_id = ?").bind(linkTargetId, userId).first();
           if (!target) return jsonResponse({ error: "Link target not found." }, 404);
         }
 
         const id = "node_" + crypto.randomUUID();
-        const description = content || null;
+        // Content that is only a URL makes a link node, with its Open Graph preview fetched now.
+        const linkUrl = /^https?:\/\/\S+$/i.test(content) ? content : "";
+        const metadata = linkUrl ? await fetchLinkMetadata(linkUrl) : null;
+        const description = linkUrl ? (metadata?.description || null) : (content || null);
+        const preview = {
+          image_url: metadata?.image || null,
+          site_name: metadata?.siteName || null,
+          source_url: metadata?.sourceUrl || null
+        };
         // Marked as AI-processed so the daily cron keeps the category chosen by hand.
         const statements = [
           env.DB.prepare(
-            "INSERT INTO saved_nodes (id, url, title, description, category, ai_processed_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
-          ).bind(id, "", title, description, category)
+            "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, ai_processed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+          ).bind(id, userId, linkUrl, title, description, category, preview.image_url, preview.site_name, preview.source_url)
         ];
         if (linkTargetId) {
           // node_edges is undirected and stored with source_id < target_id.
           const [sourceId, targetId] = id < linkTargetId ? [id, linkTargetId] : [linkTargetId, id];
           statements.push(env.DB.prepare(
-            "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation) VALUES (?, ?, ?)"
-          ).bind(sourceId, targetId, "manual"));
+            "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, user_id) VALUES (?, ?, ?, ?)"
+          ).bind(sourceId, targetId, "manual", userId));
         }
         await env.DB.batch(statements);
 
@@ -212,10 +239,11 @@ export default {
           group: category,
           category,
           description,
-          url: "",
+          url: linkUrl,
           type: category,
           created_at: new Date().toISOString(),
-          research: []
+          research: [],
+          ...preview
         };
         const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual" } : null;
         return jsonResponse({ success: true, node, link });
@@ -230,9 +258,9 @@ export default {
       if (request.method !== "DELETE") {
         return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "DELETE" });
       }
-      if (!isAuthorizedAdmin(request, env)) {
-        return jsonResponse({ error: "Unauthorized" }, 401);
-      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
       let id = "";
       try {
         id = decodeURIComponent(url.pathname.slice("/api/node/".length)).trim();
@@ -243,8 +271,8 @@ export default {
 
       try {
         const [, nodeResult] = await env.DB.batch([
-          env.DB.prepare("DELETE FROM node_edges WHERE source_id = ? OR target_id = ?").bind(id, id),
-          env.DB.prepare("DELETE FROM saved_nodes WHERE id = ?").bind(id)
+          env.DB.prepare("DELETE FROM node_edges WHERE user_id = ? AND (source_id = ? OR target_id = ?)").bind(userId, id, id),
+          env.DB.prepare("DELETE FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, userId)
         ]);
         if (!nodeResult?.meta?.changes) return jsonResponse({ error: "Node not found." }, 404);
         return jsonResponse({ deleted: id });
@@ -259,9 +287,9 @@ export default {
       if (request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
       }
-      if (!isAuthorizedAdmin(request, env)) {
-        return jsonResponse({ error: "Unauthorized" }, 401);
-      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
       if (!env.GEMINI_API_KEY) {
         return jsonResponse({ error: "Gemini API key is missing." }, 500);
       }
@@ -281,8 +309,8 @@ export default {
       try {
         // Context comes from D1, not the client, so the prompt only ever contains stored nodes.
         const { results } = await env.DB.prepare(
-          `SELECT id, title, description, category, url FROM saved_nodes WHERE id IN (${nodeIds.map(() => "?").join(", ")})`
-        ).bind(...nodeIds).all();
+          `SELECT id, title, description, category, url FROM saved_nodes WHERE user_id = ? AND id IN (${nodeIds.map(() => "?").join(", ")})`
+        ).bind(userId, ...nodeIds).all();
         if (!results?.length) return jsonResponse({ error: "None of those nodes exist." }, 404);
 
         let reply;
@@ -299,7 +327,7 @@ export default {
         let research = null;
         if (focusId && results.some(row => row.id === focusId)) {
           try {
-            research = await appendResearch(env, focusId, { question, answer, sources: reply.sources });
+            research = await appendResearch(env, userId, focusId, { question, answer, sources: reply.sources });
           } catch (err) {
             console.warn("Ask research save failed:", err.message);
           }
@@ -328,6 +356,12 @@ export default {
         if (!chatId) return new Response("OK");
 
         const token = env.TELEGRAM_TOKEN;
+        const owner = await env.DB.prepare("SELECT id FROM users WHERE telegram_chat_id = ?").bind(String(chatId)).first();
+        if (!owner) {
+          await sendTelegram(token, chatId, `This chat isn't linked to an Aether account (chat id: ${chatId}).`);
+          return new Response("OK");
+        }
+        const userId = owner.id;
         if (!text) {
           await sendTelegram(token, chatId, "Only text messages and links can be saved right now.");
           return new Response("OK");
@@ -338,19 +372,21 @@ export default {
         let description = null;
 
         let category = "note";
+        let preview = { image: null, siteName: null, sourceUrl: null };
         if (text.startsWith("http://") || text.startsWith("https://")) {
           category = inferNodeCategory(text, "link");
           const metadata = await fetchLinkMetadata(text.split(/\s+/)[0]);
           if (metadata) {
             extractedTitle = metadata.title;
             description = metadata.description;
+            preview = metadata;
           }
         } else if (text.length > 100) {
           category = "article";
         }
 
         if (isGenericPlaceholder(text)) {
-          const contextualLink = await findRecentLinkContext(env, null, id);
+          const contextualLink = await findRecentLinkContext(env, userId, null, id);
           if (contextualLink) {
             const mergedText = [text, contextualLink.title, contextualLink.url].filter(Boolean).join(" | ");
             const analysis = env.GEMINI_API_KEY ? await analyzeWithGemini(env.GEMINI_API_KEY, mergedText, category) : null;
@@ -366,8 +402,8 @@ export default {
         }
 
         await env.DB.prepare(
-          "INSERT INTO saved_nodes (id, url, title, description, category) VALUES (?, ?, ?, ?, ?)"
-        ).bind(id, text, extractedTitle, description, category).run();
+          "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ).bind(id, userId, text, extractedTitle, description, category, preview.image, preview.siteName, preview.sourceUrl).run();
 
         await sendTelegram(
           token,
@@ -669,6 +705,84 @@ export default {
     .research-entry summary { color: #fff; font-weight: 600; font-size: 12px; }
     .research-entry .research-date { color: #8a93a6; font-size: 10px; margin-left: 6px; font-weight: 400; }
     .research-entry .research-body { margin-top: 6px; color: #dffdf7; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .research-entry .spawn-button { display: inline-block; margin-top: 8px; }
+    #node-card .card-preview {
+      display: none;
+      margin: 0 0 10px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.03);
+    }
+    #node-card .card-preview img { display: block; width: 100%; max-height: 180px; object-fit: cover; background: rgba(0,0,0,0.3); }
+    #node-card .card-preview img[hidden] { display: none; }
+    #node-card .card-preview-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+    #node-card .card-site { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; color: #dffdf7; overflow-wrap: anywhere; }
+    #node-card .card-preview-bar a { flex: none; }
+    #node-card .card-description { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; }
+    .reader-button {
+      display: none;
+      margin: -4px 0 12px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,255,204,0.55);
+      background: rgba(0,255,204,0.12);
+      color: #00ffcc;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .reader-panel {
+      position: relative;
+      width: min(760px, 94vw);
+      max-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 20px 22px;
+      border-radius: 14px;
+      background: rgba(8, 12, 20, 0.8);
+      border: 1px solid rgba(0, 255, 204, 0.3);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.6);
+      color: #dffdf7;
+      box-sizing: border-box;
+    }
+    .reader-panel h3 { margin: 0; padding-right: 32px; color: #00ffcc; font-size: 17px; line-height: 1.3; }
+    .reader-panel .reader-meta { margin: 0; font-size: 11px; color: #8a93a6; letter-spacing: 0.04em; }
+    .reader-panel .card-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      background: none;
+      border: none;
+      color: #8a93a6;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .reader-panel .card-close:hover { color: #00ffcc; }
+    .reader-body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 6px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .reader-panel a {
+      align-self: flex-start;
+      background: #00ffcc;
+      color: #0b0f19;
+      padding: 8px 14px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      font-size: 12px;
+    }
     #cluster-drawer {
       position: absolute;
       top: 62px;
@@ -864,7 +978,7 @@ export default {
     <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
     <div class="settings-menu" id="settings-menu">
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
-      <button class="settings-option" id="backfill-button">🔗 Fetch Titles for Old Links</button>
+      <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
     </div>
   </div>
@@ -874,10 +988,17 @@ export default {
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
     <button id="card-delete" class="card-delete" title="Delete node" aria-label="Delete node"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
     <span id="card-tag" class="card-tag">NOTE</span>
+    <div id="card-preview" class="card-preview">
+      <img id="card-preview-image" alt="" loading="lazy" referrerpolicy="no-referrer" hidden>
+      <div class="card-preview-bar">
+        <span id="card-site" class="card-site"></span>
+        <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open Original Source</a>
+      </div>
+    </div>
     <h3 id="card-title">Node Details</h3>
-    <p id="card-description"></p>
+    <p id="card-description" class="card-description"></p>
+    <button type="button" id="card-reader-button" class="reader-button">⤢ Expand Full Reader</button>
     <p id="card-meta" class="card-meta"></p>
-    <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">Open Link ↗</a>
     <div class="ask-box">
       <div class="ask-row">
         <textarea id="card-ask-input" rows="1" maxlength="1000" placeholder="Ask Elarion about this node"></textarea>
@@ -908,6 +1029,16 @@ export default {
       <div id="drawer-ask-answer" class="ask-answer"></div>
     </div>
   </aside>
+
+  <div id="reader-modal" class="modal-backdrop" hidden>
+    <article class="reader-panel" role="dialog" aria-modal="true" aria-labelledby="reader-title">
+      <button type="button" id="reader-close" class="card-close" title="Close" aria-label="Close">×</button>
+      <h3 id="reader-title"></h3>
+      <p id="reader-meta" class="reader-meta"></p>
+      <div id="reader-body" class="reader-body"></div>
+      <a id="reader-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open Original Source</a>
+    </article>
+  </div>
 
   <div id="add-node-modal" class="modal-backdrop" hidden>
     <form id="add-node-form" class="modal-panel" autocomplete="off">
@@ -1243,6 +1374,16 @@ export default {
     const cardDescription = document.getElementById('card-description');
     const cardMeta = document.getElementById('card-meta');
     const cardLink = document.getElementById('card-link');
+    const cardPreview = document.getElementById('card-preview');
+    const cardPreviewImage = document.getElementById('card-preview-image');
+    const cardSite = document.getElementById('card-site');
+    const cardReaderButton = document.getElementById('card-reader-button');
+    const readerModal = document.getElementById('reader-modal');
+    const readerTitle = document.getElementById('reader-title');
+    const readerMeta = document.getElementById('reader-meta');
+    const readerBody = document.getElementById('reader-body');
+    const readerLink = document.getElementById('reader-link');
+    const readerClose = document.getElementById('reader-close');
     const cardDelete = document.getElementById('card-delete');
     const cardAskInput = document.getElementById('card-ask-input');
     const cardAskButton = document.getElementById('card-ask-button');
@@ -1297,48 +1438,80 @@ export default {
         const body = document.createElement('div');
         body.className = 'research-body';
         body.textContent = formatAnswer(String(entry.answer), entry.sources);
-        item.append(summary, body);
+        const spawn = document.createElement('button');
+        spawn.type = 'button';
+        spawn.className = 'spawn-button';
+        spawn.textContent = '+ Create Node from Answer';
+        spawn.addEventListener('click', () => spawnFromAnswer(node, {
+          question: String(entry.question),
+          answer: String(entry.answer),
+          sources: entry.sources
+        }));
+        item.append(summary, body, spawn);
         return item;
       }));
       cardResearch.style.display = entries.length ? 'block' : 'none';
     };
 
-    const PREVIEW_LENGTH = 220;
+    // Longer texts (or many lines) also get the Expand Full Reader button.
+    const READER_MIN_LENGTH = 280;
+    const READER_MIN_LINES = 6;
+    // Client-side mirror of the server's RESEARCH_MAX_ENTRIES.
+    const RESEARCH_MAX_ENTRIES = 10;
     const truncate = (text, max) => text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 
     const getHostname = url => {
       try { return new URL(url).hostname.replace(/^www[.]/, ''); } catch (err) { return ''; }
     };
 
-    // Links show their fetched description; notes store their full text in url, so preview that instead.
-    const getPreviewText = (node, isLink) => {
-      if (node.description) return truncate(String(node.description), PREVIEW_LENGTH);
-      if (!isLink && node.url && node.url !== node.title) return truncate(String(node.url), PREVIEW_LENGTH);
+    const isHttpUrl = value => typeof value === 'string' && /^https?:/i.test(value);
+
+    // Links show their fetched description; notes store their full text in url, so show that instead. Never clipped.
+    const getFullText = (node, isLink) => {
+      if (node.description) return String(node.description);
+      if (!isLink && node.url && node.url !== node.title) return String(node.url);
       return '';
     };
+
+    // Link cards get a header with the Open Graph cover image, site name and a button to the saved URL.
+    const renderCardPreview = (node, isLink) => {
+      if (!isLink) {
+        cardPreview.style.display = 'none';
+        cardPreviewImage.hidden = true;
+        cardPreviewImage.removeAttribute('src');
+        cardLink.removeAttribute('href');
+        return;
+      }
+      cardLink.href = node.url;
+      cardSite.textContent = node.site_name || getHostname(node.source_url || node.url);
+      if (isHttpUrl(node.image_url)) {
+        cardPreviewImage.src = node.image_url;
+        cardPreviewImage.hidden = false;
+      } else {
+        cardPreviewImage.hidden = true;
+        cardPreviewImage.removeAttribute('src');
+      }
+      cardPreview.style.display = 'block';
+    };
+    // Hotlink-blocked or dead cover images collapse instead of showing a broken icon.
+    cardPreviewImage.addEventListener('error', () => { cardPreviewImage.hidden = true; });
 
     const showNodeCard = node => {
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       cardTitle.textContent = node.title || node.name || 'Saved Entry';
       cardTag.textContent = getNodeCategory(node).replace(/_/g, ' ').toUpperCase();
 
-      const preview = getPreviewText(node, isLink);
-      cardDescription.textContent = preview;
-      cardDescription.style.display = preview ? 'block' : 'none';
+      renderCardPreview(node, isLink);
+
+      const fullText = getFullText(node, isLink);
+      cardDescription.textContent = fullText;
+      cardDescription.style.display = fullText ? 'block' : 'none';
+      cardDescription.scrollTop = 0;
+      const isLong = fullText.length > READER_MIN_LENGTH || fullText.split(NEWLINE).length > READER_MIN_LINES;
+      cardReaderButton.style.display = isLong ? 'inline-block' : 'none';
 
       const created = node.created_at ? new Date(node.created_at) : null;
-      const meta = [];
-      if (isLink) meta.push(getHostname(node.url));
-      if (created && !Number.isNaN(created.getTime())) meta.push(created.toLocaleString());
-      cardMeta.textContent = meta.filter(Boolean).join(' · ');
-
-      if (isLink) {
-        cardLink.href = node.url;
-        cardLink.style.display = 'inline-block';
-      } else {
-        cardLink.removeAttribute('href');
-        cardLink.style.display = 'none';
-      }
+      cardMeta.textContent = created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : '';
       cardAskInput.value = '';
       setAskAnswer(cardAskAnswer, '');
       lastCardAnswer = null;
@@ -1491,7 +1664,7 @@ export default {
       const title = document.createElement('strong');
       title.textContent = node.title || node.name || 'Saved Entry';
       const detail = document.createElement('span');
-      detail.textContent = [isLink ? getHostname(node.url) : '', truncate(getPreviewText(node, isLink), 110)].filter(Boolean).join(' · ');
+      detail.textContent = [isLink ? getHostname(node.url) : '', truncate(getFullText(node, isLink), 110)].filter(Boolean).join(' · ');
       card.append(title, detail);
       if (isLink) {
         const open = document.createElement('a');
@@ -2005,21 +2178,35 @@ export default {
         focusId: node.id,
         nodeIds: [node.id, ...[...focus.nodeIds].filter(id => id !== node.id)]
       });
-      // Ignore replies that land after the user moved to another node.
-      if (!reply || focus.node !== node) return;
-      if (Array.isArray(reply.research)) {
-        node.research = reply.research;
-        const stored = graphData.nodes.find(item => item.id === node.id);
-        if (stored) stored.research = reply.research;
-        renderResearch(node);
-      }
-      lastCardAnswer = { node, question: reply.question, answer: reply.answer, sources: reply.sources };
+      if (!reply) return;
+      // Saved history from the server; if saving failed, keep the answer in memory for this session.
+      const research = Array.isArray(reply.research) ? reply.research : [
+        ...(Array.isArray(node.research) ? node.research : []),
+        { question: reply.question, answer: reply.answer, sources: reply.sources || [], asked_at: new Date().toISOString() }
+      ].slice(-RESEARCH_MAX_ENTRIES);
+      syncNodeResearch(node, research);
+      // Only redraw the card if it still shows this node; the history is stored either way.
+      if (!focus.node || focus.node.id !== node.id) return;
+      renderResearch(focus.node);
+      lastCardAnswer = { node: focus.node, question: reply.question, answer: reply.answer, sources: reply.sources };
       cardSpawnButton.style.display = 'inline-block';
     });
 
+    // Reopening a card re-renders from these objects, so every in-memory copy of the node gets the history.
+    const syncNodeResearch = (node, research) => {
+      node.research = research;
+      [graphData.nodes, Graph.graphData().nodes].forEach(list => list.forEach(item => {
+        if (item.id === node.id) item.research = research;
+      }));
+    };
+
     cardSpawnButton.addEventListener('click', () => {
       if (!lastCardAnswer) return;
-      const { node, question, answer, sources } = lastCardAnswer;
+      const { node, ...entry } = lastCardAnswer;
+      spawnFromAnswer(node, entry);
+    });
+
+    function spawnFromAnswer(node, { question, answer, sources }) {
       const category = getNodeCategory(node);
       openAddNodeModal({
         title: truncate('Research: ' + question.split(NEWLINE).join(' '), 80),
@@ -2027,6 +2214,30 @@ export default {
         content: truncate(formatAnswer(answer, sources), 5000),
         linkTargetId: node.id
       });
+    }
+
+    const openReader = () => {
+      const site = cardPreview.style.display === 'none' ? '' : cardSite.textContent;
+      readerTitle.textContent = cardTitle.textContent;
+      readerMeta.textContent = [cardTag.textContent, site, cardMeta.textContent].filter(Boolean).join(' · ');
+      readerBody.textContent = cardDescription.textContent;
+      if (cardLink.getAttribute('href')) {
+        readerLink.href = cardLink.href;
+        readerLink.style.display = 'inline-block';
+      } else {
+        readerLink.removeAttribute('href');
+        readerLink.style.display = 'none';
+      }
+      readerModal.hidden = false;
+      readerBody.scrollTop = 0;
+      readerClose.focus();
+    };
+    const closeReader = () => { readerModal.hidden = true; };
+    cardReaderButton.addEventListener('click', openReader);
+    readerClose.addEventListener('click', closeReader);
+    readerModal.addEventListener('click', event => { if (event.target === readerModal) closeReader(); });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !readerModal.hidden) closeReader();
     });
     bindAskShortcut(cardAskInput, cardAskButton);
 
@@ -2260,6 +2471,179 @@ function isAuthorizedAdmin(request, env) {
   return timingSafeStringEqual(provided, adminToken);
 }
 
+// Checked against when the username is unknown so login timing doesn't reveal which accounts exist.
+const DUMMY_PASSWORD_HASH = `pbkdf2$${PBKDF2_ITERATIONS}$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`;
+
+async function handleAuthRoute(request, env, url) {
+  const route = url.pathname.slice("/api/auth/".length);
+  const allowed = { login: "POST", logout: "POST", me: "GET", users: "POST" }[route];
+  if (!allowed) return jsonResponse({ error: "Not found" }, 404);
+  if (request.method !== allowed) {
+    return jsonResponse({ error: "Method not allowed" }, 405, { Allow: allowed });
+  }
+
+  if (route === "logout") {
+    return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookie() });
+  }
+
+  if (route === "me") {
+    const session = await getSessionUser(request, env);
+    const user = session
+      ? await env.DB.prepare("SELECT id, username FROM users WHERE id = ?").bind(session.id).first()
+      : null;
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
+    return jsonResponse({ user: { id: user.id, username: user.username } });
+  }
+
+  if (route === "login") {
+    if (!env.SESSION_SECRET) {
+      console.error("SESSION_SECRET is not configured; rejecting login.");
+      return jsonResponse({ error: "Sign-in is not configured." }, 500);
+    }
+    if (!isSameOrigin(request, url)) return jsonResponse({ error: "Forbidden" }, 403);
+    const body = await request.json().catch(() => null);
+    const username = String(body?.username || "").trim();
+    const password = String(body?.password || "");
+    const user = username
+      ? await env.DB.prepare("SELECT id, username, password_hash FROM users WHERE username = ?").bind(username).first()
+      : null;
+    const passwordOk = await verifyPassword(password, user?.password_hash || DUMMY_PASSWORD_HASH);
+    if (!user?.password_hash || !passwordOk) {
+      return jsonResponse({ error: "Invalid username or password." }, 401);
+    }
+    const token = await signSession(user.id, env.SESSION_SECRET);
+    return jsonResponse({ user: { id: user.id, username: user.username } }, 200, { "Set-Cookie": sessionCookie(token) });
+  }
+
+  // route === "users": admin creates an account, or updates the password / Telegram link of an existing one.
+  if (!isAuthorizedAdmin(request, env)) return jsonResponse({ error: "Unauthorized" }, 401);
+  const body = await request.json().catch(() => null);
+  const username = String(body?.username || "").trim();
+  if (!USERNAME_PATTERN.test(username)) {
+    return jsonResponse({ error: "Username must be 3-32 letters, digits, dots, dashes or underscores." }, 400);
+  }
+  const password = body?.password === undefined ? null : String(body.password);
+  if (password !== null && (password.length < PASSWORD_MIN_LENGTH || password.length > 200)) {
+    return jsonResponse({ error: `Password must be ${PASSWORD_MIN_LENGTH}-200 characters.` }, 400);
+  }
+  // undefined keeps the current link; null or "" unlinks the chat.
+  const chatInput = body?.telegramChatId;
+  const chatId = chatInput === undefined || chatInput === null ? chatInput : String(chatInput).trim();
+  if (chatId && !/^-?[0-9]{1,20}$/.test(chatId)) return jsonResponse({ error: "Telegram chat id must be numeric." }, 400);
+
+  try {
+    const passwordHash = password === null ? null : await hashPassword(password);
+    const existing = await env.DB.prepare("SELECT id, username, password_hash, telegram_chat_id FROM users WHERE username = ?").bind(username).first();
+    const nextChatId = chatId === undefined ? (existing?.telegram_chat_id ?? null) : (chatId || null);
+    if (existing) {
+      await env.DB.prepare("UPDATE users SET password_hash = ?, telegram_chat_id = ? WHERE id = ?")
+        .bind(passwordHash || existing.password_hash, nextChatId, existing.id).run();
+      return jsonResponse({ created: false, user: { id: existing.id, username: existing.username, telegramChatId: nextChatId } });
+    }
+    const id = "user_" + crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO users (id, username, password_hash, telegram_chat_id) VALUES (?, ?, ?, ?)")
+      .bind(id, username, passwordHash, nextChatId).run();
+    return jsonResponse({ created: true, user: { id, username, telegramChatId: nextChatId } }, 201);
+  } catch (err) {
+    if (String(err.message).includes("UNIQUE")) {
+      return jsonResponse({ error: "That Telegram chat is already linked to another account." }, 409);
+    }
+    console.error("User Upsert Error:", err);
+    return jsonResponse({ error: "Saving the user failed." }, 500);
+  }
+}
+
+// Data routes: a valid session cookie, plus a same-origin check on writes (on top of SameSite=Lax).
+async function authenticateUser(request, env, url) {
+  const user = await getSessionUser(request, env);
+  if (!user) return { error: jsonResponse({ error: "Unauthorized" }, 401) };
+  if (request.method !== "GET" && !isSameOrigin(request, url)) {
+    return { error: jsonResponse({ error: "Forbidden" }, 403) };
+  }
+  return { user };
+}
+
+function isSameOrigin(request, url) {
+  return request.headers.get("Origin") === url.origin;
+}
+
+// Fails closed (no one is signed in) if SESSION_SECRET is unset.
+async function getSessionUser(request, env) {
+  const prefix = SESSION_COOKIE + "=";
+  const cookie = (request.headers.get("Cookie") || "").split(";").map(part => part.trim()).find(part => part.startsWith(prefix));
+  if (!cookie || !env.SESSION_SECRET) return null;
+  return verifySession(cookie.slice(prefix.length), env.SESSION_SECRET);
+}
+
+function sessionCookie(token) {
+  return `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_SECONDS}`;
+}
+
+function clearSessionCookie() {
+  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+}
+
+// Token: base64url(JSON { sub, exp }) + "." + base64url(HMAC-SHA256 of the first part).
+export async function signSession(userId, secret, now = Date.now()) {
+  const payload = bytesToBase64Url(new TextEncoder().encode(JSON.stringify({ sub: String(userId), exp: Math.floor(now / 1000) + SESSION_TTL_SECONDS })));
+  return payload + "." + await hmacBase64Url(secret, payload);
+}
+
+export async function verifySession(token, secret, now = Date.now()) {
+  if (!token || !secret) return null;
+  const parts = String(token).split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  if (!timingSafeStringEqual(parts[1], await hmacBase64Url(secret, parts[0]))) return null;
+  try {
+    const data = JSON.parse(new TextDecoder().decode(base64UrlToBytes(parts[0])));
+    if (typeof data?.sub !== "string" || !data.sub || !(Number(data.exp) * 1000 > now)) return null;
+    return { id: data.sub };
+  } catch (err) {
+    return null;
+  }
+}
+
+async function hmacBase64Url(secret, text) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(secret)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return bytesToBase64Url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text))));
+}
+
+// Stored as pbkdf2$<iterations>$<salt>$<hash>, both base64url.
+export async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derivePasswordBits(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToBase64Url(salt)}$${bytesToBase64Url(hash)}`;
+}
+
+export async function verifyPassword(password, stored) {
+  try {
+    const [scheme, iterationText, saltText, hashText] = String(stored || "").split("$");
+    const iterations = Number.parseInt(iterationText, 10);
+    if (scheme !== "pbkdf2" || !hashText || !(iterations > 0 && iterations <= PBKDF2_ITERATIONS)) return false;
+    const hash = await derivePasswordBits(password, base64UrlToBytes(saltText), iterations);
+    return timingSafeStringEqual(bytesToBase64Url(hash), hashText);
+  } catch (err) {
+    return false;
+  }
+}
+
+async function derivePasswordBits(password, salt, iterations) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(password)), "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, 256));
+}
+
+function bytesToBase64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlToBytes(text) {
+  const base64 = String(text).replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64 + "===".slice((base64.length + 3) % 4));
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
 // D1 stores CURRENT_TIMESTAMP as "YYYY-MM-DD HH:MM:SS" (UTC); browsers parse that inconsistently.
 function toIsoTimestamp(value) {
   if (!value) return null;
@@ -2279,8 +2663,9 @@ export function parseResearch(value) {
 }
 
 // Adds one Q&A to the node's history (oldest dropped past the cap) and returns the saved list.
-async function appendResearch(env, nodeId, { question, answer, sources }) {
-  const row = await env.DB.prepare("SELECT research FROM saved_nodes WHERE id = ?").bind(nodeId).first();
+async function appendResearch(env, userId, nodeId, { question, answer, sources }) {
+  const row = await env.DB.prepare("SELECT research FROM saved_nodes WHERE id = ? AND user_id = ?").bind(nodeId, userId).first();
+  if (!row) return null;
   const entry = {
     question,
     answer: answer.length > RESEARCH_ANSWER_MAX ? answer.slice(0, RESEARCH_ANSWER_MAX - 1).trimEnd() + "…" : answer,
@@ -2288,8 +2673,8 @@ async function appendResearch(env, nodeId, { question, answer, sources }) {
     asked_at: new Date().toISOString()
   };
   const research = [...parseResearch(row?.research), entry].slice(-RESEARCH_MAX_ENTRIES);
-  await env.DB.prepare("UPDATE saved_nodes SET research = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .bind(JSON.stringify(research), nodeId).run();
+  await env.DB.prepare("UPDATE saved_nodes SET research = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
+    .bind(JSON.stringify(research), nodeId, userId).run();
   return research;
 }
 
@@ -2371,12 +2756,13 @@ function isGenericPlaceholder(text) {
 }
 
 // Finds the link saved in the 60 seconds before `referenceTime` (a D1 timestamp, or null for now).
-async function findRecentLinkContext(env, referenceTime, excludeId = null) {
+// Only the same user's links count, so a placeholder note never borrows another account's context.
+async function findRecentLinkContext(env, userId, referenceTime, excludeId = null) {
   try {
     const ref = referenceTime ? String(referenceTime) : "now";
     return await env.DB.prepare(
-      "SELECT id, title, description, url, category FROM saved_nodes WHERE category IN ('link', 'article', 'video') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, '-60 seconds') ORDER BY created_at DESC LIMIT 1"
-    ).bind(excludeId || "", ref, ref).first();
+      "SELECT id, title, description, url, category FROM saved_nodes WHERE user_id = ? AND category IN ('link', 'article', 'video') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, '-60 seconds') ORDER BY created_at DESC LIMIT 1"
+    ).bind(userId, excludeId || "", ref, ref).first();
   } catch (err) {
     console.error("Recent link context lookup failed:", err);
     return null;
@@ -2398,7 +2784,7 @@ async function reclusterNode(env, apiKey, node) {
   let analysisText = sourceText;
   let nextUrl = currentUrl;
   if (isGenericPlaceholder(currentTitle) || isGenericPlaceholder(sourceText)) {
-    const context = await findRecentLinkContext(env, node.created_at, node.id);
+    const context = await findRecentLinkContext(env, node.user_id, node.created_at, node.id);
     if (context) {
       analysisText = [sourceText, context.title, context.url].filter(Boolean).join(" | ");
       nextUrl = String(context.url || currentUrl);
@@ -2594,15 +2980,25 @@ async function mineConnections(env) {
     return;
   }
 
+  // One Gemini call per user, oldest backlog first, so edges never join two accounts' nodes.
+  const { results: userRows } = await env.DB.prepare(
+    "SELECT user_id FROM saved_nodes WHERE ai_processed_at IS NULL AND user_id IS NOT NULL GROUP BY user_id ORDER BY MIN(rowid) LIMIT ?"
+  ).bind(MINER_USERS_PER_RUN).all();
+  for (const { user_id: userId } of userRows || []) {
+    await mineUserConnections(env, userId);
+  }
+}
+
+async function mineUserConnections(env, userId) {
   const { results: newRows } = await env.DB.prepare(
-    "SELECT id, title, url, category FROM saved_nodes WHERE ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
-  ).bind(MINER_BATCH_SIZE).all();
+    "SELECT id, title, url, category FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
+  ).bind(userId, MINER_BATCH_SIZE).all();
   const newNodes = newRows || [];
   if (!newNodes.length) return;
 
   const { results: contextRows } = await env.DB.prepare(
-    "SELECT id, title, url, category FROM saved_nodes WHERE ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
-  ).bind(MINER_CONTEXT_SIZE).all();
+    "SELECT id, title, url, category FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
+  ).bind(userId, MINER_CONTEXT_SIZE).all();
   const allNodes = [...newNodes, ...(contextRows || [])];
 
   let mined;
@@ -2628,8 +3024,8 @@ async function mineConnections(env) {
   for (const { a, b, relation } of mined.edges) {
     const [sourceId, targetId] = [String(allNodes[a].id), String(allNodes[b].id)].sort();
     statements.push(env.DB.prepare(
-      "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation) VALUES (?, ?, ?)"
-    ).bind(sourceId, targetId, relation));
+      "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, user_id) VALUES (?, ?, ?, ?)"
+    ).bind(sourceId, targetId, relation, userId));
   }
   statements.push(env.DB.prepare(
     `UPDATE saved_nodes SET ai_processed_at = CURRENT_TIMESTAMP WHERE id IN (${newNodes.map(() => "?").join(", ")})`
@@ -2640,9 +3036,9 @@ async function mineConnections(env) {
 }
 
 // Missing table (migration not applied yet) just means no mined edges.
-async function loadMinedEdges(env) {
+async function loadMinedEdges(env, userId) {
   try {
-    const { results } = await env.DB.prepare("SELECT source_id, target_id, relation FROM node_edges").all();
+    const { results } = await env.DB.prepare("SELECT source_id, target_id, relation FROM node_edges WHERE user_id = ?").bind(userId).all();
     return results || [];
   } catch (err) {
     console.error("Mined edge lookup failed:", err);

@@ -6,12 +6,27 @@ describe("parseHtmlMetadata", () => {
 		const html = `<head><title>Fallback</title>
 			<meta content="The &quot;Real&quot; Title &amp; More" property="og:title">
 			<meta property='og:description' content='A short summary.'></head>`;
-		expect(parseHtmlMetadata(html)).toEqual({ title: 'The "Real" Title & More', description: "A short summary." });
+		expect(parseHtmlMetadata(html)).toEqual({ title: 'The "Real" Title & More', description: "A short summary.", image: null, siteName: null, sourceUrl: null });
 	});
 
 	it("falls back to <title> and meta description", () => {
 		const html = `<title>\n  Plain   Page &#8211; Site\n</title><meta name="description" content="Desc">`;
-		expect(parseHtmlMetadata(html)).toEqual({ title: "Plain Page – Site", description: "Desc" });
+		expect(parseHtmlMetadata(html)).toEqual({ title: "Plain Page – Site", description: "Desc", image: null, siteName: null, sourceUrl: null });
+	});
+
+	it("extracts the cover image, site name and canonical source URL", () => {
+		const html = `<meta property="og:title" content="Post"><meta property="og:image" content="/img/cover.png?a=1&amp;b=2">
+			<meta property="og:site_name" content="Example Blog"><meta property="og:url" content="https://example.com/post">`;
+		expect(parseHtmlMetadata(html, "https://example.com/post?utm=x")).toMatchObject({
+			image: "https://example.com/img/cover.png?a=1&b=2",
+			siteName: "Example Blog",
+			sourceUrl: "https://example.com/post"
+		});
+	});
+
+	it("drops non-http image URLs and falls back to the page URL as source", () => {
+		const html = `<meta property="og:title" content="Post"><meta property="og:image" content="javascript:alert(1)">`;
+		expect(parseHtmlMetadata(html, "https://example.com/a")).toMatchObject({ image: null, sourceUrl: "https://example.com/a" });
 	});
 
 	it("returns null when there is no title", () => {
