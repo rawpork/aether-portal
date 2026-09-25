@@ -2348,14 +2348,60 @@ export default {
       resumeAutoRotate();
     };
 
+    // Front-on view of every visible node, camera on the +z side of their centre: the flat 2D canvas fits its
+    // x/y extent, 3D fits a bounding sphere so the whole graph stays in view.
+    const resetCameraView = () => {
+      const camera = Graph.camera();
+      const vFov = camera.fov * Math.PI / 180;
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+      const bbox = Graph.getGraphBbox();
+      let center = { x: 0, y: 0, z: 0 };
+      let distance = 600;
+      if (bbox) {
+        const halfW = (bbox.x[1] - bbox.x[0]) / 2;
+        const halfH = (bbox.y[1] - bbox.y[0]) / 2;
+        const halfD = (bbox.z[1] - bbox.z[0]) / 2;
+        center = { x: (bbox.x[0] + bbox.x[1]) / 2, y: (bbox.y[0] + bbox.y[1]) / 2, z: filterState.flat ? 0 : (bbox.z[0] + bbox.z[1]) / 2 };
+        const fit = filterState.flat
+          ? Math.max(halfH / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2))
+          : Math.hypot(halfW, halfH, halfD) / Math.sin(Math.min(vFov, hFov) / 2);
+        distance = Math.max(fit * 1.1 + 20, 120);
+      }
+      camera.up.set(0, 1, 0);
+      pauseAutoRotate();
+      Graph.cameraPosition({ x: center.x, y: center.y, z: center.z + distance }, center, 900);
+    };
+
+    // Double-click / double-tap on empty canvas resets the view: two background clicks close together in time
+    // and space. Node clicks go to onNodeClick and edge clicks never reach here; a label click opens its cluster.
+    const DOUBLE_TAP_MS = 350;
+    const DOUBLE_TAP_PX = 30;
+    let lastBackgroundTap = null;
+
     const handleBackgroundClick = () => {
       const category = pickLabel();
-      if (!category) {
-        resetSelection();
+      if (category) {
+        lastBackgroundTap = null;
+        flyToCategory(category);
+        openClusterDrawer(category);
         return;
       }
-      flyToCategory(category);
-      openClusterDrawer(category);
+      const now = Date.now();
+      const point = lastPointer ? { x: lastPointer.x, y: lastPointer.y } : null;
+      const previous = lastBackgroundTap;
+      if (previous && point && previous.point && now - previous.time <= DOUBLE_TAP_MS
+        && Math.hypot(point.x - previous.point.x, point.y - previous.point.y) <= DOUBLE_TAP_PX) {
+        lastBackgroundTap = null;
+        // The first click cleared the legend highlight; a double-click only moves the camera, so restore it.
+        if (previous.highlighted.size && !filterState.highlighted.size) {
+          filterState.highlighted = previous.highlighted;
+          applyGraphFilters();
+        }
+        resetCameraView();
+        return;
+      }
+      lastBackgroundTap = { time: now, point, highlighted: new Set(filterState.highlighted) };
+      resetSelection();
     };
 
     // Slow idle orbit that yields to any interaction and resumes after a quiet spell.
@@ -2530,7 +2576,10 @@ export default {
       .linkDirectionalParticleSpeed(0.008)
       .linkDirectionalParticleWidth(2.5)
       .linkDirectionalParticleColor(() => '#00ffcc')
-      .onNodeClick(node => selectNode(node))
+      .onNodeClick(node => {
+        lastBackgroundTap = null;
+        selectNode(node);
+      })
       .onNodeHover(node => setHover(node, 'canvas'))
       .onBackgroundClick(handleBackgroundClick)
       .onEngineTick(onTerritoryTick)
