@@ -563,15 +563,14 @@ export default {
       outline: none;
     }
     #search-input::placeholder { color: rgba(0,255,204,0.4); }
-    #filter-menu { position: relative; }
     #filter-menu summary { list-style: none; }
     #filter-menu summary::-webkit-details-marker { display: none; }
     #filter-menu[open] summary { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
     .filter-dropdown {
       position: absolute;
       top: 40px;
-      left: 0;
-      min-width: 300px;
+      right: 0;
+      width: 280px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -587,7 +586,7 @@ export default {
       gap: 8px;
       flex-wrap: wrap;
     }
-    .filter-pill, .toggle-button, #time-filter, #collection-sort {
+    .filter-pill, .toggle-button, #time-filter, #type-filter, #collection-sort {
       appearance: none;
       border: 1px solid rgba(0,255,204,0.25);
       background: rgba(255,255,255,0.04);
@@ -603,32 +602,43 @@ export default {
       border-color: rgba(0,255,204,0.65);
       color: #ffffff;
     }
-    #time-filter {
-      min-width: 132px;
-      color: #dffdf7;
-    }
+    #time-filter, #type-filter { min-width: 140px; color: #dffdf7; }
+    #time-filter option, #type-filter option { background: #0b1320; }
+    .filter-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #8a93a6; }
+    .filter-badge { min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; box-sizing: border-box; border-radius: 999px; background: #00ffcc; color: #041016; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+    .filter-badge[hidden] { display: none; }
+    .filters-reset { appearance: none; margin-top: 2px; padding: 6px; border: none; border-top: 1px solid rgba(255,255,255,0.08); background: none; color: #00ffcc; font-size: 12px; cursor: pointer; }
+    .filters-reset:hover, .filters-reset:focus-visible { text-decoration: underline; outline: none; }
     .toggle-button {
       font-weight: 600;
     }
     #add-node-button { font-size: 18px; line-height: 1; }
-    /* Platform bar: a second toolbar row under the header; panels below it start at about 104px. */
-    #platform-bar {
+    /* Filter toolbar: a second row under the header (32px tall, ends at about 92px; panels below start at 102px+).
+       The origin filters are one segmented control; the Filters popover sits at its right end. */
+    #filter-toolbar {
       position: absolute;
       top: 60px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 29;
       display: flex;
+      align-items: center;
       gap: 6px;
       max-width: calc(100% - 20px);
       box-sizing: border-box;
-      padding: 4px;
+    }
+    #platform-bar {
+      display: flex;
+      flex: 0 1 auto;
+      min-width: 0;
+      height: 32px;
+      box-sizing: border-box;
       overflow-x: auto;
       scrollbar-width: none;
       touch-action: pan-x;
       border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(8, 12, 20, 0.6);
+      border: 1px solid rgba(0,255,204,0.35);
+      background: rgba(8, 12, 20, 0.72);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
     }
@@ -636,25 +646,23 @@ export default {
     .platform-pill {
       flex: none;
       appearance: none;
-      height: 26px;
-      padding: 0 11px;
-      border-radius: 999px;
-      border: 1px solid rgba(0,255,204,0.2);
-      background: rgba(255,255,255,0.03);
+      height: 100%;
+      padding: 0 12px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
       color: #dffdf7;
       font-size: 12px;
       white-space: nowrap;
       cursor: pointer;
     }
-    .platform-pill:hover:not(:disabled) { border-color: rgba(0,255,204,0.5); }
-    .platform-pill[aria-pressed="true"] {
-      background: linear-gradient(135deg, rgba(0,255,204,0.3), rgba(79,132,255,0.3));
-      border-color: rgba(0,255,204,0.65);
-      color: #fff;
-    }
+    .platform-pill + .platform-pill { border-left: 1px solid rgba(0,255,204,0.18); }
+    .platform-pill:hover:not(:disabled), .platform-pill:focus-visible { background: rgba(0,255,204,0.08); outline: none; }
+    .platform-pill[aria-pressed="true"] { background: rgba(0,255,204,0.22); color: #fff; font-weight: 600; }
     .platform-pill:disabled { opacity: 0.4; cursor: default; }
+    #filter-menu { position: relative; flex: none; }
+    #filter-menu summary { height: 32px; background: rgba(8, 12, 20, 0.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
     #telegram-help-button { gap: 6px; flex: none; }
-    #filter-menu summary { gap: 6px; }
     .bar-icon { width: 14px; height: 14px; flex: none; }
     .settings-option.phone-only { display: none; }
     #telegram-help-button svg { width: 14px; height: 14px; flex: none; }
@@ -1430,24 +1438,32 @@ export default {
     #legend .legend-badge { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     #legend .legend-name { flex: 1; }
     #legend .legend-count { color: #8a93a6; font-variant-numeric: tabular-nums; }
+    /* Tablets and small laptops: icon-only Telegram and view buttons (tooltips keep the names), so the search
+       box keeps its room and the top bar never scrolls. */
+    @media (max-width: 900px) {
+      #telegram-help-button .bar-label, #view-switch .view-label { display: none; }
+      #telegram-help-button { padding: 0 10px; }
+      #view-switch button { padding: 0 9px; }
+    }
     @media (max-width: 600px) {
       #topbar .brand { display: none; }
       #topbar { gap: 6px; padding: 0 7px; }
       .bar-btn { padding: 0 10px; }
-      #filter-menu { position: static; }
-      .filter-dropdown { top: 50px; left: 0; right: 0; min-width: 0; }
+      .filter-dropdown { position: fixed; top: 100px; left: 10px; right: 10px; width: auto; }
       #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
       #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
       body.drawer-open #node-card { right: 15px; top: 102px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
-      #platform-bar { left: 10px; right: 10px; transform: none; max-width: none; }
+      #filter-toolbar { left: 10px; right: 10px; transform: none; max-width: none; }
+      #platform-bar { flex: 1 1 auto; }
+      .platform-pill { padding: 0 10px; }
       #view-switch .view-label { display: none; }
-      /* Phones: icon-only Filter, short 2D/3D label, and Telegram help moves into the settings menu. */
+      /* Phones: short 2D/3D label, and Telegram help moves into the settings menu. */
       #telegram-help-button { display: none; }
       .settings-option.phone-only { display: block; }
-      #filter-menu summary .bar-label, #view-toggle .bar-label { display: none; }
+      #view-toggle .bar-label { display: none; }
       #view-toggle::after { content: attr(data-short); }
-      #filter-menu summary, #view-toggle { padding: 0 10px; }
+      #view-toggle { padding: 0 10px; }
       .command-row { grid-template-columns: 1fr; gap: 2px; }
       #view-switch button { padding: 0 9px; }
       #collection-view { padding: 2px 10px 20px; }
@@ -1466,31 +1482,6 @@ export default {
     <span class="brand">Aether Portal</span>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
     <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
-    <details id="filter-menu">
-      <summary class="bar-btn" aria-label="Filter"><svg class="bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg><span class="bar-label">Filter ▾</span></summary>
-      <div class="filter-dropdown">
-    <div class="filter-row" id="type-filters">
-      <button class="filter-pill active" data-filter="all">All</button>
-      <button class="filter-pill" data-filter="link">Links</button>
-      <button class="filter-pill" data-filter="dev_task">Dev Tasks</button>
-      <button class="filter-pill" data-filter="video">Videos</button>
-      <button class="filter-pill" data-filter="note">Notes</button>
-      <button class="filter-pill" data-filter="image">Images</button>
-    </div>
-    <div class="filter-row">
-      <select id="time-filter">
-        <option value="all">All Time</option>
-        <option value="day">Today</option>
-        <option value="week">Last 7 Days</option>
-        <option value="month">Last 30 Days</option>
-      </select>
-      <button id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button>
-    </div>
-    <div class="filter-row">
-      <button id="orphan-toggle" class="toggle-button" aria-pressed="false">Hide Unlinked</button>
-    </div>
-      </div>
-    </details>
     <span class="bar-spacer"></span>
     <div id="view-switch" role="group" aria-label="View mode">
       <button type="button" data-view="graph" aria-pressed="true" title="Graph view"><span class="view-icon">◉</span><span class="view-label">Graph</span></button>
@@ -1512,15 +1503,44 @@ export default {
   </div>
   </header>
 
-  <nav id="platform-bar" aria-label="Platform filter">
-    <button type="button" class="platform-pill" data-platform="all" aria-pressed="true">All</button>
-    <button type="button" class="platform-pill" data-platform="youtube" aria-pressed="false">YouTube</button>
-    <button type="button" class="platform-pill" data-platform="x" aria-pressed="false">X/Twitter</button>
-    <button type="button" class="platform-pill" data-platform="facebook" aria-pressed="false">Facebook</button>
-    <button type="button" class="platform-pill" data-platform="links" aria-pressed="false">Links</button>
-    <button type="button" class="platform-pill" data-platform="notes" aria-pressed="false">Notes</button>
-    <button type="button" class="platform-pill" data-platform="images" aria-pressed="false">Images</button>
-  </nav>
+  <!-- Second toolbar row: one segmented origin control, then the secondary filters popover at its right end. -->
+  <div id="filter-toolbar">
+    <nav id="platform-bar" role="group" aria-label="Platform filter">
+      <button type="button" class="platform-pill" data-platform="all" aria-pressed="true">All</button>
+      <button type="button" class="platform-pill" data-platform="youtube" aria-pressed="false">YouTube</button>
+      <button type="button" class="platform-pill" data-platform="x" aria-pressed="false">X/Twitter</button>
+      <button type="button" class="platform-pill" data-platform="facebook" aria-pressed="false">Facebook</button>
+      <button type="button" class="platform-pill" data-platform="links" aria-pressed="false">Links</button>
+      <button type="button" class="platform-pill" data-platform="notes" aria-pressed="false">Notes</button>
+      <button type="button" class="platform-pill" data-platform="images" aria-pressed="false">Images</button>
+    </nav>
+    <details id="filter-menu">
+      <summary class="bar-btn" aria-label="Filters">Filters ⚙️<span id="filter-badge" class="filter-badge" hidden></span></summary>
+      <div class="filter-dropdown">
+        <label class="filter-field"><span>Time</span>
+          <select id="time-filter">
+            <option value="all">All Time</option>
+            <option value="day">Today</option>
+            <option value="week">Last 7 Days</option>
+            <option value="month">Last 30 Days</option>
+          </select>
+        </label>
+        <label class="filter-field"><span>Category</span>
+          <select id="type-filter">
+            <option value="all">All Categories</option>
+            <option value="link">Links</option>
+            <option value="dev_task">Dev Tasks</option>
+            <option value="video">Videos</option>
+            <option value="note">Notes</option>
+            <option value="image">Images</option>
+          </select>
+        </label>
+        <div class="filter-field"><span>Graph Colors</span><button type="button" id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button></div>
+        <div class="filter-field"><span>Unlinked Nodes</span><button type="button" id="orphan-toggle" class="toggle-button" aria-pressed="false">Hide Unlinked</button></div>
+        <button type="button" id="filters-reset" class="filters-reset">Clear All Filters</button>
+      </div>
+    </details>
+  </div>
 
   <div id="node-card">
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
@@ -2850,6 +2870,7 @@ export default {
 
     // Pill labels carry counts of the nodes the other filters leave visible, e.g. "YouTube (4)".
     const platformBar = document.getElementById('platform-bar');
+    const filterBadge = document.getElementById('filter-badge');
     const PLATFORM_LABELS = { all: 'All', youtube: 'YouTube', x: 'X/Twitter', facebook: 'Facebook', links: 'Links', notes: 'Notes', images: 'Images' };
     const renderPlatformBar = visibleNodes => {
       const counts = { all: visibleNodes.length };
@@ -2961,6 +2982,9 @@ export default {
       else refreshGraphStyles();
       renderLegend(filteredNodes);
       renderPlatformBar(filteredNodes);
+      const activeFilters = (filterState.horizon !== 'all') + (filterState.type !== 'all') + filterState.hideOrphans;
+      filterBadge.textContent = String(activeFilters);
+      filterBadge.hidden = !activeFilters;
       syncTerritories(filteredNodes);
       renderClusterDrawer();
       currentVisibleNodes = filteredNodes;
@@ -3017,12 +3041,10 @@ export default {
       Graph.d3ReheatSimulation();
     });
 
-    document.querySelectorAll('#type-filters .filter-pill').forEach(button => {
-      button.addEventListener('click', () => {
-        filterState.type = button.dataset.filter || 'all';
-        document.querySelectorAll('#type-filters .filter-pill').forEach(btn => btn.classList.toggle('active', btn === button));
-        applyGraphFilters();
-      });
+    const typeFilter = document.getElementById('type-filter');
+    typeFilter.addEventListener('change', () => {
+      filterState.type = typeFilter.value || 'all';
+      applyGraphFilters();
     });
 
     const searchInput = document.getElementById('search-input');
@@ -3080,13 +3102,14 @@ export default {
       searchInput.value = '';
       clusterToggle.textContent = 'Category View';
       clusterToggle.classList.add('active');
-      document.querySelectorAll('#type-filters .filter-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
+      typeFilter.value = 'all';
       filterState.platform = 'all';
       settingsMenu.classList.remove('open');
       filterMenu.open = false;
       applyGraphFilters();
     };
     clearFiltersButton.addEventListener('click', resetFilters);
+    document.getElementById('filters-reset').addEventListener('click', resetFilters);
 
     const getAdminToken = () => {
       let token = localStorage.getItem(ADMIN_TOKEN_KEY);
