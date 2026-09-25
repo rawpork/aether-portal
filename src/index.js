@@ -711,6 +711,8 @@ export default {
     .collection-list { display: flex; flex-direction: column; gap: 8px; max-width: 820px; margin: 0 auto; }
     .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
     .item-card {
+      position: relative;
+      isolation: isolate;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -952,7 +954,9 @@ export default {
       box-sizing: border-box;
       touch-action: pan-y;
       color: #fff;
-      z-index: 10;
+      /* Above the cluster drawer (11), legend (9) and list view (5); below the platform bar and top bar
+         (29/30), whose Filter and Settings menus must stay on top, and below modals (40). */
+      z-index: 20;
       background: rgba(8, 12, 20, 0.92);
       padding: 16px 20px;
       border-radius: 14px;
@@ -965,8 +969,9 @@ export default {
     }
     #node-card .card-close {
       position: absolute;
-      top: 8px;
-      right: 10px;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
       background: none;
       border: none;
       color: #8a93a6;
@@ -978,8 +983,9 @@ export default {
     #node-card .card-close:hover { color: #00ffcc; }
     #node-card .card-delete {
       position: absolute;
-      top: 8px;
-      right: 40px;
+      top: 12px;
+      right: 44px;
+      z-index: 10;
       width: 24px;
       height: 24px;
       display: inline-flex;
@@ -1161,6 +1167,7 @@ export default {
       right: 12px;
       bottom: 20px;
       width: 340px;
+      box-sizing: border-box;
       z-index: 11;
       display: none;
       flex-direction: column;
@@ -1181,8 +1188,9 @@ export default {
     #cluster-drawer .drawer-count { color: #8a93a6; font-size: 11px; }
     #cluster-drawer .card-close {
       position: absolute;
-      top: 8px;
-      right: 10px;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
       background: none;
       border: none;
       color: #8a93a6;
@@ -1194,6 +1202,8 @@ export default {
     #cluster-drawer .card-close:hover { color: #00ffcc; }
     #cluster-cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .mini-card {
+      position: relative;
+      isolation: isolate;
       appearance: none;
       text-align: left;
       width: 100%;
@@ -1214,8 +1224,7 @@ export default {
       box-shadow: 0 0 0 1px rgba(0,255,204,0.5), 0 0 14px rgba(0,255,204,0.35);
     }
     /* Keep the node card clear of the drawer so both stay usable side by side. */
-    body.drawer-open #node-card { right: 364px; }
-    #node-card .card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; padding-right: 64px; }
+    #node-card .card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; padding-right: 72px; }
     #node-card .card-head .card-tag { margin-bottom: 0; }
     .card-carousel { display: inline-flex; align-items: center; gap: 6px; }
     .card-carousel[hidden] { display: none; }
@@ -1240,6 +1249,9 @@ export default {
     /* Desktop / laptop: a floating side panel, so the graph stays visible. */
     @media (min-width: 768px) {
       #node-card { left: auto; right: 15px; top: 106px; bottom: auto; width: clamp(440px, 34vw, 480px); max-height: 80vh; }
+      /* Beside an open drawer: 12px edge + 340px drawer + 16px gap; narrows on small desktops instead of
+         sliding off the left edge (15px margin there). */
+      body.drawer-open #node-card { right: 368px; width: min(clamp(440px, 34vw, 480px), calc(100vw - 383px)); }
     }
     @media (min-width: 1100px) {
       body.collection-mode.card-open #collection-view { padding-right: 510px; padding-bottom: 24px; }
