@@ -5,7 +5,7 @@
 - **Environment:** Cloudflare Workers + D1 (aether_context_db) + Gemini 3.x API
 - **Active Model Fallback Chain:** gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.5-flash-lite
 - **Background Automation:** Daily CRON (0 0 * * * at midnight UTC) running src/miner.js
-- **Live Version:** 15b98cf5-9e3d-433e-ad09-e83c6c90c6fe (commit 15a9833, deployed 2026-09-25)
+- **Live Version:** 8b44f780-525c-481e-9237-1f76ed4f805a (commit 26281e0, deployed 2026-09-25)
 
 ## Shipped
 - [x] **Focus Card Carousel View** - Fifth view in the view switch: filtered nodes as a centered card deck with a scaled/faded depth stack, touch and mouse swiping (left = next, right = previous), arrow keys and prev/next buttons. Selecting a node in the 2D/3D map can open the deck focused on that node. Commit 15a9833, live on Cloudflare Workers as version 15b98cf5.
