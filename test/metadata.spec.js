@@ -6,12 +6,12 @@ describe("parseHtmlMetadata", () => {
 		const html = `<head><title>Fallback</title>
 			<meta content="The &quot;Real&quot; Title &amp; More" property="og:title">
 			<meta property='og:description' content='A short summary.'></head>`;
-		expect(parseHtmlMetadata(html)).toEqual({ title: 'The "Real" Title & More', description: "A short summary.", image: null, siteName: null, sourceUrl: null });
+		expect(parseHtmlMetadata(html)).toEqual({ title: 'The "Real" Title & More', description: "A short summary.", image: null, siteName: null, sourceUrl: null, favicon: null });
 	});
 
 	it("falls back to <title> and meta description", () => {
 		const html = `<title>\n  Plain   Page &#8211; Site\n</title><meta name="description" content="Desc">`;
-		expect(parseHtmlMetadata(html)).toEqual({ title: "Plain Page – Site", description: "Desc", image: null, siteName: null, sourceUrl: null });
+		expect(parseHtmlMetadata(html)).toEqual({ title: "Plain Page – Site", description: "Desc", image: null, siteName: null, sourceUrl: null, favicon: null });
 	});
 
 	it("extracts the cover image, site name and canonical source URL", () => {
@@ -27,6 +27,17 @@ describe("parseHtmlMetadata", () => {
 	it("drops non-http image URLs and falls back to the page URL as source", () => {
 		const html = `<meta property="og:title" content="Post"><meta property="og:image" content="javascript:alert(1)">`;
 		expect(parseHtmlMetadata(html, "https://example.com/a")).toMatchObject({ image: null, sourceUrl: "https://example.com/a" });
+	});
+
+	it("prefers the apple-touch-icon, resolves it, and skips mask icons", () => {
+		const html = `<title>Page</title><link rel="mask-icon" href="/mask.svg"><link rel="icon" href="/fav.png"><link href="/touch.png" rel="apple-touch-icon">`;
+		expect(parseHtmlMetadata(html, "https://example.com/a/b").favicon).toBe("https://example.com/touch.png");
+		expect(parseHtmlMetadata(`<title>Page</title><link rel="shortcut icon" href="icons/s.ico">`, "https://example.com/a/b").favicon).toBe("https://example.com/a/icons/s.ico");
+	});
+
+	it("falls back to /favicon.ico at the page origin", () => {
+		const html = `<title>Page</title><link rel="icon" href="data:image/png;base64,AAAA">`;
+		expect(parseHtmlMetadata(html, "https://example.com/deep/page?x=1").favicon).toBe("https://example.com/favicon.ico");
 	});
 
 	it("returns null when there is no title", () => {

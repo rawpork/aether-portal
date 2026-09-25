@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { hashPassword, needsWebResearch, parseResearch, signSession, verifyPassword, verifySession } from "../src/index.js";
+import { hashPassword, needsWebResearch, parseResearch, parseStandaloneNote, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -26,6 +26,41 @@ describe("parseResearch", () => {
 		for (const value of [null, "", "not json", "{}"]) {
 			expect(parseResearch(value), String(value)).toEqual([]);
 		}
+	});
+});
+
+describe("splitLinkMessage", () => {
+	it("returns plain text as a note with no URL", () => {
+		expect(splitLinkMessage("  call the supplier  ")).toEqual({ url: "", note: "call the supplier" });
+	});
+
+	it("splits a URL from comments before or after it", () => {
+		expect(splitLinkMessage("https://example.com/a?b=1 great pricing page")).toEqual({ url: "https://example.com/a?b=1", note: "great pricing page" });
+		expect(splitLinkMessage("look at this: https://example.com/x")).toEqual({ url: "https://example.com/x", note: "look at this" });
+		expect(splitLinkMessage("https://example.com")).toEqual({ url: "https://example.com", note: "" });
+	});
+
+	it("keeps sentence punctuation and unbalanced parentheses out of the URL", () => {
+		expect(splitLinkMessage("see https://example.com/page.").url).toBe("https://example.com/page");
+		expect(splitLinkMessage("(via https://example.com/a)").url).toBe("https://example.com/a");
+		expect(splitLinkMessage("https://en.wikipedia.org/wiki/Mercury_(planet) neat").url).toBe("https://en.wikipedia.org/wiki/Mercury_(planet)");
+	});
+
+	it("keeps line breaks in the note", () => {
+		expect(splitLinkMessage("https://example.com\nline one\nline two").note).toBe("line one\nline two");
+	});
+});
+
+describe("parseStandaloneNote", () => {
+	it("strips the /note command, with or without a bot mention", () => {
+		expect(parseStandaloneNote("/note buy milk")).toBe("buy milk");
+		expect(parseStandaloneNote("/note@AetherBot  multi\nline")).toBe("multi\nline");
+		expect(parseStandaloneNote("/note")).toBe("");
+	});
+
+	it("ignores other text", () => {
+		expect(parseStandaloneNote("note to self")).toBeNull();
+		expect(parseStandaloneNote("/notes list")).toBeNull();
 	});
 });
 

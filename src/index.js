@@ -30,6 +30,9 @@ const NODE_CONTENT_MAX = 5000;
 // Ask history saved on the focused node: newest entries kept, answers trimmed so the graph payload stays small.
 const RESEARCH_MAX_ENTRIES = 10;
 const RESEARCH_ANSWER_MAX = 4000;
+// Telegram: plain text sent this soon after a link is saved as a note on that link instead of a new node.
+const LINK_PAIRING_WINDOW_SECONDS = 120;
+const USER_NOTE_MAX = 4000;
 // Daily cron mines at most this many users' backlogs (one Gemini call each).
 const MINER_USERS_PER_RUN = 3;
 // Session cookie auth: stateless HMAC-signed token; PBKDF2 at the Workers iteration cap.
@@ -61,7 +64,7 @@ export default {
       if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url FROM saved_nodes WHERE user_id = ?"
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note FROM saved_nodes WHERE user_id = ?"
         ).bind(auth.user.id).all();
 
         const nodes = (results || []).map(node => {
@@ -81,7 +84,9 @@ export default {
             research: parseResearch(node.research),
             image_url: node.image_url || null,
             site_name: node.site_name || null,
-            source_url: node.source_url || null
+            source_url: node.source_url || null,
+            favicon_url: node.favicon_url || null,
+            user_note: node.user_note ? String(node.user_note) : null
           };
         });
 
@@ -154,7 +159,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR description IS NULL OR source_url IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, url FROM saved_nodes WHERE (title = url OR description IS NULL OR source_url IS NULL OR favicon_url IS NULL) AND (url LIKE 'http://%' OR url LIKE 'https://%') AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, METADATA_BACKFILL_BATCH_SIZE).all();
 
         const nodes = results || [];
@@ -165,8 +170,8 @@ export default {
           if (!metadata) return;
           // Rows picked only for a missing preview keep their (possibly AI-assigned) title and description.
           updates.push(env.DB.prepare(
-            "UPDATE saved_nodes SET title = CASE WHEN title = url THEN ? ELSE title END, description = COALESCE(description, ?), image_url = ?, site_name = ?, source_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-          ).bind(metadata.title, metadata.description, metadata.image, metadata.siteName, metadata.sourceUrl, node.id));
+            "UPDATE saved_nodes SET title = CASE WHEN title = url THEN ? ELSE title END, description = COALESCE(description, ?), image_url = ?, site_name = ?, source_url = ?, favicon_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+          ).bind(metadata.title, metadata.description, metadata.image, metadata.siteName, metadata.sourceUrl, metadata.favicon, node.id));
         });
         if (updates.length) await env.DB.batch(updates);
 
@@ -215,13 +220,14 @@ export default {
         const preview = {
           image_url: metadata?.image || null,
           site_name: metadata?.siteName || null,
-          source_url: metadata?.sourceUrl || null
+          source_url: metadata?.sourceUrl || null,
+          favicon_url: metadata?.favicon || null
         };
         // Marked as AI-processed so the daily cron keeps the category chosen by hand.
         const statements = [
           env.DB.prepare(
-            "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, ai_processed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
-          ).bind(id, userId, linkUrl, title, description, category, preview.image_url, preview.site_name, preview.source_url)
+            "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, favicon_url, ai_processed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"
+          ).bind(id, userId, linkUrl, title, description, category, preview.image_url, preview.site_name, preview.source_url, preview.favicon_url)
         ];
         if (linkTargetId) {
           // node_edges is undirected and stored with source_id < target_id.
@@ -243,6 +249,7 @@ export default {
           type: category,
           created_at: new Date().toISOString(),
           research: [],
+          user_note: null,
           ...preview
         };
         const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual" } : null;
@@ -309,7 +316,7 @@ export default {
       try {
         // Context comes from D1, not the client, so the prompt only ever contains stored nodes.
         const { results } = await env.DB.prepare(
-          `SELECT id, title, description, category, url FROM saved_nodes WHERE user_id = ? AND id IN (${nodeIds.map(() => "?").join(", ")})`
+          `SELECT id, title, description, category, url, user_note FROM saved_nodes WHERE user_id = ? AND id IN (${nodeIds.map(() => "?").join(", ")})`
         ).bind(userId, ...nodeIds).all();
         if (!results?.length) return jsonResponse({ error: "None of those nodes exist." }, 404);
 
@@ -368,47 +375,58 @@ export default {
         }
 
         const id = "node_" + crypto.randomUUID();
-        let extractedTitle = text.length > 30 ? text.slice(0, 30) + "..." : text;
-        let description = null;
-
-        let category = "note";
-        let preview = { image: null, siteName: null, sourceUrl: null };
-        if (text.startsWith("http://") || text.startsWith("https://")) {
-          category = inferNodeCategory(text, "link");
-          const metadata = await fetchLinkMetadata(text.split(/\s+/)[0]);
-          if (metadata) {
-            extractedTitle = metadata.title;
-            description = metadata.description;
-            preview = metadata;
+        // "/note <text>" always saves a separate note, even right after a link.
+        const standalone = parseStandaloneNote(text);
+        if (standalone !== null) {
+          if (!standalone) {
+            await sendTelegram(token, chatId, "Add your note after /note, e.g. /note call the supplier.");
+            return new Response("OK");
           }
-        } else if (text.length > 100) {
-          category = "article";
+          text = standalone;
+        }
+        const message = splitLinkMessage(text);
+
+        if (message.url) {
+          // A link, with any text sent in the same message kept as its note.
+          const category = inferNodeCategory(message.url, "link");
+          const metadata = await fetchLinkMetadata(message.url);
+          const title = metadata?.title || (message.url.length > 60 ? message.url.slice(0, 60) + "..." : message.url);
+          const note = message.note ? message.note.slice(0, USER_NOTE_MAX) : null;
+          await env.DB.prepare(
+            "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, favicon_url, user_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).bind(id, userId, message.url, title, metadata?.description || null, category, metadata?.image || null, metadata?.siteName || null, metadata?.sourceUrl || null, metadata?.favicon || null, note).run();
+          await sendTelegram(
+            token,
+            chatId,
+            `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${title}"${note ? "\n📝 Your note is attached." : ""}\nText you send in the next ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes is added to this link.`
+          );
+          return new Response("OK");
         }
 
-        if (isGenericPlaceholder(text)) {
-          const contextualLink = await findRecentLinkContext(env, userId, null, id);
-          if (contextualLink) {
-            const mergedText = [text, contextualLink.title, contextualLink.url].filter(Boolean).join(" | ");
-            const analysis = env.GEMINI_API_KEY ? await analyzeWithGemini(env.GEMINI_API_KEY, mergedText, category) : null;
-            if (analysis) {
-              category = normalizeCategory(analysis.category, category);
-              extractedTitle = analysis.title;
-            } else {
-              extractedTitle = String(contextualLink.title || extractedTitle);
-            }
-            description = contextualLink.description || null;
-            text = String(contextualLink.url || text);
+        // Plain text right after a link is a comment on it: attach instead of creating a node.
+        if (standalone === null) {
+          const recentLink = await findRecentLinkContext(env, userId, null, null, LINK_PAIRING_WINDOW_SECONDS);
+          if (recentLink && await attachUserNote(env, userId, recentLink.id, text)) {
+            await sendTelegram(
+              token,
+              chatId,
+              `📎 Added your note to "${recentLink.title || recentLink.url}".\nTo save it as its own node instead, send /note followed by the text.`
+            );
+            return new Response("OK");
           }
         }
 
+        const category = text.length > 100 ? "article" : "note";
+        const title = text.length > 30 ? text.slice(0, 30) + "..." : text;
+        // Notes keep their full text in url (the card and Ask read it from there).
         await env.DB.prepare(
-          "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        ).bind(id, userId, text, extractedTitle, description, category, preview.image, preview.siteName, preview.sourceUrl).run();
+          "INSERT INTO saved_nodes (id, user_id, url, title, description, category) VALUES (?, ?, ?, ?, ?, ?)"
+        ).bind(id, userId, text, title, null, category).run();
 
         await sendTelegram(
           token,
           chatId,
-          `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${extractedTitle}"`
+          `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${title}"`
         );
         return new Response("OK");
       } catch (err) {
@@ -602,10 +620,45 @@ export default {
     .item-card:hover, .item-card:focus-visible { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); outline: none; }
     .item-card.active { border-color: #00ffcc; box-shadow: inset 0 0 0 1px #00ffcc; }
     .item-card.timeline { padding: 9px 12px; gap: 4px; }
-    .item-cover { margin: -12px -14px 2px; height: 120px; background: rgba(0,0,0,0.3); }
+    .item-cover { position: relative; margin: -12px -14px 2px; height: 120px; background: rgba(0,0,0,0.3); }
     .item-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .item-cover.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      background: radial-gradient(circle at 30% 25%, var(--chip-soft, rgba(0,255,204,0.2)), rgba(8,12,20,0.95) 75%);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .item-cover.placeholder .item-cover-host { position: absolute; left: 12px; bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #dffdf7; opacity: 0.85; }
+    .item-play {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 42px;
+      height: 42px;
+      margin: -21px 0 0 -21px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-left: 3px;
+      box-sizing: border-box;
+      background: rgba(8,12,20,0.7);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff;
+      font-size: 16px;
+      pointer-events: none;
+    }
+    .item-card.list.has-thumb { display: grid; grid-template-columns: minmax(0, 1fr) 72px; column-gap: 12px; row-gap: 6px; align-items: start; }
+    .item-card.list.has-thumb > :not(.item-thumb) { grid-column: 1; }
+    .item-thumb { grid-column: 2; grid-row: 1 / span 5; width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: rgba(0,0,0,0.3); }
+    .item-note { font-size: 12px; color: #fff3d1; line-height: 1.4; overflow-wrap: anywhere; padding-left: 8px; border-left: 2px solid rgba(255,209,102,0.6); }
     .item-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; }
     .item-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       padding: 2px 8px;
       border-radius: 999px;
       border: 1px solid var(--chip, #8a93a6);
@@ -904,6 +957,25 @@ export default {
     #node-card .card-preview img[hidden] { display: none; }
     #node-card .card-preview-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
     #node-card .card-site { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; color: #dffdf7; overflow-wrap: anywhere; }
+    .favicon {
+      width: 16px;
+      height: 16px;
+      flex: none;
+      border-radius: 4px;
+      object-fit: contain;
+      background: rgba(255,255,255,0.08);
+    }
+    #node-card .card-preview-bar .favicon { width: 20px; height: 20px; }
+    #node-card .card-note {
+      display: none;
+      margin: 0 0 12px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border-left: 2px solid #ffd166;
+      background: rgba(255, 209, 102, 0.08);
+    }
+    #node-card .card-note-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd166; }
+    #node-card .card-note-text { font-size: 13px; color: #fff3d1; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
     #node-card .card-preview-bar a { flex: none; }
     #node-card .card-description { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; }
     .reader-button {
@@ -1130,6 +1202,8 @@ export default {
       #collection-view { padding: 2px 10px 20px; }
       .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .item-cover { height: 90px; }
+      .item-card.list.has-thumb { grid-template-columns: minmax(0, 1fr) 56px; }
+      .item-thumb { width: 56px; height: 56px; }
     }
   </style>
   <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
@@ -1188,11 +1262,16 @@ export default {
     <div id="card-preview" class="card-preview">
       <img id="card-preview-image" alt="" loading="lazy" referrerpolicy="no-referrer" hidden>
       <div class="card-preview-bar">
+        <img id="card-favicon" class="favicon" alt="" referrerpolicy="no-referrer" hidden>
         <span id="card-site" class="card-site"></span>
         <a id="card-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Open Original Source</a>
       </div>
     </div>
     <h3 id="card-title">Node Details</h3>
+    <div id="card-note" class="card-note">
+      <span class="card-note-label">📝 Your note</span>
+      <div id="card-note-text" class="card-note-text"></div>
+    </div>
     <p id="card-description" class="card-description"></p>
     <button type="button" id="card-reader-button" class="reader-button">⤢ Expand Full Reader</button>
     <p id="card-meta" class="card-meta"></p>
@@ -1586,7 +1665,7 @@ export default {
 
     const matchesSearch = node => {
       if (!filterState.query) return true;
-      const haystack = ((node.title || '') + ' ' + (node.url || '') + ' ' + getNodeCategory(node)).toLowerCase();
+      const haystack = ((node.title || '') + ' ' + (node.url || '') + ' ' + (node.user_note || '') + ' ' + getNodeCategory(node)).toLowerCase();
       return haystack.includes(filterState.query);
     };
 
@@ -1637,6 +1716,9 @@ export default {
     const cardPreview = document.getElementById('card-preview');
     const cardPreviewImage = document.getElementById('card-preview-image');
     const cardSite = document.getElementById('card-site');
+    const cardFavicon = document.getElementById('card-favicon');
+    const cardNote = document.getElementById('card-note');
+    const cardNoteText = document.getElementById('card-note-text');
     const cardReaderButton = document.getElementById('card-reader-button');
     const readerModal = document.getElementById('reader-modal');
     const readerTitle = document.getElementById('reader-title');
@@ -1726,6 +1808,39 @@ export default {
 
     const isHttpUrl = value => typeof value === 'string' && /^https?:/i.test(value);
 
+    // One glyph per node type, shown on every badge next to the category name.
+    const TYPE_ICONS = {
+      note: '📝',
+      general: '📄',
+      link: '🔗',
+      article: '📰',
+      video: '▶️',
+      dev_task: '🛠️',
+      monetization: '💰',
+      ai_tool: '🤖',
+      marketing: '📣',
+      route_plan: '🗺️'
+    };
+    const getTypeIcon = category => TYPE_ICONS[category] || '✦';
+
+    // Saved favicon, else the site's /favicon.ico; notes have none.
+    const getFaviconUrl = node => {
+      if (isHttpUrl(node.favicon_url)) return node.favicon_url;
+      if (!isHttpUrl(node.url)) return null;
+      try { return new URL(node.url).origin + '/favicon.ico'; } catch (err) { return null; }
+    };
+
+    const buildFavicon = src => {
+      const img = document.createElement('img');
+      img.className = 'favicon';
+      img.alt = '';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer';
+      img.src = src;
+      img.addEventListener('error', () => img.remove());
+      return img;
+    };
+
     // Links show their fetched description; notes store their full text in url, so show that instead. Never clipped.
     const getFullText = (node, isLink) => {
       if (node.description) return String(node.description);
@@ -1744,6 +1859,14 @@ export default {
       }
       cardLink.href = node.url;
       cardSite.textContent = node.site_name || getHostname(node.source_url || node.url);
+      const favicon = getFaviconUrl(node);
+      if (favicon) {
+        cardFavicon.src = favicon;
+        cardFavicon.hidden = false;
+      } else {
+        cardFavicon.hidden = true;
+        cardFavicon.removeAttribute('src');
+      }
       if (isHttpUrl(node.image_url)) {
         cardPreviewImage.src = node.image_url;
         cardPreviewImage.hidden = false;
@@ -1755,19 +1878,26 @@ export default {
     };
     // Hotlink-blocked or dead cover images collapse instead of showing a broken icon.
     cardPreviewImage.addEventListener('error', () => { cardPreviewImage.hidden = true; });
+    cardFavicon.addEventListener('error', () => { cardFavicon.hidden = true; });
 
     const showNodeCard = node => {
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       cardTitle.textContent = node.title || node.name || 'Saved Entry';
-      cardTag.textContent = getNodeCategory(node).replace(/_/g, ' ').toUpperCase();
+      cardTag.textContent = getTypeIcon(getNodeCategory(node)) + ' ' + getNodeCategory(node).replace(/_/g, ' ').toUpperCase();
 
       renderCardPreview(node, isLink);
+
+      const note = node.user_note ? String(node.user_note) : '';
+      cardNoteText.textContent = note;
+      cardNote.style.display = note ? 'block' : 'none';
+      cardNoteText.scrollTop = 0;
 
       const fullText = getFullText(node, isLink);
       cardDescription.textContent = fullText;
       cardDescription.style.display = fullText ? 'block' : 'none';
       cardDescription.scrollTop = 0;
-      const isLong = fullText.length > READER_MIN_LENGTH || fullText.split(NEWLINE).length > READER_MIN_LINES;
+      const readable = note + NEWLINE + fullText;
+      const isLong = readable.length > READER_MIN_LENGTH || readable.split(NEWLINE).length > READER_MIN_LINES;
       cardReaderButton.style.display = isLong ? 'inline-block' : 'none';
 
       const created = node.created_at ? new Date(node.created_at) : null;
@@ -2492,7 +2622,8 @@ export default {
       const site = cardPreview.style.display === 'none' ? '' : cardSite.textContent;
       readerTitle.textContent = cardTitle.textContent;
       readerMeta.textContent = [cardTag.textContent, site, cardMeta.textContent].filter(Boolean).join(' · ');
-      readerBody.textContent = cardDescription.textContent;
+      const note = cardNote.style.display === 'none' ? '' : cardNoteText.textContent;
+      readerBody.textContent = [note ? '📝 Your note' + NEWLINE + note : '', cardDescription.textContent].filter(Boolean).join(NEWLINE + NEWLINE);
       if (cardLink.getAttribute('href')) {
         readerLink.href = cardLink.href;
         readerLink.style.display = 'inline-block';
@@ -2748,25 +2879,67 @@ export default {
       card.setAttribute('role', 'button');
       card.classList.toggle('active', Boolean(focus.node && focus.node.id === node.id));
 
-      if (variant === 'grid' && isHttpUrl(node.image_url)) {
+      const category = getNodeCategory(node);
+      const color = getCategoryColor(category);
+      const favicon = isLink ? getFaviconUrl(node) : null;
+      const hasImage = isHttpUrl(node.image_url);
+
+      if (variant === 'grid') {
         const cover = document.createElement('div');
         cover.className = 'item-cover';
-        const img = document.createElement('img');
-        img.alt = '';
-        img.loading = 'lazy';
-        img.referrerPolicy = 'no-referrer';
-        img.src = node.image_url;
-        img.addEventListener('error', () => cover.remove());
-        cover.append(img);
+        // Hex colors get a translucent alpha suffix for the placeholder glow.
+        cover.style.setProperty('--chip-soft', /^#[0-9a-f]{6}$/i.test(color) ? color + '55' : 'rgba(0,255,204,0.2)');
+        const showPlaceholder = () => {
+          cover.replaceChildren();
+          cover.classList.add('placeholder');
+          cover.textContent = getTypeIcon(category);
+          if (isLink) {
+            const host = document.createElement('span');
+            host.className = 'item-cover-host';
+            if (favicon) host.append(buildFavicon(favicon));
+            host.append(document.createTextNode(node.site_name || getHostname(node.url)));
+            cover.append(host);
+          }
+        };
+        if (hasImage) {
+          const img = document.createElement('img');
+          img.alt = '';
+          img.loading = 'lazy';
+          img.referrerPolicy = 'no-referrer';
+          img.src = node.image_url;
+          img.addEventListener('error', showPlaceholder);
+          cover.append(img);
+          if (category === 'video') {
+            const play = document.createElement('span');
+            play.className = 'item-play';
+            play.textContent = '▶';
+            cover.append(play);
+          }
+        } else {
+          showPlaceholder();
+        }
         card.append(cover);
+      } else if (variant === 'list' && hasImage) {
+        const thumb = document.createElement('img');
+        thumb.className = 'item-thumb';
+        thumb.alt = '';
+        thumb.loading = 'lazy';
+        thumb.referrerPolicy = 'no-referrer';
+        thumb.src = node.image_url;
+        thumb.addEventListener('error', () => {
+          thumb.remove();
+          card.classList.remove('has-thumb');
+        });
+        card.classList.add('has-thumb');
+        card.append(thumb);
       }
 
       const head = document.createElement('div');
       head.className = 'item-head';
       const chip = document.createElement('span');
       chip.className = 'item-chip';
-      chip.textContent = formatCategory(getNodeCategory(node));
-      chip.style.setProperty('--chip', getCategoryColor(getNodeCategory(node)));
+      chip.textContent = getTypeIcon(category) + ' ' + formatCategory(category);
+      chip.style.setProperty('--chip', color);
       const date = document.createElement('span');
       date.className = 'item-date';
       date.textContent = formatItemDate(node, dateMode || 'date');
@@ -2776,6 +2949,13 @@ export default {
       title.className = 'item-title';
       title.textContent = node.title || node.name || 'Saved Entry';
       card.append(head, title);
+
+      if (node.user_note) {
+        const noteLine = document.createElement('div');
+        noteLine.className = 'item-note';
+        noteLine.textContent = '📝 ' + truncate(String(node.user_note).split(NEWLINE).join(' '), PREVIEW_CHARS[variant] || 140);
+        card.append(noteLine);
+      }
 
       const text = getFullText(node, isLink);
       if (text) {
@@ -2791,6 +2971,7 @@ export default {
         const site = document.createElement('span');
         site.className = 'item-site';
         site.textContent = node.site_name || getHostname(node.url);
+        if (favicon) foot.append(buildFavicon(favicon));
         const open = document.createElement('a');
         open.href = node.url;
         open.target = '_blank';
@@ -3314,19 +3495,51 @@ function normalizeCategory(rawCategory, fallback = "note") {
   return fallback;
 }
 
+// "/note text" (or "/note@BotName text") -> "text"; anything else -> null.
+export function parseStandaloneNote(text) {
+  const match = /^\/note(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(String(text || "").trim());
+  return match ? String(match[1] || "").trim() : null;
+}
+
+// Pulls the first http(s) URL out of a message; the remaining text is the note. Trailing punctuation and an
+// unbalanced closing parenthesis belong to the sentence, not the URL.
+export function splitLinkMessage(text) {
+  const value = String(text || "");
+  const match = /https?:\/\/[^\s<>"]+/i.exec(value);
+  if (!match) return { url: "", note: value.trim() };
+  let url = match[0].replace(/[.,!?;:'"]+$/, "");
+  while (url.endsWith(")") && (url.match(/\(/g) || []).length < (url.match(/\)/g) || []).length) url = url.slice(0, -1);
+  const note = (value.slice(0, match.index) + " " + value.slice(match.index + url.length))
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/^[\s\-–—:|]+|[\s\-–—:|]+$/g, "")
+    .trim();
+  return { url, note };
+}
+
+// Appends text to a node's user_note (blank line between entries, capped). Returns false if the node is gone.
+async function attachUserNote(env, userId, nodeId, text) {
+  const note = String(text || "").trim().slice(0, USER_NOTE_MAX);
+  if (!note) return false;
+  const result = await env.DB.prepare(
+    "UPDATE saved_nodes SET user_note = substr(CASE WHEN user_note IS NULL OR user_note = '' THEN ? ELSE user_note || char(10) || char(10) || ? END, 1, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
+  ).bind(note, note, USER_NOTE_MAX, nodeId, userId).run();
+  return Boolean(result?.meta?.changes);
+}
+
 function isGenericPlaceholder(text) {
   const lower = String(text || "").toLowerCase();
   return /(look into this|look into that|look into it|check this out|look at this|something like this|placeholder|tbd)/.test(lower) || lower === "this" || lower === "that";
 }
 
-// Finds the link saved in the 60 seconds before `referenceTime` (a D1 timestamp, or null for now).
-// Only the same user's links count, so a placeholder note never borrows another account's context.
-async function findRecentLinkContext(env, userId, referenceTime, excludeId = null) {
+// Finds the link saved in the `windowSeconds` before `referenceTime` (a D1 timestamp, or null for now).
+// Only the same user's links count, so a note never borrows another account's context.
+async function findRecentLinkContext(env, userId, referenceTime, excludeId = null, windowSeconds = 60) {
   try {
     const ref = referenceTime ? String(referenceTime) : "now";
     return await env.DB.prepare(
-      "SELECT id, title, description, url, category FROM saved_nodes WHERE user_id = ? AND category IN ('link', 'article', 'video') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, '-60 seconds') ORDER BY created_at DESC LIMIT 1"
-    ).bind(userId, excludeId || "", ref, ref).first();
+      "SELECT id, title, description, url, category FROM saved_nodes WHERE user_id = ? AND (url LIKE 'http://%' OR url LIKE 'https://%') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, ?) ORDER BY created_at DESC, rowid DESC LIMIT 1"
+    ).bind(userId, excludeId || "", ref, ref, `-${Math.max(1, Math.floor(windowSeconds))} seconds`).first();
   } catch (err) {
     console.error("Recent link context lookup failed:", err);
     return null;
@@ -3395,8 +3608,9 @@ function buildAskPrompt(question, label, focusId, rows, webSearch) {
     const title = String(row.title || row.url || "Untitled").replace(/\s+/g, " ").slice(0, 200);
     const url = String(row.url || "").split(/\s+/)[0];
     const description = String(row.description || (url === row.url ? "" : row.url) || "").replace(/\s+/g, " ").slice(0, ASK_DESCRIPTION_LENGTH);
+    const note = String(row.user_note || "").replace(/\s+/g, " ").slice(0, ASK_DESCRIPTION_LENGTH);
     const marker = String(row.id) === focusId ? " (focus)" : "";
-    return `- [${row.category || "note"}]${marker} ${title}${url && url !== title ? ` — ${url}` : ""}${description ? ` — ${description}` : ""}`;
+    return `- [${row.category || "note"}]${marker} ${title}${url && url !== title ? ` — ${url}` : ""}${description ? ` — ${description}` : ""}${note ? ` — user's note: ${note}` : ""}`;
   });
   const scope = focusId
     ? "a saved node (marked focus) and the nodes linked to it"

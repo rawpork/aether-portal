@@ -59,12 +59,14 @@
 - [x] **List & Grid View:** Scrollable glass cards with category chip, preview, site and date; List/Grid layout toggle; sort by newest, oldest, title or category; Open Graph cover images in Grid.
 - [x] **Timeline View:** Vertical date feed with sticky Today / Yesterday / Last 7 Days / month headers and a category-colored spine.
 - [x] **Shared Filters & Card:** Search, type, time and Hide Unlinked filters apply to every view; any item opens the regular node card (reader, Ask Elarion, spawn). Graph animation pauses while hidden.
+- [x] **Telegram Link-Pairing:** Plain text sent within 2 minutes of a link is attached to that link as a note instead of creating a new node; text sent with a link in the same message is split into URL + note; `/note <text>` forces a standalone note (migration 0008: user_note).
+- [x] **Visual Node Enhancements:** Saved favicons (with /favicon.ico fallback), node-type icon badges on every card and chip, og:image covers and list thumbnails, type-icon placeholder covers, and a play overlay on video thumbnails (migration 0008: favicon_url).
 
 ---
 
 ## ?? Phase 3: Lightweight Agentic Quarterback & Dynamic Skill Engine
 
-- [ ] **Database Migration 0008_agent_skills.sql:**
+- [ ] **Database Migration 0009_agent_skills.sql:**
   - Create agent_skills (holding skill_key, system_instructions, and required_tools) and agent_memory tables in D1.
 - [ ] **Telegram Chat Linking (POST /api/telegram):**
   - Map telegram_chat_id to users.id (unrecognized chats receive a "Not Authorized" reply).

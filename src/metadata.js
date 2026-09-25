@@ -24,7 +24,7 @@ export function isYouTubeUrl(url) {
   }
 }
 
-// Returns { title, description, image, siteName, sourceUrl } (all but title may be null), or null if nothing usable was found.
+// Returns { title, description, image, siteName, sourceUrl, favicon } (all but title may be null), or null if nothing usable was found.
 export async function fetchLinkMetadata(url) {
   let parsed;
   try {
@@ -56,7 +56,8 @@ async function fetchYouTubeMetadata(url) {
     description: author ? "YouTube video by " + author : null,
     image: resolveHttpUrl(data?.thumbnail_url, url),
     siteName: "YouTube",
-    sourceUrl: url
+    sourceUrl: url,
+    favicon: "https://www.youtube.com/favicon.ico"
   };
 }
 
@@ -93,7 +94,7 @@ async function readTextPrefix(response, maxBytes) {
   return text;
 }
 
-// Returns { title, description, image, siteName, sourceUrl } or null. Prefers OpenGraph, then Twitter cards,
+// Returns { title, description, image, siteName, sourceUrl, favicon } or null. Prefers OpenGraph, then Twitter cards,
 // then <title>/meta description. Relative image/canonical URLs resolve against pageUrl; non-http(s) ones are dropped.
 export function parseHtmlMetadata(html, pageUrl = null) {
   const meta = {};
@@ -101,6 +102,13 @@ export function parseHtmlMetadata(html, pageUrl = null) {
     const attrs = parseAttributes(tag);
     const key = String(attrs.property || attrs.name || "").toLowerCase();
     if (key && attrs.content !== undefined && !(key in meta)) meta[key] = attrs.content;
+  }
+  // First href per rel; apple-touch-icon is sharpest, mask-icon is a monochrome SVG and skipped.
+  const icons = {};
+  for (const [tag] of String(html || "").matchAll(/<link\b[^>]*>/gi)) {
+    const attrs = parseAttributes(tag);
+    const rel = String(attrs.rel || "").toLowerCase().trim();
+    if (attrs.href && /\bicon\b/.test(rel) && !(rel in icons)) icons[rel] = attrs.href;
   }
   const titleTag = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html || "")?.[1];
 
@@ -112,8 +120,15 @@ export function parseHtmlMetadata(html, pageUrl = null) {
     description: description || null,
     image: resolveHttpUrl(meta["og:image:secure_url"] || meta["og:image"] || meta["og:image:url"] || meta["twitter:image"] || meta["twitter:image:src"], pageUrl),
     siteName: cleanText(meta["og:site_name"], MAX_SITE_NAME_LENGTH) || null,
-    sourceUrl: resolveHttpUrl(meta["og:url"], pageUrl) || resolveHttpUrl(pageUrl, null)
+    sourceUrl: resolveHttpUrl(meta["og:url"], pageUrl) || resolveHttpUrl(pageUrl, null),
+    favicon: resolveHttpUrl(icons["apple-touch-icon"] || icons["icon"] || icons["shortcut icon"], pageUrl) || defaultFavicon(pageUrl)
   };
+}
+
+// Browsers' own fallback: /favicon.ico at the page's origin.
+function defaultFavicon(pageUrl) {
+  const page = resolveHttpUrl(pageUrl, null);
+  return page ? new URL("/favicon.ico", page).href : null;
 }
 
 // Absolute http(s) URL or null; anything else (javascript:, data:, garbage) never reaches the card.
