@@ -1,5 +1,6 @@
-import { cleanLinkUrl, fallbackLinkTitle, fetchLinkMetadata } from "./metadata.js";
+import { cleanLinkUrl, fallbackLinkTitle, fetchLinkMetadata, getYouTubeVideoId } from "./metadata.js";
 import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerResponse } from "./miner.js";
+import { buildTranscriptSynopsisPrompt, buildVideoSynopsisPrompt, fetchYouTubeTranscript } from "./transcript.js";
 
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch|share\/[rv]\/)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
@@ -426,6 +427,66 @@ export default {
       } catch (err) {
         console.error("Ask Error:", err);
         return jsonResponse({ error: "Ask failed." }, 500);
+      }
+    }
+
+    // Endpoint 5b: YouTube Transcript Pipeline. GET returns what a video node has stored; POST fetches the
+    // captions and a Gemini synopsis and saves them (stored results are reused unless "refresh" is set).
+    if (url.pathname === "/api/transcript") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET, POST" });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
+      const body = request.method === "POST" ? await request.json().catch(() => null) : null;
+      const id = String((body ? body.id : url.searchParams.get("id")) || "").trim();
+      if (!id) return jsonResponse({ error: "Missing node id." }, 400);
+
+      try {
+        const node = await env.DB.prepare(
+          "SELECT id, title, url, raw_transcript, synopsis FROM saved_nodes WHERE id = ? AND user_id = ?"
+        ).bind(id, userId).first();
+        if (!node) return jsonResponse({ error: "Node not found." }, 404);
+        const videoId = getYouTubeVideoId(cleanLinkUrl(String(node.url || "")));
+        const stored = { id, videoId, transcript: node.raw_transcript || null, synopsis: node.synopsis || null, source: "stored" };
+        if (request.method === "GET") return jsonResponse(stored);
+        if (!videoId) return jsonResponse({ error: "Only YouTube video nodes have transcripts." }, 400);
+        if ((stored.transcript || stored.synopsis) && body?.refresh !== true) return jsonResponse(stored);
+
+        const captions = await fetchYouTubeTranscript(videoId);
+        // Without captions Gemini watches the video itself; without a key the transcript is still saved.
+        let synopsis = null;
+        if (env.GEMINI_API_KEY) {
+          try {
+            const reply = captions
+              ? await callGeminiText(env.GEMINI_API_KEY, GEMINI_MODELS, buildTranscriptSynopsisPrompt(node.title, captions.text), 2048, false)
+              : await callGeminiText(env.GEMINI_API_KEY, GEMINI_MODELS, buildVideoSynopsisPrompt(node.title), 2048, false, "https://www.youtube.com/watch?v=" + videoId);
+            synopsis = reply.text.trim() || null;
+          } catch (err) {
+            console.warn("Transcript synopsis failed:", err.message);
+          }
+        }
+        if (!captions && !synopsis) {
+          return jsonResponse({ error: "Could not get captions or a synopsis for this video." }, 502);
+        }
+
+        // A refresh that comes back with less than before keeps the stored value.
+        await env.DB.prepare(
+          "UPDATE saved_nodes SET raw_transcript = COALESCE(?, raw_transcript), synopsis = COALESCE(?, synopsis), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
+        ).bind(captions ? captions.text : null, synopsis, id, userId).run();
+        return jsonResponse({
+          id,
+          videoId,
+          transcript: captions ? captions.text : stored.transcript,
+          synopsis: synopsis || stored.synopsis,
+          source: captions ? "captions" : "video",
+          language: captions ? captions.language : null,
+          autoCaptions: captions ? captions.auto : null
+        });
+      } catch (err) {
+        console.error("Transcript Error:", err);
+        return jsonResponse({ error: "Transcript failed." }, 500);
       }
     }
 
@@ -5359,11 +5420,12 @@ async function askGemini(env, question, buildPrompt, { forceWeb = false } = {}) 
 
 // Sends one plain-text prompt to Gemini, optionally grounded with Google Search. Returns { text, sources }.
 // Plain text (not JSON mode) because older models reject JSON output combined with the search tool.
-async function callGeminiText(apiKey, models, prompt, maxOutputTokens, useSearch) {
+// videoUrl attaches a public YouTube video for Gemini to watch alongside the prompt.
+async function callGeminiText(apiKey, models, prompt, maxOutputTokens, useSearch, videoUrl = null) {
   let lastError;
   for (const model of models) {
     try {
-      return await callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch);
+      return await callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch, videoUrl);
     } catch (err) {
       lastError = err;
       if (!GEMINI_RETRYABLE_STATUSES.includes(err.status)) throw err;
@@ -5373,7 +5435,7 @@ async function callGeminiText(apiKey, models, prompt, maxOutputTokens, useSearch
   throw lastError;
 }
 
-async function callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch) {
+async function callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSearch, videoUrl = null) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: {
@@ -5381,12 +5443,14 @@ async function callGeminiModelText(apiKey, model, prompt, maxOutputTokens, useSe
       "x-goog-api-key": apiKey
     },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ parts: videoUrl ? [{ file_data: { file_uri: videoUrl } }, { text: prompt }] : [{ text: prompt }] }],
       ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
       generationConfig: {
         temperature: 0.3,
         maxOutputTokens,
-        thinkingConfig: { thinkingLevel: "low" }
+        thinkingConfig: { thinkingLevel: "low" },
+        // Low resolution samples fewer tokens per frame, so an hour-long video still fits the context window.
+        ...(videoUrl ? { mediaResolution: "MEDIA_RESOLUTION_LOW" } : {})
       }
     })
   });

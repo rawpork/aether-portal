@@ -271,7 +271,7 @@ function parseAttributes(tag) {
   return attrs;
 }
 
-function decodeHtmlEntities(text) {
+export function decodeHtmlEntities(text) {
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
     if (entity[0] === "#") {
       const code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);

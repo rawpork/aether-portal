@@ -253,6 +253,23 @@ describe("Aether Portal worker", () => {
 		expect(response.headers.get("Allow")).toBe("PATCH, DELETE");
 	});
 
+	it("only allows GET and POST on /api/transcript", async () => {
+		const response = await SELF.fetch("http://example.com/api/transcript", { method: "PUT" });
+		expect(response.status).toBe(405);
+		expect(response.headers.get("Allow")).toBe("GET, POST");
+	});
+
+	it("requires sign-in to read or fetch a transcript", async () => {
+		const read = await SELF.fetch("http://example.com/api/transcript?id=abc");
+		expect(read.status).toBe(401);
+		const fetchNew = await SELF.fetch("http://example.com/api/transcript", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+			body: JSON.stringify({ id: "abc" }),
+		});
+		expect(fetchNew.status).toBe(401);
+	});
+
 	it("requires sign-in to move a node between board columns", async () => {
 		const response = await SELF.fetch("http://example.com/api/node/abc", {
 			method: "PATCH",
