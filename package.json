@@ -11,6 +11,6 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.0.0",
     "vitest": "~4.1.0",
-    "wrangler": "^4.133.0"
+    "wrangler": "^4.140.0"
   }
 }
