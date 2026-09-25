@@ -3110,7 +3110,15 @@ export default {
         count.textContent = String(counts.get(category));
 
         item.append(badge, name, count);
-        item.addEventListener('click', () => toggleHighlight(category));
+        // Highlighting a category also glides the camera to its cluster centre (a pending auto-fit would pull
+        // it back); un-highlighting leaves the camera where it is.
+        item.addEventListener('click', () => {
+          const highlighting = !filterState.highlighted.has(category);
+          toggleHighlight(category);
+          if (!highlighting || filterState.view !== 'graph') return;
+          cancelPendingFit();
+          flyToCategory(category);
+        });
         return item;
       }));
       legend.style.visibility = categories.length ? 'visible' : 'hidden';

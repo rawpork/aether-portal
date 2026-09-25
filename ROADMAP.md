@@ -12,12 +12,10 @@
 - [x] **Flat Node-Based Editor Mode (2D Canvas Toggle)** - Toggle button to flatten the Z-axis, align nodes into organized 2D rows/grids (like N8N / ComfyUI / node editors), and lock camera orbit to 2D pan/zoom. Shipped as the 2D Canvas toggle: nodes pinned to z = 0, categories on a 4-column grid, rotation off and left-drag pans.
 - [x] **1-Hop Neighborhood Focus Walker** - Clicking a node dims everything except its direct 1st-degree connections. Shipped: selecting a node keeps it and its direct neighbours at full opacity and dims the rest.
 - [x] **Orphan Node Toggle** - Hide unlinked singletons to clean up floating noise. Shipped as "Hide Unlinked" in the Filters popover.
+- [x] **Camera Centroid Fly-To** - Tapping a category in the legend smoothly glides the camera directly to that cluster's central anchor. Shipped: tapping a category in the legend highlights it and flies the camera to its cluster centre (the same fly-to as tapping a cluster label on the canvas); tapping it again clears the highlight without moving the camera.
 
 ## ?? Active Feature Pipeline (Next Steps)
 
-### Immediate Next Step:
+### Immediate Next Steps (Backend):
 - [ ] **YouTube Transcript Pipeline (`/api/transcript`)** - Endpoint that fetches the transcript for a saved YouTube node so its full spoken content can feed Gemini summaries, clustering and Ask.
-- [ ] **Web Fetcher (`/api/web-fetch`)** - Endpoint that fetches and extracts the readable text of a saved web link so its content (not just title and preview metadata) is available to AI enrichment.
-
-### Upcoming UI Milestones:
-- [ ] **Camera Centroid Fly-To** - Tapping a category in the legend smoothly glides the camera directly to that cluster's central anchor. Partly done: tapping a cluster's floating label on the canvas already flies to its centre and opens the cluster drawer; tapping a category in the legend still only toggles its highlight.
+- [ ] **Web Content Fetcher (`/api/web-fetch`)** - Endpoint that fetches and extracts the readable text of a saved web link so its content (not just title and preview metadata) is available to AI enrichment.
