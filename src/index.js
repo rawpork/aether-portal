@@ -864,6 +864,8 @@ export default {
       bottom: 25px;
       left: 15px;
       right: 15px;
+      box-sizing: border-box;
+      touch-action: pan-y;
       color: #fff;
       z-index: 10;
       background: rgba(8, 12, 20, 0.92);
@@ -1128,6 +1130,61 @@ export default {
     }
     /* Keep the node card clear of the drawer so both stay usable side by side. */
     body.drawer-open #node-card { right: 364px; }
+    #node-card .card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; padding-right: 64px; }
+    #node-card .card-head .card-tag { margin-bottom: 0; }
+    .card-carousel { display: inline-flex; align-items: center; gap: 6px; }
+    .card-carousel[hidden] { display: none; }
+    .carousel-btn {
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid rgba(0,255,204,0.45);
+      background: rgba(0,255,204,0.08);
+      color: #00ffcc;
+      font-size: 17px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .carousel-btn:hover, .carousel-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
+    .card-counter { font-size: 11px; color: #aab3c5; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .card-handle { display: none; }
+    /* Desktop / laptop: a floating side panel, so the graph stays visible. */
+    @media (min-width: 768px) {
+      #node-card { left: auto; right: 15px; top: 66px; bottom: auto; width: clamp(440px, 34vw, 480px); max-height: 80vh; }
+    }
+    @media (min-width: 1100px) {
+      body.collection-mode.card-open #collection-view { padding-right: 510px; padding-bottom: 24px; }
+    }
+    /* Phones: a bottom sheet with a drag handle (swipe down to close, left/right to page the cluster). */
+    @media (max-width: 767px) {
+      #node-card { left: 6px; right: 6px; bottom: 0; max-height: 78vh; padding-top: 24px; border-radius: 16px 16px 0 0; border-bottom: none; }
+      #node-card.dragging { transition: none; }
+      #node-card.settling { transition: transform 0.2s ease; }
+      .card-handle {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 25%;
+        right: 25%;
+        height: 22px;
+        cursor: grab;
+      }
+      .card-handle::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        width: 40px;
+        height: 4px;
+        margin-left: -20px;
+        border-radius: 2px;
+        background: rgba(255,255,255,0.3);
+      }
+    }
     .mini-card strong { display: block; font-size: 12px; color: #fff; line-height: 1.3; margin-bottom: 4px; }
     .mini-card span { display: block; font-size: 11px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
     .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #00ffcc; text-decoration: none; }
@@ -1293,7 +1350,15 @@ export default {
   <div id="node-card">
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
     <button id="card-delete" class="card-delete" title="Delete node" aria-label="Delete node"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
-    <span id="card-tag" class="card-tag">NOTE</span>
+    <div class="card-handle" aria-hidden="true"></div>
+    <div class="card-head">
+      <span id="card-tag" class="card-tag">NOTE</span>
+      <div id="card-carousel" class="card-carousel" hidden>
+        <button type="button" id="card-prev" class="carousel-btn" title="Previous card (←)" aria-label="Previous card in cluster">‹</button>
+        <span id="card-counter" class="card-counter" aria-live="polite"></span>
+        <button type="button" id="card-next" class="carousel-btn" title="Next card (→)" aria-label="Next card in cluster">›</button>
+      </div>
+    </div>
     <div id="card-preview" class="card-preview">
       <img id="card-preview-image" alt="" loading="lazy" referrerpolicy="no-referrer" hidden>
       <div class="card-preview-bar">
@@ -1754,6 +1819,8 @@ export default {
     const legendItems = document.getElementById('legend-items');
     // Start collapsed on phones so the legend doesn't cover the graph.
     if (window.matchMedia('(max-width: 768px)').matches) legend.open = false;
+    // Matches the CSS breakpoint where the node card becomes a bottom sheet.
+    const compactLayout = window.matchMedia('(max-width: 767px)');
     const cardTitle = document.getElementById('card-title');
     const cardTag = document.getElementById('card-tag');
     const cardDescription = document.getElementById('card-description');
@@ -1955,8 +2022,8 @@ export default {
       renderResearch(node);
       nodeCard.style.display = 'block';
       document.body.classList.add('card-open');
-      // The card spans the bottom of the screen, so the legend steps aside while it's open.
-      legend.style.display = 'none';
+      // On phones the card is a bottom sheet over the legend, so the legend steps aside while it's open.
+      if (compactLayout.matches) legend.style.display = 'none';
     };
 
     // Fresh accessors make the graph re-evaluate colors, widths and particles.
@@ -2285,10 +2352,103 @@ export default {
       refreshGraphStyles();
     };
 
+    // Card carousel: the opened node's connected cluster (visible AI/manual edges), or its category when it has none.
+    const carousel = { ids: [], label: '' };
+    const cardCarousel = document.getElementById('card-carousel');
+    const cardCounter = document.getElementById('card-counter');
+
+    const titleCase = text => text.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+    // Members reachable over drawn edges, walked breadth-first from the best-connected member (neighbours by
+    // degree, then title) so the order is the same whichever card you enter from.
+    const getConnectedCluster = node => {
+      const adjacency = new Map();
+      const connect = (a, b) => {
+        if (!adjacency.has(a)) adjacency.set(a, new Set());
+        adjacency.get(a).add(b);
+      };
+      Graph.graphData().links.forEach(link => {
+        if (link.type !== 'ai') return;
+        const a = linkEndId(link.source);
+        const b = linkEndId(link.target);
+        if (a === b) return;
+        connect(a, b);
+        connect(b, a);
+      });
+      if (!adjacency.has(node.id)) return [];
+
+      const members = new Set([node.id]);
+      const pending = [node.id];
+      while (pending.length) {
+        adjacency.get(pending.shift()).forEach(id => {
+          if (!members.has(id)) {
+            members.add(id);
+            pending.push(id);
+          }
+        });
+      }
+      const byId = new Map(Graph.graphData().nodes.map(item => [item.id, item]));
+      const rank = (a, b) => (adjacency.get(b).size - adjacency.get(a).size) || String(byId.get(a)?.title || '').localeCompare(String(byId.get(b)?.title || ''));
+      const start = [...members].sort(rank)[0];
+      const order = [];
+      const seen = new Set([start]);
+      const queue = [start];
+      while (queue.length) {
+        const id = queue.shift();
+        order.push(id);
+        [...adjacency.get(id)].sort(rank).forEach(next => {
+          if (!seen.has(next)) {
+            seen.add(next);
+            queue.push(next);
+          }
+        });
+      }
+      return order.filter(id => byId.has(id));
+    };
+
+    const buildCarousel = node => {
+      const connected = getConnectedCluster(node);
+      if (connected.length > 1) {
+        carousel.ids = connected;
+        carousel.label = 'Connected Cluster';
+        return;
+      }
+      const category = getNodeCategory(node);
+      const members = getClusterNodes(category).map(item => item.id);
+      carousel.ids = members.length > 1 ? members : [];
+      carousel.label = titleCase(formatCategory(category)) + ' Cluster';
+    };
+
+    const renderCarousel = node => {
+      const index = carousel.ids.indexOf(node.id);
+      const active = carousel.ids.length > 1 && index !== -1;
+      cardCarousel.hidden = !active;
+      if (active) cardCounter.textContent = 'Card ' + (index + 1) + ' of ' + carousel.ids.length + ' in ' + carousel.label;
+    };
+
+    // Wraps around; members hidden by filters since the list was built are skipped.
+    const stepCarousel = delta => {
+      const node = focus.node;
+      if (!node || nodeCard.style.display !== 'block') return;
+      const count = carousel.ids.length;
+      const index = carousel.ids.indexOf(node.id);
+      if (count < 2 || index === -1) return;
+      const visible = new Map(Graph.graphData().nodes.map(item => [item.id, item]));
+      for (let step = 1; step < count; step++) {
+        const next = visible.get(carousel.ids[((index + delta * step) % count + count) % count]);
+        if (next) {
+          selectNode(next, { fly: true, keepCarousel: true });
+          return;
+        }
+      }
+    };
+
     const selectNode = (node, options = {}) => {
       // Keep the drawer only when the node belongs to the cluster it lists.
       if (drawerCategory !== getNodeCategory(node)) closeClusterDrawer();
       showNodeCard(node);
+      if (!options.keepCarousel || !carousel.ids.includes(node.id)) buildCarousel(node);
+      renderCarousel(node);
       setFocus(node);
       syncDrawerSelection();
       // The camera only matters while the graph is on screen.
@@ -2299,6 +2459,7 @@ export default {
 
     const hideNodeCard = () => {
       nodeCard.style.display = 'none';
+      nodeCard.style.transform = '';
       document.body.classList.remove('card-open');
       if (!clusterDrawer.classList.contains('open')) legend.style.display = 'block';
       clearFocus();
@@ -2325,6 +2486,61 @@ export default {
       .onNodeDragEnd(updateTerritories);
 
     document.getElementById('card-close').addEventListener('click', hideNodeCard);
+    document.getElementById('card-prev').addEventListener('click', () => stepCarousel(-1));
+    document.getElementById('card-next').addEventListener('click', () => stepCarousel(1));
+
+    // Left/right arrows page through the cluster, unless typing or a dialog is open.
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (document.querySelector('.modal-backdrop:not([hidden])') || !loginGate.hidden) return;
+      if (nodeCard.style.display !== 'block' || cardCarousel.hidden) return;
+      event.preventDefault();
+      stepCarousel(event.key === 'ArrowRight' ? 1 : -1);
+    });
+
+    // Touch: drag the sheet's handle/header down to close; swipe left/right anywhere on the card to page.
+    const SWIPE_DISMISS_PX = 90;
+    const SWIPE_PAGE_PX = 60;
+    let swipe = null;
+    nodeCard.addEventListener('touchstart', event => {
+      const target = event.target;
+      if (event.touches.length !== 1 || target.closest('textarea, input, select, button, a, summary')) {
+        swipe = null;
+        return;
+      }
+      const touch = event.touches[0];
+      swipe = { x: touch.clientX, y: touch.clientY, fromHandle: Boolean(target.closest('.card-handle, .card-head')) && compactLayout.matches };
+    }, { passive: true });
+    nodeCard.addEventListener('touchmove', event => {
+      if (!swipe || !swipe.fromHandle) return;
+      const dy = event.touches[0].clientY - swipe.y;
+      nodeCard.classList.add('dragging');
+      nodeCard.style.transform = dy > 0 ? 'translateY(' + dy + 'px)' : '';
+    }, { passive: true });
+    nodeCard.addEventListener('touchend', event => {
+      if (!swipe) return;
+      const touch = event.changedTouches[0];
+      const dx = touch.clientX - swipe.x;
+      const dy = touch.clientY - swipe.y;
+      const fromHandle = swipe.fromHandle;
+      swipe = null;
+      nodeCard.classList.remove('dragging');
+      if (fromHandle && dy > SWIPE_DISMISS_PX && dy > Math.abs(dx)) {
+        hideNodeCard();
+        return;
+      }
+      // Anything short of a dismiss springs back.
+      nodeCard.classList.add('settling');
+      nodeCard.style.transform = '';
+      setTimeout(() => nodeCard.classList.remove('settling'), 220);
+      if (Math.abs(dx) > SWIPE_PAGE_PX && Math.abs(dx) > 1.5 * Math.abs(dy)) stepCarousel(dx < 0 ? 1 : -1);
+    });
+    nodeCard.addEventListener('touchcancel', () => {
+      swipe = null;
+      nodeCard.classList.remove('dragging');
+      nodeCard.style.transform = '';
+    });
 
     const graphControls = Graph.controls();
     graphControls.autoRotateSpeed = 0.5;
@@ -2428,7 +2644,11 @@ export default {
       Graph.graphData({ nodes: filteredNodes, links: shownLinks });
       // A focused node that got filtered out drops the focus along with its card.
       if (focus.node && !visibleIds.has(focus.node.id)) hideNodeCard();
-      else if (focus.node) setFocus(focus.node);
+      else if (focus.node) {
+        setFocus(focus.node);
+        buildCarousel(focus.node);
+        renderCarousel(focus.node);
+      }
       else refreshGraphStyles();
       renderLegend(filteredNodes);
       syncTerritories(filteredNodes);
