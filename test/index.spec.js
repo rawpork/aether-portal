@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, parseResearch, parseTelegramCommand, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
+import { TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, parseImageDescription, parseResearch, parseTelegramCommand, pickTelegramImage, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -73,6 +73,37 @@ describe("Telegram command guide", () => {
 			expect(help).toContain(usage);
 		}
 		expect(help).toContain("within 2 minutes");
+		expect(help).toContain("📸 Photos");
+	});
+});
+
+describe("pickTelegramImage", () => {
+	it("picks the largest photo size", () => {
+		const message = { photo: [
+			{ file_id: "small", width: 90, height: 67, file_size: 1200 },
+			{ file_id: "large", width: 1280, height: 960, file_size: 120000 },
+			{ file_id: "medium", width: 800, height: 600, file_size: 60000 }
+		] };
+		expect(pickTelegramImage(message)).toEqual({ fileId: "large", fileSize: 120000 });
+	});
+
+	it("accepts raster images sent as files and rejects everything else", () => {
+		expect(pickTelegramImage({ document: { file_id: "doc", mime_type: "image/png", file_size: 5 } })).toEqual({ fileId: "doc", fileSize: 5 });
+		expect(pickTelegramImage({ document: { file_id: "svg", mime_type: "image/svg+xml" } })).toBeNull();
+		expect(pickTelegramImage({ document: { file_id: "pdf", mime_type: "application/pdf" } })).toBeNull();
+		expect(pickTelegramImage({ text: "hi" })).toBeNull();
+	});
+});
+
+describe("parseImageDescription", () => {
+	it("normalises title, caption and tags", () => {
+		expect(parseImageDescription({ title: " \"Whiteboard sprint plan.\" ", caption: "A  whiteboard\nwith tasks.", tags: ["#Planning", "Sprint Board", "planning", "", "q3!"] }))
+			.toEqual({ title: "Whiteboard sprint plan", caption: "A whiteboard with tasks.", tags: ["planning", "sprint-board", "q3"] });
+	});
+
+	it("returns null without a title and caps tags at eight", () => {
+		expect(parseImageDescription({ caption: "x" })).toBeNull();
+		expect(parseImageDescription({ title: "T", tags: Array.from({ length: 12 }, (_, i) => "tag" + i) }).tags.length).toBe(8);
 	});
 });
 

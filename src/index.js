@@ -3,7 +3,7 @@ import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerRespo
 
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch|share\/[rv]\/)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
-const VALID_CATEGORIES = ["note", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan", "general", "video"];
+const VALID_CATEGORIES = ["note", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan", "general", "video", "image"];
 const RECLUSTER_CATEGORIES = ["note", "general", "link", "article", "dev_task", "monetization", "ai_tool", "marketing", "route_plan"];
 
 // Keeps each recluster request well under the Workers subrequest / D1 query limits:
@@ -46,6 +46,10 @@ const TELEGRAM_CONTEXT_NODES = 40;
 // Telegram rejects messages over 4096 characters; longer answers are split below that.
 const TELEGRAM_MESSAGE_MAX = 3900;
 const TELEGRAM_SOURCES_MAX = 5;
+// Telegram photos: bots can download files up to 20 MB; images sent as files must be one of these raster types.
+const TELEGRAM_FILE_MAX_BYTES = 20 * 1024 * 1024;
+const TELEGRAM_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const IMAGE_TYPES_BY_EXTENSION = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" };
 // Set once this isolate has published the command list.
 let telegramCommandsRegistered = false;
 // Daily cron mines at most this many users' backlogs (one Gemini call each).
@@ -284,6 +288,40 @@ export default {
       }
     }
 
+    // Endpoint 4c: A Telegram photo node's image, fetched from Telegram on demand (the stored file_id never expires)
+    if (url.pathname.startsWith("/api/node-image/")) {
+      if (request.method !== "GET") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      let id = "";
+      try {
+        id = decodeURIComponent(url.pathname.slice("/api/node-image/".length)).trim();
+      } catch (err) {
+        id = "";
+      }
+      const row = id
+        ? await env.DB.prepare("SELECT telegram_file_id FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, auth.user.id).first()
+        : null;
+      if (!row?.telegram_file_id) return jsonResponse({ error: "Image not found." }, 404);
+      try {
+        const file = await fetchTelegramFile(env, row.telegram_file_id);
+        if (!file) return jsonResponse({ error: "Telegram no longer has this image." }, 502);
+        return new Response(file.response.body, {
+          headers: {
+            "Content-Type": file.imageType,
+            "Cache-Control": "private, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'"
+          }
+        });
+      } catch (err) {
+        console.error("Node image fetch failed:", err);
+        return jsonResponse({ error: "Image fetch failed." }, 502);
+      }
+    }
+
     // Endpoint 4b: Delete a node and its mined edges
     if (url.pathname.startsWith("/api/node/")) {
       if (request.method !== "DELETE") {
@@ -400,8 +438,13 @@ export default {
           return new Response("OK");
         }
         const userId = owner.id;
+        const image = pickTelegramImage(update.message);
+        if (image) {
+          await saveTelegramImage(env, chatId, userId, { ...image, caption: String(update.message.caption || "").trim() });
+          return new Response("OK");
+        }
         if (!text) {
-          await sendTelegram(env, chatId, "Only text messages and links can be saved right now. Send /help for the command guide.");
+          await sendTelegram(env, chatId, "Send text, links or photos to save them. Send /help for the command guide.");
           return new Response("OK");
         }
 
@@ -1312,6 +1355,7 @@ export default {
       <button class="filter-pill" data-filter="dev_task">Dev Tasks</button>
       <button class="filter-pill" data-filter="video">Videos</button>
       <button class="filter-pill" data-filter="note">Notes</button>
+      <button class="filter-pill" data-filter="image">Images</button>
     </div>
     <div class="filter-row">
       <select id="time-filter">
@@ -1536,7 +1580,8 @@ export default {
       monetization: '#7ae582',
       ai_tool: '#c77dff',
       marketing: '#ff9f1c',
-      route_plan: '#f15bb5'
+      route_plan: '#f15bb5',
+      image: '#4cc9f0'
     };
     const CATEGORY_ORDER = Object.keys(CATEGORY_COLORS);
     const FALLBACK_CATEGORY_COLOR = '#cccccc';
@@ -1755,6 +1800,7 @@ export default {
         case 'dev_task': return category === 'dev_task';
         case 'video': return category === 'video';
         case 'note': return category === 'note' || category === 'general';
+        case 'image': return category === 'image';
         default: return true;
       }
     };
@@ -1776,7 +1822,7 @@ export default {
 
     const matchesSearch = node => {
       if (!filterState.query) return true;
-      const haystack = ((node.title || '') + ' ' + (node.url || '') + ' ' + (node.user_note || '') + ' ' + getNodeCategory(node)).toLowerCase();
+      const haystack = ((node.title || '') + ' ' + (node.url || '') + ' ' + (node.description || '') + ' ' + (node.user_note || '') + ' ' + getNodeCategory(node)).toLowerCase();
       return haystack.includes(filterState.query);
     };
 
@@ -1920,6 +1966,8 @@ export default {
     };
 
     const isHttpUrl = value => typeof value === 'string' && /^https?:/i.test(value);
+    // Cover images: remote og:images, or a Telegram photo served by this worker.
+    const isImageSrc = value => isHttpUrl(value) || (typeof value === 'string' && value.startsWith('/api/node-image/'));
 
     // One glyph per node type, shown on every badge next to the category name.
     const TYPE_ICONS = {
@@ -1932,7 +1980,8 @@ export default {
       monetization: '💰',
       ai_tool: '🤖',
       marketing: '📣',
-      route_plan: '🗺️'
+      route_plan: '🗺️',
+      image: '🖼️'
     };
     const getTypeIcon = category => TYPE_ICONS[category] || '✦';
 
@@ -1961,18 +2010,21 @@ export default {
       return '';
     };
 
-    // Link cards get a header with the Open Graph cover image, site name and a button to the saved URL.
+    // Link cards get a header with the Open Graph cover image, site name and a button to the saved URL;
+    // photo cards show the image with a button to open it full size.
     const renderCardPreview = (node, isLink) => {
-      if (!isLink) {
+      const isPhoto = !isLink && isImageSrc(node.image_url);
+      if (!isLink && !isPhoto) {
         cardPreview.style.display = 'none';
         cardPreviewImage.hidden = true;
         cardPreviewImage.removeAttribute('src');
         cardLink.removeAttribute('href');
         return;
       }
-      cardLink.href = node.url;
-      cardSite.textContent = node.site_name || getHostname(node.source_url || node.url);
-      const favicon = getFaviconUrl(node);
+      cardLink.href = isLink ? node.url : node.image_url;
+      cardLink.textContent = isLink ? '🔗 Open Original Source' : '🔍 Open Full Image';
+      cardSite.textContent = isPhoto ? '📸 Telegram photo' : (node.site_name || getHostname(node.source_url || node.url));
+      const favicon = isLink ? getFaviconUrl(node) : null;
       if (favicon) {
         cardFavicon.src = favicon;
         cardFavicon.hidden = false;
@@ -1980,7 +2032,7 @@ export default {
         cardFavicon.hidden = true;
         cardFavicon.removeAttribute('src');
       }
-      if (isHttpUrl(node.image_url)) {
+      if (isImageSrc(node.image_url)) {
         cardPreviewImage.src = node.image_url;
         cardPreviewImage.hidden = false;
       } else {
@@ -3169,7 +3221,7 @@ export default {
       const category = getNodeCategory(node);
       const color = getCategoryColor(category);
       const favicon = isLink ? getFaviconUrl(node) : null;
-      const hasImage = isHttpUrl(node.image_url);
+      const hasImage = isImageSrc(node.image_url);
 
       if (variant === 'grid') {
         const cover = document.createElement('div');
@@ -3798,6 +3850,9 @@ export function buildTelegramHelp() {
     "📎 Link + comment pairing",
     `Send a link, then any text within ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes: it is added to that link as your note instead of becoming a new node. Text in the same message as a link is kept as its note too. Use /note to save text on its own.`,
     "",
+    "📸 Photos",
+    `Send a photo (or an image file) and Elarion titles, describes and tags it. A caption, or text sent within ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes, is added as its note.`,
+    "",
     "Anything else you send is saved to your graph: links become link nodes, text becomes notes."
   ].join("\n");
 }
@@ -3819,6 +3874,8 @@ function renderTelegramHelpHtml() {
         <li>After ${minutes} minutes, text is saved as its own note again.</li>
       </ol>
       <p>Text in the same message as a link (before or after it) is kept as that link's note. To save text separately even right after a link, start it with <code>/note</code>.</p>
+      <h4>📸 Photos</h4>
+      <p>Send a photo, or an image as a file (JPEG, PNG, WebP or GIF). Elarion gives it a title, a short description and tags, and saves it as an <em>image</em> node. A caption, or any text within ${minutes} minutes, is added as its note, just like a link.</p>
       <h4>Everything else</h4>
       <p>Anything you send without a command is saved to your graph: links become link nodes, text becomes notes. <code>/research</code> answers are saved too: a researched link keeps the answer in its card's Past Research, and a researched topic becomes a new node.</p>`;
 }
@@ -3850,6 +3907,135 @@ async function handleTelegramCommand(env, chatId, userId, { command, args }) {
     default:
       return sendTelegram(env, chatId, `Unknown command /${command}. Send /help for the command guide.`);
   }
+}
+
+// The image a Telegram message carries: the largest photo size, or an image sent as a file (raster types only,
+// so an SVG can never be served from this origin). Returns { fileId, fileSize } or null.
+export function pickTelegramImage(message) {
+  const photos = Array.isArray(message?.photo) ? message.photo.filter(size => size?.file_id) : [];
+  if (photos.length) {
+    const largest = photos.reduce((best, size) => ((size.width || 0) * (size.height || 0) > (best.width || 0) * (best.height || 0) ? size : best));
+    return { fileId: String(largest.file_id), fileSize: Number(largest.file_size) || 0 };
+  }
+  const doc = message?.document;
+  if (doc?.file_id && TELEGRAM_IMAGE_MIME_TYPES.includes(String(doc.mime_type || "").toLowerCase())) {
+    return { fileId: String(doc.file_id), fileSize: Number(doc.file_size) || 0 };
+  }
+  return null;
+}
+
+// Photos: Gemini names, describes and tags them. The file stays on Telegram and the web app loads it through
+// /api/node-image/:id, so no bot token or expiring download URL is ever stored.
+async function saveTelegramImage(env, chatId, userId, { fileId, fileSize, caption }) {
+  if (fileSize > TELEGRAM_FILE_MAX_BYTES) {
+    await sendTelegram(env, chatId, "That image is over Telegram's 20 MB bot download limit. Please send a smaller version.");
+    return;
+  }
+  await sendTelegramTyping(env, chatId);
+  const note = caption ? caption.slice(0, USER_NOTE_MAX) : null;
+
+  let described = null;
+  try {
+    const file = await downloadTelegramFile(env, fileId);
+    if (file && env.GEMINI_API_KEY) described = await describeImageWithGemini(env, file.bytes, file.mimeType, note);
+  } catch (err) {
+    console.warn("Telegram photo processing failed:", err.message);
+  }
+
+  const id = "node_" + crypto.randomUUID();
+  const title = described?.title || "Photo · " + new Date().toISOString().slice(0, 10);
+  const description = described
+    ? [described.caption, described.tags.length ? "Tags: " + described.tags.map(tag => "#" + tag).join(" ") : ""].filter(Boolean).join("\n\n")
+    : null;
+  await env.DB.prepare(
+    "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, telegram_file_id, user_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, "", title, description, "image", `/api/node-image/${id}`, "Telegram", fileId, note).run();
+
+  const pairing = `\nText you send in the next ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes is added to this photo.`;
+  await sendTelegram(
+    env,
+    chatId,
+    described
+      ? `📸 Photo saved & processed: "${title}"${described.tags.length ? "\n🏷️ " + described.tags.map(tag => "#" + tag).join(" ") : ""}${note ? "\n📝 Your caption is attached." : ""}${pairing}`
+      : `📸 Photo saved: "${title}"\nElarion couldn't describe it right now; the image is still in your graph.${note ? "\n📝 Your caption is attached." : ""}${pairing}`
+  );
+}
+
+// getFile + download. Returns { bytes, mimeType } or null.
+async function downloadTelegramFile(env, fileId) {
+  const file = await fetchTelegramFile(env, fileId);
+  if (!file) return null;
+  return { bytes: new Uint8Array(await file.response.arrayBuffer()), mimeType: file.imageType };
+}
+
+// Resolves a file_id to a fresh download: { response (streaming), imageType }, or null.
+// The type comes from the file extension (Telegram's file server doesn't reliably send one).
+async function fetchTelegramFile(env, fileId) {
+  const info = await telegramApi(env, "getFile", { file_id: fileId });
+  const body = info.ok ? await info.json().catch(() => null) : null;
+  const filePath = body?.result?.file_path;
+  if (!filePath) return null;
+  const base = String(env.TELEGRAM_API_BASE || "https://api.telegram.org").replace(/\/+$/, "");
+  const response = await fetch(`${base}/file/bot${env.TELEGRAM_TOKEN}/${filePath}`);
+  if (!response.ok) {
+    await response.body?.cancel();
+    return null;
+  }
+  const extension = String(filePath).split(".").pop().toLowerCase();
+  return { response, imageType: IMAGE_TYPES_BY_EXTENSION[extension] || "image/jpeg" };
+}
+
+// Vision call: Flash-Lite first, Flash if it's busy. GEMINI_API_BASE (optional) points it at a local stub during development.
+async function describeImageWithGemini(env, bytes, mimeType, userCaption) {
+  const base = String(env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com").replace(/\/+$/, "");
+  const prompt = `You are cataloguing a photo for the user's personal knowledge graph.${userCaption ? ` The user's caption: "${userCaption.slice(0, 500)}".` : ""}
+Return JSON: {"title": "...", "caption": "...", "tags": ["..."]}
+- title: 3 to 8 words naming what the photo shows or is about (a screenshot's topic, a document's subject, a place, an object). No quotes, no trailing period.
+- caption: 1 to 3 sentences describing the useful content. Transcribe key text if it is a screenshot, receipt, slide or document.
+- tags: 3 to 8 short lowercase topic tags, no # signs.`;
+  const payload = {
+    contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: bytesToBase64(bytes) } }, { text: prompt }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 2048, responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "low" } }
+  };
+  let lastError;
+  for (const model of ASK_TIER1_MODELS) {
+    try {
+      const response = await fetch(`${base}/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const detail = (await response.text().catch(() => "")).slice(0, 300);
+        throw Object.assign(new Error(`Gemini vision error (${model}): ${response.status} ${detail}`), { status: response.status });
+      }
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
+      return parseImageDescription(JSON.parse(text.replace(/```json|```/gi, "").trim()));
+    } catch (err) {
+      lastError = err;
+      if (!GEMINI_RETRYABLE_STATUSES.includes(err.status)) throw err;
+      console.warn(`Gemini ${model} unavailable (${err.status}); trying next model.`);
+    }
+  }
+  throw lastError;
+}
+
+// Normalises Gemini's { title, caption, tags }; null without a usable title.
+export function parseImageDescription(raw) {
+  const title = String(raw?.title || "").replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”.]+$/g, "").trim().slice(0, 80);
+  if (!title) return null;
+  const caption = String(raw?.caption || raw?.summary || "").replace(/\s+/g, " ").trim().slice(0, 800);
+  const tags = [...new Set((Array.isArray(raw?.tags) ? raw.tags : [])
+    .map(tag => String(tag).toLowerCase().replace(/^#+/, "").replace(/[^\p{L}\p{N} _-]+/gu, "").trim().replace(/\s+/g, "-"))
+    .filter(Boolean))].slice(0, 8);
+  return { title, caption, tags };
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 // Saves a link node (metadata fetched now) and confirms it unless `quiet`. Returns the saved row's fields.
@@ -4071,13 +4257,13 @@ function isGenericPlaceholder(text) {
   return /(look into this|look into that|look into it|check this out|look at this|something like this|placeholder|tbd)/.test(lower) || lower === "this" || lower === "that";
 }
 
-// Finds the link saved in the `windowSeconds` before `referenceTime` (a D1 timestamp, or null for now).
+// Finds the link or photo saved in the `windowSeconds` before `referenceTime` (a D1 timestamp, or null for now).
 // Only the same user's links count, so a note never borrows another account's context.
 async function findRecentLinkContext(env, userId, referenceTime, excludeId = null, windowSeconds = 60) {
   try {
     const ref = referenceTime ? String(referenceTime) : "now";
     return await env.DB.prepare(
-      "SELECT id, title, description, url, category FROM saved_nodes WHERE user_id = ? AND (url LIKE 'http://%' OR url LIKE 'https://%') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, ?) ORDER BY created_at DESC, rowid DESC LIMIT 1"
+      "SELECT id, title, description, url, category FROM saved_nodes WHERE user_id = ? AND (url LIKE 'http://%' OR url LIKE 'https://%' OR category = 'image') AND id != ? AND created_at <= datetime(?) AND created_at >= datetime(?, ?) ORDER BY created_at DESC, rowid DESC LIMIT 1"
     ).bind(userId, excludeId || "", ref, ref, `-${Math.max(1, Math.floor(windowSeconds))} seconds`).first();
   } catch (err) {
     console.error("Recent link context lookup failed:", err);

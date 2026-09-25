@@ -68,12 +68,13 @@
 - [x] **16:9 Thumbnails:** Grid covers, list thumbnails and the node card header use 16:9 frames (card header capped at 220px) with object-fit: contain, so YouTube frames and link images show uncropped; YouTube uses maxresdefault.jpg when the video has one, else hqdefault.jpg.
 - [x] **Responsive Card Inspector:** On screens 768px and wider the node card is a floating right-side panel (440-480px wide, max 80vh) so the graph and legend stay visible (list/grid content makes room for it from 1100px); on phones it is a bottom sheet with a drag handle - drag down to close.
 - [x] **Connected Cluster Carousel:** The card header shows "Card N of M in ..." with previous/next arrows (plus Left/Right arrow keys and left/right swipes on phones), cycling with wrap-around and keeping the graph focus and list highlight in sync. Members are the nodes reachable over drawn (AI-mined/manual) edges in a fixed order starting from the best-connected node; nodes without edges page through their category cluster instead.
+- [x] **Telegram Photo Ingestion:** Photos (and JPEG/PNG/WebP/GIF images sent as files) are downloaded via getFile, described by Gemini vision (Flash-Lite, Flash fallback) into a title, caption and up to 8 tags, and saved as `image` nodes. A photo caption, or text sent within 2 minutes, becomes the node's note. D1 stores only Telegram's permanent file_id (migration 0009); the signed-in-only `/api/node-image/:id` route streams the image, so no bot token or expiring URL is stored. Images show as grid covers, list thumbnails and the card header, have their own Images filter, and captions/tags are searchable.
 
 ---
 
 ## ?? Phase 3: Lightweight Agentic Quarterback & Dynamic Skill Engine
 
-- [ ] **Database Migration 0009_agent_skills.sql:**
+- [ ] **Database Migration 0010_agent_skills.sql:**
   - Create agent_skills (holding skill_key, system_instructions, and required_tools) and agent_memory tables in D1.
 - [ ] **Telegram Chat Linking (POST /api/telegram):**
   - Map telegram_chat_id to users.id (unrecognized chats receive a "Not Authorized" reply).
