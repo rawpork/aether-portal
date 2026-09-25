@@ -33,6 +33,21 @@ const RESEARCH_ANSWER_MAX = 4000;
 // Telegram: plain text sent this soon after a link is saved as a note on that link instead of a new node.
 const LINK_PAIRING_WINDOW_SECONDS = 120;
 const USER_NOTE_MAX = 4000;
+// Telegram slash commands: one list feeds setMyCommands (the "/" autocomplete), /help, and the web app's help modal.
+export const TELEGRAM_COMMANDS = [
+  { command: "research", usage: "/research <topic or link>", description: "Deep AI research with live web synthesis, saved to your graph" },
+  { command: "ask", usage: "/ask <question>", description: "Ask Elarion about your saved knowledge graph" },
+  { command: "link", usage: "/link <url> [note]", description: "Save a URL as a link node, with an optional note" },
+  { command: "note", usage: "/note <text>", description: "Save a standalone note, even right after a link" },
+  { command: "help", usage: "/help", description: "Command guide and link pairing info" }
+];
+// Nodes sent as context with a Telegram /ask or /research: best keyword matches, then the most recent.
+const TELEGRAM_CONTEXT_NODES = 40;
+// Telegram rejects messages over 4096 characters; longer answers are split below that.
+const TELEGRAM_MESSAGE_MAX = 3900;
+const TELEGRAM_SOURCES_MAX = 5;
+// Set once this isolate has published the command list.
+let telegramCommandsRegistered = false;
 // Daily cron mines at most this many users' backlogs (one Gemini call each).
 const MINER_USERS_PER_RUN = 3;
 // Session cookie auth: stateless HMAC-signed token; PBKDF2 at the Workers iteration cap.
@@ -48,6 +63,9 @@ export default {
   // Daily cron (wrangler.jsonc triggers): categorize unanalyzed nodes and mine relationship edges.
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(mineConnections(env));
+    if (env.TELEGRAM_TOKEN) {
+      ctx.waitUntil(registerTelegramCommands(env).catch(err => console.warn("Telegram setMyCommands failed:", err.message)));
+    }
   },
 
   async fetch(request, env, ctx) {
@@ -354,80 +372,58 @@ export default {
       if (!isAuthorizedTelegram(request, env)) {
         return new Response("Unauthorized", { status: 401 });
       }
+      // Workers have no startup hook: the first webhook each isolate handles (re)registers the "/" autocomplete.
+      if (!telegramCommandsRegistered && env.TELEGRAM_TOKEN) {
+        telegramCommandsRegistered = true;
+        ctx.waitUntil(registerTelegramCommands(env).catch(err => {
+          telegramCommandsRegistered = false;
+          console.warn("Telegram setMyCommands failed:", err.message);
+        }));
+      }
 
       try {
         const update = await request.json();
         const chatId = update.message?.chat?.id;
-        let text = String(update.message?.text || "").trim();
+        const text = String(update.message?.text || "").trim();
 
         if (!chatId) return new Response("OK");
 
-        const token = env.TELEGRAM_TOKEN;
         const owner = await env.DB.prepare("SELECT id FROM users WHERE telegram_chat_id = ?").bind(String(chatId)).first();
         if (!owner) {
-          await sendTelegram(token, chatId, `This chat isn't linked to an Aether account (chat id: ${chatId}).`);
+          await sendTelegram(env, chatId, `This chat isn't linked to an Aether account (chat id: ${chatId}).`);
           return new Response("OK");
         }
         const userId = owner.id;
         if (!text) {
-          await sendTelegram(token, chatId, "Only text messages and links can be saved right now.");
+          await sendTelegram(env, chatId, "Only text messages and links can be saved right now. Send /help for the command guide.");
           return new Response("OK");
         }
 
-        const id = "node_" + crypto.randomUUID();
-        // "/note <text>" always saves a separate note, even right after a link.
-        const standalone = parseStandaloneNote(text);
-        if (standalone !== null) {
-          if (!standalone) {
-            await sendTelegram(token, chatId, "Add your note after /note, e.g. /note call the supplier.");
-            return new Response("OK");
-          }
-          text = standalone;
+        const command = parseTelegramCommand(text);
+        if (command) {
+          await handleTelegramCommand(env, chatId, userId, command);
+          return new Response("OK");
         }
-        const message = splitLinkMessage(text);
 
+        const message = splitLinkMessage(text);
         if (message.url) {
           // A link, with any text sent in the same message kept as its note.
-          const category = inferNodeCategory(message.url, "link");
-          const metadata = await fetchLinkMetadata(message.url);
-          const title = metadata?.title || (message.url.length > 60 ? message.url.slice(0, 60) + "..." : message.url);
-          const note = message.note ? message.note.slice(0, USER_NOTE_MAX) : null;
-          await env.DB.prepare(
-            "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, favicon_url, user_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-          ).bind(id, userId, message.url, title, metadata?.description || null, category, metadata?.image || null, metadata?.siteName || null, metadata?.sourceUrl || null, metadata?.favicon || null, note).run();
-          await sendTelegram(
-            token,
-            chatId,
-            `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${title}"${note ? "\n📝 Your note is attached." : ""}\nText you send in the next ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes is added to this link.`
-          );
+          await saveTelegramLink(env, chatId, userId, message.url, message.note);
           return new Response("OK");
         }
 
         // Plain text right after a link is a comment on it: attach instead of creating a node.
-        if (standalone === null) {
-          const recentLink = await findRecentLinkContext(env, userId, null, null, LINK_PAIRING_WINDOW_SECONDS);
-          if (recentLink && await attachUserNote(env, userId, recentLink.id, text)) {
-            await sendTelegram(
-              token,
-              chatId,
-              `📎 Added your note to "${recentLink.title || recentLink.url}".\nTo save it as its own node instead, send /note followed by the text.`
-            );
-            return new Response("OK");
-          }
+        const recentLink = await findRecentLinkContext(env, userId, null, null, LINK_PAIRING_WINDOW_SECONDS);
+        if (recentLink && await attachUserNote(env, userId, recentLink.id, text)) {
+          await sendTelegram(
+            env,
+            chatId,
+            `📎 Added your note to "${recentLink.title || recentLink.url}".\nTo save it as its own node instead, send /note followed by the text.`
+          );
+          return new Response("OK");
         }
 
-        const category = text.length > 100 ? "article" : "note";
-        const title = text.length > 30 ? text.slice(0, 30) + "..." : text;
-        // Notes keep their full text in url (the card and Ask read it from there).
-        await env.DB.prepare(
-          "INSERT INTO saved_nodes (id, user_id, url, title, description, category) VALUES (?, ?, ?, ?, ?, ?)"
-        ).bind(id, userId, text, title, null, category).run();
-
-        await sendTelegram(
-          token,
-          chatId,
-          `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${title}"`
-        );
+        await saveTelegramNote(env, chatId, userId, text);
         return new Response("OK");
       } catch (err) {
         console.error("Worker Execution Error:", err.message, err.stack);
@@ -545,6 +541,30 @@ export default {
       font-weight: 600;
     }
     #add-node-button { font-size: 18px; line-height: 1; }
+    #telegram-help-button { gap: 6px; flex: none; }
+    #filter-menu summary { gap: 6px; }
+    .bar-icon { width: 14px; height: 14px; flex: none; }
+    .settings-option.phone-only { display: none; }
+    #telegram-help-button svg { width: 14px; height: 14px; flex: none; }
+    .help-panel { width: min(600px, 94vw); }
+    .help-panel .reader-body { white-space: normal; font-size: 13px; line-height: 1.55; }
+    .help-panel h4 { margin: 18px 0 6px; font-size: 13px; color: #00ffcc; }
+    .help-panel p { margin: 0 0 10px; }
+    .help-panel .help-lead { color: #aab3c5; }
+    .help-panel code { padding: 1px 6px; border-radius: 6px; background: rgba(0,255,204,0.1); color: #00ffcc; font-size: 12px; white-space: nowrap; }
+    .command-list { display: flex; flex-direction: column; gap: 6px; }
+    .command-row {
+      display: grid;
+      grid-template-columns: minmax(170px, auto) 1fr;
+      gap: 10px;
+      align-items: baseline;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .command-row span { color: #dffdf7; }
+    .help-steps { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
     #view-switch {
       display: inline-flex;
       flex: none;
@@ -1198,6 +1218,13 @@ export default {
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
       body.drawer-open #node-card { right: 15px; top: 62px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
       #view-switch .view-label { display: none; }
+      /* Phones: icon-only Filter, short 2D/3D label, and Telegram help moves into the settings menu. */
+      #telegram-help-button { display: none; }
+      .settings-option.phone-only { display: block; }
+      #filter-menu summary .bar-label, #view-toggle .bar-label { display: none; }
+      #view-toggle::after { content: attr(data-short); }
+      #filter-menu summary, #view-toggle { padding: 0 10px; }
+      .command-row { grid-template-columns: 1fr; gap: 2px; }
       #view-switch button { padding: 0 9px; }
       #collection-view { padding: 2px 10px 20px; }
       .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -1212,8 +1239,9 @@ export default {
   <header id="topbar">
     <span class="brand">Aether Portal</span>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
+    <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
     <details id="filter-menu">
-      <summary class="bar-btn">Filter ▾</summary>
+      <summary class="bar-btn" aria-label="Filter"><svg class="bar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg><span class="bar-label">Filter ▾</span></summary>
       <div class="filter-dropdown">
     <div class="filter-row" id="type-filters">
       <button class="filter-pill active" data-filter="all">All</button>
@@ -1242,7 +1270,7 @@ export default {
       <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
       <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
     </div>
-    <button class="view-toggle bar-btn" id="view-toggle">2D Canvas</button>
+    <button class="view-toggle bar-btn" id="view-toggle" data-short="2D"><span class="bar-label">2D Canvas</span></button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   <div class="settings-wrap">
     <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
@@ -1250,6 +1278,7 @@ export default {
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
       <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
+      <button class="settings-option phone-only" id="telegram-help-menu-option">✈️ Telegram Commands</button>
       <button class="settings-option" id="logout-button">⎋ Sign Out</button>
     </div>
   </div>
@@ -1319,6 +1348,17 @@ export default {
       <p id="login-error" class="login-error" role="alert"></p>
       <button type="submit" id="login-submit">Sign In</button>
     </form>
+  </div>
+
+  <div id="telegram-help-modal" class="modal-backdrop" hidden>
+    <article class="reader-panel help-panel" role="dialog" aria-modal="true" aria-labelledby="telegram-help-title">
+      <button type="button" id="telegram-help-close" class="card-close" title="Close" aria-label="Close">×</button>
+      <h3 id="telegram-help-title">✈️ Telegram Commands</h3>
+      <p class="reader-meta">Save and research from anywhere by messaging your Aether bot.</p>
+      <div class="reader-body">
+      ${renderTelegramHelpHtml()}
+      </div>
+    </article>
   </div>
 
   <div id="reader-modal" class="modal-backdrop" hidden>
@@ -2420,7 +2460,8 @@ export default {
     const viewToggle = document.getElementById('view-toggle');
     viewToggle.addEventListener('click', () => {
       filterState.flat = !filterState.flat;
-      viewToggle.textContent = filterState.flat ? '3D Graph' : '2D Canvas';
+      viewToggle.querySelector('.bar-label').textContent = filterState.flat ? '3D Graph' : '2D Canvas';
+      viewToggle.dataset.short = filterState.flat ? '3D' : '2D';
       viewToggle.classList.toggle('active', filterState.flat);
       pinToPlane(graphData.nodes);
 
@@ -2637,6 +2678,26 @@ export default {
     };
     const closeReader = () => { readerModal.hidden = true; };
     cardReaderButton.addEventListener('click', openReader);
+
+    const telegramHelpModal = document.getElementById('telegram-help-modal');
+    const telegramHelpButton = document.getElementById('telegram-help-button');
+    const closeTelegramHelp = () => {
+      telegramHelpModal.hidden = true;
+      telegramHelpButton.focus();
+    };
+    const openTelegramHelp = () => {
+      filterMenu.open = false;
+      settingsMenu.classList.remove('open');
+      telegramHelpModal.hidden = false;
+      document.getElementById('telegram-help-close').focus();
+    };
+    telegramHelpButton.addEventListener('click', openTelegramHelp);
+    document.getElementById('telegram-help-menu-option').addEventListener('click', openTelegramHelp);
+    document.getElementById('telegram-help-close').addEventListener('click', closeTelegramHelp);
+    telegramHelpModal.addEventListener('click', event => { if (event.target === telegramHelpModal) closeTelegramHelp(); });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !telegramHelpModal.hidden) closeTelegramHelp();
+    });
     readerClose.addEventListener('click', closeReader);
     readerModal.addEventListener('click', event => { if (event.target === readerModal) closeReader(); });
     document.addEventListener('keydown', event => {
@@ -3495,10 +3556,261 @@ function normalizeCategory(rawCategory, fallback = "note") {
   return fallback;
 }
 
-// "/note text" (or "/note@BotName text") -> "text"; anything else -> null.
-export function parseStandaloneNote(text) {
-  const match = /^\/note(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(String(text || "").trim());
-  return match ? String(match[1] || "").trim() : null;
+// "/cmd args" or "/cmd@BotName args" -> { command, args }; anything else (including paths like /a/b) -> null.
+export function parseTelegramCommand(text) {
+  const match = /^\/([a-z0-9_]{1,32})(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(String(text || "").trim());
+  return match ? { command: match[1].toLowerCase(), args: String(match[2] || "").trim() } : null;
+}
+
+// The /help reply; the web app's Telegram Commands modal shows the same list.
+export function buildTelegramHelp() {
+  return [
+    "🌌 Elarion command guide",
+    "",
+    ...TELEGRAM_COMMANDS.map(({ usage, description }) => `${usage}\n   ${description}`),
+    "",
+    "📎 Link + comment pairing",
+    `Send a link, then any text within ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes: it is added to that link as your note instead of becoming a new node. Text in the same message as a link is kept as its note too. Use /note to save text on its own.`,
+    "",
+    "Anything else you send is saved to your graph: links become link nodes, text becomes notes."
+  ].join("\n");
+}
+
+// Body of the web app's Telegram Commands modal, built from the same command list as /help.
+function renderTelegramHelpHtml() {
+  const minutes = LINK_PAIRING_WINDOW_SECONDS / 60;
+  const rows = TELEGRAM_COMMANDS.map(({ usage, description }) =>
+    `<div class="command-row"><code>${escapeHtmlText(usage)}</code><span>${escapeHtmlText(description)}</span></div>`
+  ).join("\n        ");
+  return `<p class="help-lead">Type <code>/</code> in your Aether bot chat to pick a command from Telegram's autocomplete.</p>
+      <div class="command-list">
+        ${rows}
+      </div>
+      <h4>📎 Link + comment pairing</h4>
+      <ol class="help-steps">
+        <li>Send a link to the bot. It is saved as a link node with its title, preview image and favicon.</li>
+        <li>Send any text within <strong>${minutes} minutes</strong>. Instead of becoming a new node, it is added to that link as <em>📝 Your note</em>. Several messages in a row are all added.</li>
+        <li>After ${minutes} minutes, text is saved as its own note again.</li>
+      </ol>
+      <p>Text in the same message as a link (before or after it) is kept as that link's note. To save text separately even right after a link, start it with <code>/note</code>.</p>
+      <h4>Everything else</h4>
+      <p>Anything you send without a command is saved to your graph: links become link nodes, text becomes notes. <code>/research</code> answers are saved too: a researched link keeps the answer in its card's Past Research, and a researched topic becomes a new node.</p>`;
+}
+
+function escapeHtmlText(value) {
+  const entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  return String(value).replace(/[&<>"']/g, char => entities[char]);
+}
+
+async function handleTelegramCommand(env, chatId, userId, { command, args }) {
+  switch (command) {
+    case "start":
+    case "help":
+      return sendTelegram(env, chatId, buildTelegramHelp());
+    case "note":
+      if (!args) return sendTelegram(env, chatId, "Add your note after /note, e.g. /note call the supplier.");
+      return saveTelegramNote(env, chatId, userId, args);
+    case "link": {
+      const message = splitLinkMessage(args);
+      if (!message.url) return sendTelegram(env, chatId, "Add a web address after /link, e.g. /link https://example.com great read");
+      return saveTelegramLink(env, chatId, userId, message.url, message.note);
+    }
+    case "ask":
+      if (!args) return sendTelegram(env, chatId, "Add a question after /ask, e.g. /ask what have I saved about pricing?");
+      return telegramAsk(env, chatId, userId, args);
+    case "research":
+      if (!args) return sendTelegram(env, chatId, "Add a topic or link after /research, e.g. /research vector databases for small teams");
+      return telegramResearch(env, chatId, userId, args);
+    default:
+      return sendTelegram(env, chatId, `Unknown command /${command}. Send /help for the command guide.`);
+  }
+}
+
+// Saves a link node (metadata fetched now) and confirms it unless `quiet`. Returns the saved row's fields.
+async function saveTelegramLink(env, chatId, userId, linkUrl, noteText, { quiet = false } = {}) {
+  const id = "node_" + crypto.randomUUID();
+  const category = inferNodeCategory(linkUrl, "link");
+  const metadata = await fetchLinkMetadata(linkUrl);
+  const title = metadata?.title || (linkUrl.length > 60 ? linkUrl.slice(0, 60) + "..." : linkUrl);
+  const description = metadata?.description || null;
+  const note = noteText ? noteText.slice(0, USER_NOTE_MAX) : null;
+  await env.DB.prepare(
+    "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, favicon_url, user_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, linkUrl, title, description, category, metadata?.image || null, metadata?.siteName || null, metadata?.sourceUrl || null, metadata?.favicon || null, note).run();
+  if (!quiet) {
+    await sendTelegram(
+      env,
+      chatId,
+      `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${title}"${note ? "\n📝 Your note is attached." : ""}\nText you send in the next ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes is added to this link.`
+    );
+  }
+  return { id, title, category, url: linkUrl, description, user_note: note };
+}
+
+async function saveTelegramNote(env, chatId, userId, text) {
+  const category = text.length > 100 ? "article" : "note";
+  const title = text.length > 30 ? text.slice(0, 30) + "..." : text;
+  // Notes keep their full text in url (the card and Ask read it from there).
+  await env.DB.prepare(
+    "INSERT INTO saved_nodes (id, user_id, url, title, description, category) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind("node_" + crypto.randomUUID(), userId, text, title, null, category).run();
+  await sendTelegram(
+    env,
+    chatId,
+    `🌌 Received! Stashed into the Aether Portal for Elarion to inspect with our big brain.\n🧠 Saved as [${category.toUpperCase()}]: "${title}"`
+  );
+}
+
+async function telegramAsk(env, chatId, userId, question) {
+  const result = await askFromTelegram(env, chatId, userId, question);
+  if (result) await sendTelegramChunks(env, chatId, formatTelegramAnswer("💬 Elarion", result));
+}
+
+// /research always uses web search. A link is saved and the answer kept in its card's Past Research;
+// a topic's answer is saved as a new article node so it joins the graph.
+async function telegramResearch(env, chatId, userId, args) {
+  const { url: linkUrl, note } = splitLinkMessage(args);
+  if (linkUrl) {
+    await sendTelegramTyping(env, chatId);
+    const link = await saveTelegramLink(env, chatId, userId, linkUrl, null, { quiet: true });
+    const question = note || "Research this link: what it is, the key takeaways, how credible and current it is, and how it relates to my saved notes.";
+    const result = await askFromTelegram(env, chatId, userId, question, { forceWeb: true, focus: link });
+    if (!result) {
+      await sendTelegram(env, chatId, `🔗 The link was still saved as [${link.category.toUpperCase()}]: "${link.title}".`);
+      return;
+    }
+    try {
+      await appendResearch(env, userId, link.id, { question, answer: result.answer, sources: result.sources });
+    } catch (err) {
+      console.warn("Telegram research save failed:", err.message);
+    }
+    await sendTelegramChunks(
+      env,
+      chatId,
+      formatTelegramAnswer(`🔎 Research: ${link.title}`, result) + `\n\n🔗 Saved as [${link.category.toUpperCase()}] with this research on its card.`
+    );
+    return;
+  }
+
+  const result = await askFromTelegram(env, chatId, userId, args, { forceWeb: true });
+  if (!result) return;
+  const topic = args.replace(/\s+/g, " ");
+  const title = ("Research: " + topic).slice(0, 80);
+  await env.DB.prepare(
+    "INSERT INTO saved_nodes (id, user_id, url, title, description, category) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind("node_" + crypto.randomUUID(), userId, "", title, formatTelegramAnswer("", result).trim().slice(0, NODE_CONTENT_MAX), "article").run();
+  await sendTelegramChunks(env, chatId, formatTelegramAnswer(`🔎 Research: ${topic}`, result) + `\n\n🧠 Saved to your graph as "${title}".`);
+}
+
+// Ranks the user's nodes against the question and asks Elarion. Returns { answer, sources, tier } or null
+// after telling the user what went wrong.
+async function askFromTelegram(env, chatId, userId, question, { forceWeb = false, focus = null } = {}) {
+  if (!env.GEMINI_API_KEY) {
+    await sendTelegram(env, chatId, "Elarion isn't configured yet (missing Gemini API key).");
+    return null;
+  }
+  if (question.length > ASK_MAX_QUESTION_LENGTH) {
+    await sendTelegram(env, chatId, `Please keep questions under ${ASK_MAX_QUESTION_LENGTH} characters.`);
+    return null;
+  }
+  await sendTelegramTyping(env, chatId);
+  const { results } = await env.DB.prepare(
+    "SELECT id, title, description, category, url, user_note FROM saved_nodes WHERE user_id = ? ORDER BY rowid DESC LIMIT 2000"
+  ).bind(userId).all();
+  const others = (results || []).filter(row => !focus || row.id !== focus.id);
+  const rows = rankNodesForQuestion(others, question, TELEGRAM_CONTEXT_NODES - (focus ? 1 : 0));
+  if (focus) rows.unshift(focus);
+  const scope = focus
+    ? "a link the user just saved (marked focus), followed by their saved nodes that best match the question, then their most recent ones"
+    : "the user's saved nodes that best match the question, followed by their most recent ones";
+
+  let reply;
+  try {
+    reply = await askGemini(env, question, webSearch => buildAskPrompt(question, "", focus ? focus.id : null, rows, webSearch, scope), { forceWeb });
+  } catch (err) {
+    console.error("Telegram ask failed:", err);
+    await sendTelegram(env, chatId, "Elarion couldn't answer right now. Please try again in a minute.");
+    return null;
+  }
+  const answer = String(reply.text || "").trim();
+  if (!answer) {
+    await sendTelegram(env, chatId, "Elarion returned an empty answer. Try rephrasing the question.");
+    return null;
+  }
+  return { answer, sources: reply.sources || [], tier: reply.tier };
+}
+
+// Keyword matches first (title hits weigh more), then the rest in their given (newest-first) order.
+export function rankNodesForQuestion(nodes, question, limit) {
+  const terms = [...new Set(String(question || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length > 2 && !STOP_WORDS.has(word)))];
+  const scored = (nodes || []).map((node, index) => {
+    const title = String(node.title || "").toLowerCase();
+    const body = [node.description, node.user_note, node.url, node.category].map(value => String(value || "").toLowerCase()).join(" ");
+    const score = terms.reduce((sum, term) => sum + (title.includes(term) ? 3 : 0) + (body.includes(term) ? 1 : 0), 0);
+    return { node, score, index };
+  });
+  const matches = scored.filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.index - b.index);
+  const others = scored.filter(item => item.score === 0);
+  return [...matches, ...others].slice(0, Math.max(0, limit)).map(item => item.node);
+}
+
+// Heading, answer, then up to TELEGRAM_SOURCES_MAX web sources, as plain text.
+export function formatTelegramAnswer(heading, { answer, sources, tier }) {
+  const lines = [];
+  if (heading) lines.push(heading + (tier === 2 ? " · web-grounded" : ""), "");
+  lines.push(String(answer || "").trim());
+  const list = (Array.isArray(sources) ? sources : []).filter(source => source && source.uri).slice(0, TELEGRAM_SOURCES_MAX);
+  if (list.length) lines.push("", "Sources:", ...list.map(source => `- ${source.title || source.uri} — ${source.uri}`));
+  return lines.join("\n");
+}
+
+// Splits text under Telegram's message limit, preferring paragraph, then line, then word breaks.
+export function chunkTelegramMessage(text, max = TELEGRAM_MESSAGE_MAX) {
+  const chunks = [];
+  let rest = String(text || "");
+  while (rest.length > max) {
+    const window = rest.slice(0, max);
+    let cut = window.lastIndexOf("\n\n");
+    if (cut < max / 2) cut = window.lastIndexOf("\n");
+    if (cut < max / 2) cut = window.lastIndexOf(" ");
+    if (cut <= 0) cut = max;
+    chunks.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest.trim()) chunks.push(rest);
+  return chunks;
+}
+
+// Every Bot API call goes through here. TELEGRAM_API_BASE (optional) points calls at a local stub during development.
+async function telegramApi(env, method, payload) {
+  const base = String(env.TELEGRAM_API_BASE || "https://api.telegram.org").replace(/\/+$/, "");
+  const response = await fetch(`${base}/bot${env.TELEGRAM_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) console.warn(`Telegram ${method} failed with HTTP ${response.status}`);
+  return response;
+}
+
+async function sendTelegram(env, chatId, text) {
+  return telegramApi(env, "sendMessage", { chat_id: chatId, text });
+}
+
+async function sendTelegramChunks(env, chatId, text) {
+  for (const chunk of chunkTelegramMessage(text)) await sendTelegram(env, chatId, chunk);
+}
+
+// "typing…" in the chat while Elarion works; failures don't matter.
+async function sendTelegramTyping(env, chatId) {
+  await telegramApi(env, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => null);
+}
+
+// Publishes the "/" autocomplete list. Descriptions carry the usage hint (Telegram's limit is 256 characters).
+async function registerTelegramCommands(env) {
+  const commands = TELEGRAM_COMMANDS.map(({ command, usage, description }) => ({ command, description: `${description} · ${usage}`.slice(0, 256) }));
+  const response = await telegramApi(env, "setMyCommands", { commands });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
 }
 
 // Pulls the first http(s) URL out of a message; the remaining text is the note. Trailing punctuation and an
@@ -3602,7 +3914,8 @@ async function analyzeWithGemini(apiKey, rawText, fallbackCategory = "note") {
 }
 
 // Focus node first, then its neighbors (or every node of a cluster), one line each.
-function buildAskPrompt(question, label, focusId, rows, webSearch) {
+// `scopeText` overrides the description of which nodes are included (Telegram picks them by keyword).
+function buildAskPrompt(question, label, focusId, rows, webSearch, scopeText = null) {
   const ordered = [...rows].sort((a, b) => (String(b.id) === focusId) - (String(a.id) === focusId));
   const lines = ordered.map(row => {
     const title = String(row.title || row.url || "Untitled").replace(/\s+/g, " ").slice(0, 200);
@@ -3612,9 +3925,9 @@ function buildAskPrompt(question, label, focusId, rows, webSearch) {
     const marker = String(row.id) === focusId ? " (focus)" : "";
     return `- [${row.category || "note"}]${marker} ${title}${url && url !== title ? ` — ${url}` : ""}${description ? ` — ${description}` : ""}${note ? ` — user's note: ${note}` : ""}`;
   });
-  const scope = focusId
+  const scope = scopeText || (focusId
     ? "a saved node (marked focus) and the nodes linked to it"
-    : `every saved node in the "${label || "selected"}" category`;
+    : `every saved node in the "${label || "selected"}" category`);
   return `You are Elarion, the research assistant of a personal knowledge graph. Below is ${scope}. These nodes are the user's own saved notes: treat them as the starting context and ground truth for what the user has saved, thinks, or plans.
 
 Do not limit yourself to the notes. Whenever the question needs outside context (for example relocation options, market or product comparisons, technology evaluations, current events, or general research), use your full analytical reasoning and general knowledge, and connect it back to the notes. ${webSearch
@@ -3628,7 +3941,7 @@ Elarion External Synthesis: your own analysis, outside knowledge, and research f
 Keep it concise; plain text, short paragraphs or "- " bullets, no markdown headings, bold, or tables.
 
 Nodes:
-${lines.join("\n")}
+${lines.join("\n") || "(no saved nodes)"}
 
 Question: ${question}`;
 }
@@ -3682,11 +3995,11 @@ export function needsWebResearch(question) {
   return WEB_RESEARCH_PATTERN.test(String(question || ""));
 }
 
-// Routes an Ask question: research-intent questions try search-grounded Flash (Tier 2) and fall back
-// to tool-free Flash-Lite (Tier 1) on any error; everything else goes straight to Tier 1.
-async function askGemini(env, question, buildPrompt) {
+// Routes an Ask question: research-intent questions (or forceWeb, used by /research) try search-grounded
+// Flash (Tier 2) and fall back to tool-free Flash-Lite (Tier 1) on any error; everything else goes straight to Tier 1.
+async function askGemini(env, question, buildPrompt, { forceWeb = false } = {}) {
   const searchAllowed = String(env.ELARION_WEB_SEARCH || "").toLowerCase() !== "off";
-  if (searchAllowed && needsWebResearch(question)) {
+  if (searchAllowed && (forceWeb || needsWebResearch(question))) {
     try {
       return { ...(await callGeminiText(env.GEMINI_API_KEY, ASK_TIER2_MODELS, buildPrompt(true), 8192, true)), tier: 2 };
     } catch (err) {
@@ -3839,10 +4152,3 @@ function mergeMinedEdges(links, nodes, edges) {
   }
 }
 
-async function sendTelegram(token, chatId, text) {
-  return await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text: text })
-  });
-}

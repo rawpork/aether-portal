@@ -61,6 +61,9 @@
 - [x] **Shared Filters & Card:** Search, type, time and Hide Unlinked filters apply to every view; any item opens the regular node card (reader, Ask Elarion, spawn). Graph animation pauses while hidden.
 - [x] **Telegram Link-Pairing:** Plain text sent within 2 minutes of a link is attached to that link as a note instead of creating a new node; text sent with a link in the same message is split into URL + note; `/note <text>` forces a standalone note (migration 0008: user_note).
 - [x] **Visual Node Enhancements:** Saved favicons (with /favicon.ico fallback), node-type icon badges on every card and chip, og:image covers and list thumbnails, type-icon placeholder covers, and a play overlay on video thumbnails (migration 0008: favicon_url).
+- [x] **Telegram Command Shortcuts:** `/research <topic or link>` (search-grounded research; a link keeps the answer in its card's Past Research, a topic is saved as a new article node), `/ask <question>` (keyword-ranked graph context), `/link <url> [note]`, `/note <text>`, and `/help` / `/start` (command guide + pairing info). Long answers are split under Telegram's 4,096-character limit.
+- [x] **Bot Autocomplete Registration:** `setMyCommands` publishes the "/" command list on the first webhook each worker instance handles (Workers have no startup hook) and again on the daily cron.
+- [x] **Telegram Commands Help Modal:** Paper-plane button next to search opens a glass modal listing the commands and explaining the 2-minute link + comment pairing; built from the same command list as `/help`.
 
 ---
 

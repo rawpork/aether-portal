@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { hashPassword, needsWebResearch, parseResearch, parseStandaloneNote, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
+import { TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, parseResearch, parseTelegramCommand, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -51,16 +51,64 @@ describe("splitLinkMessage", () => {
 	});
 });
 
-describe("parseStandaloneNote", () => {
-	it("strips the /note command, with or without a bot mention", () => {
-		expect(parseStandaloneNote("/note buy milk")).toBe("buy milk");
-		expect(parseStandaloneNote("/note@AetherBot  multi\nline")).toBe("multi\nline");
-		expect(parseStandaloneNote("/note")).toBe("");
+describe("parseTelegramCommand", () => {
+	it("splits the command from its arguments, with or without a bot mention", () => {
+		expect(parseTelegramCommand("/note buy milk")).toEqual({ command: "note", args: "buy milk" });
+		expect(parseTelegramCommand("/Research@AetherBot  vector dbs\nfor teams")).toEqual({ command: "research", args: "vector dbs\nfor teams" });
+		expect(parseTelegramCommand("/help")).toEqual({ command: "help", args: "" });
 	});
 
-	it("ignores other text", () => {
-		expect(parseStandaloneNote("note to self")).toBeNull();
-		expect(parseStandaloneNote("/notes list")).toBeNull();
+	it("ignores ordinary text and paths", () => {
+		expect(parseTelegramCommand("note to self")).toBeNull();
+		expect(parseTelegramCommand("/Users/me/file.txt")).toBeNull();
+		expect(parseTelegramCommand("https://example.com/ask")).toBeNull();
+	});
+});
+
+describe("Telegram command guide", () => {
+	it("lists every registered command and the pairing window", () => {
+		const help = buildTelegramHelp();
+		for (const { command, usage } of TELEGRAM_COMMANDS) {
+			expect(command).toMatch(/^[a-z0-9_]{1,32}$/);
+			expect(help).toContain(usage);
+		}
+		expect(help).toContain("within 2 minutes");
+	});
+});
+
+describe("rankNodesForQuestion", () => {
+	const nodes = [
+		{ id: "recent", title: "Grocery list", description: "milk" },
+		{ id: "body", title: "Notes", description: "Pricing tiers for the pro plan" },
+		{ id: "title", title: "Pricing ideas", description: "" },
+		{ id: "old", title: "Old thing", description: "" }
+	];
+
+	it("puts title matches first, then body matches, then the rest in order", () => {
+		expect(rankNodesForQuestion(nodes, "What about pricing?", 10).map(n => n.id)).toEqual(["title", "body", "recent", "old"]);
+	});
+
+	it("respects the limit and falls back to the given order without matches", () => {
+		expect(rankNodesForQuestion(nodes, "the and of", 2).map(n => n.id)).toEqual(["recent", "body"]);
+	});
+});
+
+describe("formatTelegramAnswer and chunkTelegramMessage", () => {
+	it("adds the heading, web marker and at most five sources", () => {
+		const sources = Array.from({ length: 7 }, (_, i) => ({ title: "S" + i, uri: "https://s" + i + ".example" }));
+		const text = formatTelegramAnswer("🔎 Research", { answer: "Answer.", sources, tier: 2 });
+		expect(text.startsWith("🔎 Research · web-grounded\n\nAnswer.\n\nSources:\n- S0 — https://s0.example")).toBe(true);
+		expect(text).not.toContain("S5");
+		expect(formatTelegramAnswer("", { answer: "Plain", sources: [], tier: 1 })).toBe("Plain");
+	});
+
+	it("splits long text at paragraph breaks under the limit", () => {
+		const paragraph = "word ".repeat(150).trim();
+		const chunks = chunkTelegramMessage([paragraph, paragraph, paragraph].join("\n\n"), 1000);
+		expect(chunks.length).toBe(3);
+		for (const chunk of chunks) expect(chunk.length).toBeLessThanOrEqual(1000);
+		expect(chunks.join("\n\n")).toBe([paragraph, paragraph, paragraph].join("\n\n"));
+		expect(chunkTelegramMessage("short")).toEqual(["short"]);
 	});
 });
 
@@ -89,8 +137,11 @@ describe("Aether Portal worker", () => {
 		const html = await response.text();
 		expect(response.headers.get("Content-Type")).toContain("text/html");
 		expect(html).toContain("Aether Portal");
-		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal"]) {
+		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal"]) {
 			expect(html, id).toContain(`id="${id}"`);
+		}
+		for (const usage of ["/research &lt;topic or link&gt;", "/ask &lt;question&gt;", "/link &lt;url&gt; [note]", "/help"]) {
+			expect(html, usage).toContain(usage);
 		}
 		for (const view of ["graph", "list", "timeline"]) {
 			expect(html, view).toContain(`data-view="${view}"`);
