@@ -1,11 +1,18 @@
 # Project State
 
 ## Active step
-Focus Card Carousel view shipped and live (2026-09-25)
+Legend fly-to and Focus Card Carousel view shipped and live (2026-09-25)
 
 ### Latest deployment
-- Commit `15a9833` - feat: add swipeable Focus Card Carousel view alongside 2D/3D map (pushed to `main`).
-- Deployed to Cloudflare Workers as `lingering-water-de49`, version `15b98cf5-9e3d-433e-ad09-e83c6c90c6fe`: https://lingering-water-de49.klo377.workers.dev
+- Commit `26281e0` - feat: legend category click flies the camera to its cluster (pushed to `main`).
+- Deployed to Cloudflare Workers as `lingering-water-de49`, version `8b44f780-525c-481e-9237-1f76ed4f805a`: https://lingering-water-de49.klo377.workers.dev
+- Clicking a category in the legend highlights it and flies the camera to its cluster centre, reusing the fly-to from tapping a cluster label on the canvas. Clicking it again clears the highlight without moving the camera.
+- The fly-to needs the cluster territories, which depend on three.js loading; if it fails to load, the legend click only highlights.
+- Not yet checked by hand in a real browser after deploy.
+
+### Previous deployment: Focus Card Carousel
+- Commit `15a9833` - feat: add swipeable Focus Card Carousel view alongside 2D/3D map.
+- Deployed as version `15b98cf5-9e3d-433e-ad09-e83c6c90c6fe`, now superseded by `8b44f780`.
 - Carousel is a fifth view in the top-bar view switch (Graph / List / Timeline / Board / Carousel): the filtered nodes as a centered card deck with a scaled, faded depth stack behind the top card.
 - Touch and mouse swiping (left = next, right = previous), plus prev/next buttons, a position counter and arrow keys; tapping the top card opens the regular node card.
 - Selecting a node in the 2D/3D map and choosing "Carousel" (node card button or view switch) opens the deck on that exact node.
@@ -13,7 +20,7 @@ Focus Card Carousel view shipped and live (2026-09-25)
 - Not yet checked by hand in a real browser after deploy: swipe feel, stack visuals and the phone layout.
 
 ### Next up
-- YouTube Transcript Pipeline (`/api/transcript`) and Web Fetcher (`/api/web-fetch`); see [ROADMAP.md](ROADMAP.md).
+- YouTube Transcript Pipeline (`/api/transcript`) and Web Content Fetcher (`/api/web-fetch`); see [ROADMAP.md](ROADMAP.md).
 
 ## Previous milestone
 Phase 3 complete: Gemini 2.5 Flash API + rainbow clustering
