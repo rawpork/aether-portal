@@ -1,26 +1,27 @@
 # Project State
 
 ## Active step
-Legend fly-to and Focus Card Carousel view shipped and live (2026-09-25)
+YouTube Transcript Pipeline live: `/api/transcript` and the node-card Transcript section (2026-09-25)
 
 ### Latest deployment
-- Commit `26281e0` - feat: legend category click flies the camera to its cluster (pushed to `main`).
-- Deployed to Cloudflare Workers as `lingering-water-de49`, version `8b44f780-525c-481e-9237-1f76ed4f805a`: https://lingering-water-de49.klo377.workers.dev
-- Clicking a category in the legend highlights it and flies the camera to its cluster centre, reusing the fly-to from tapping a cluster label on the canvas. Clicking it again clears the highlight without moving the camera.
-- The fly-to needs the cluster territories, which depend on three.js loading; if it fails to load, the legend click only highlights.
-- Not yet checked by hand in a real browser after deploy.
+- Commit `899f1e3` - feat: Transcript section on YouTube node cards (pushed to `main`).
+- Deployed to Cloudflare Workers as `lingering-water-de49`, version `b9fc0089-2f91-4771-b159-fd60f54333c9`: https://lingering-water-de49.klo377.workers.dev
+- Node card "Transcript" section for YouTube nodes: shows the stored synopsis, a "Get Transcript" / "Refresh" button that calls `POST /api/transcript`, and "Read Transcript", which loads the text on demand and opens it in the full reader.
+- `/api/graph` now includes each node's `synopsis` and a `has_transcript` flag, so the synopsis shows without downloading the transcript.
+- Not yet tried in a browser: first real test is pressing Get Transcript on a YouTube node, which is also the first live run of the Gemini synopsis.
 
-### Previous deployment: Focus Card Carousel
-- Commit `15a9833` - feat: add swipeable Focus Card Carousel view alongside 2D/3D map.
-- Deployed as version `15b98cf5-9e3d-433e-ad09-e83c6c90c6fe`, now superseded by `8b44f780`.
-- Carousel is a fifth view in the top-bar view switch (Graph / List / Timeline / Board / Carousel): the filtered nodes as a centered card deck with a scaled, faded depth stack behind the top card.
-- Touch and mouse swiping (left = next, right = previous), plus prev/next buttons, a position counter and arrow keys; tapping the top card opens the regular node card.
-- Selecting a node in the 2D/3D map and choosing "Carousel" (node card button or view switch) opens the deck on that exact node.
-- The 2D/3D force simulation and graph rendering are unchanged; the deck hooks in through the existing view switching.
-- Not yet checked by hand in a real browser after deploy: swipe feel, stack visuals and the phone layout.
+### Transcript endpoint (commit `69aa68e`, first live in version `09267be9`)
+- Migration `0011_transcripts.sql` (commit `1d9c280`) added `raw_transcript` and `synopsis` to `saved_nodes`; applied to remote D1.
+- `POST /api/transcript {id, refresh?}` fetches a YouTube node's captions from the YouTube player API (Android, then iOS client), saves them to `raw_transcript`, and saves a Gemini synopsis to `synopsis`. With no captions, Gemini watches the video by URL for the synopsis. Stored results are reused unless `refresh` is true.
+- `GET /api/transcript?id=` returns what is stored. Both need a signed-in session and only reach the user's own nodes.
+- Verified: captions fetched from Cloudflare's network for three test videos (217 to 18,430 characters). Not yet exercised end to end with a signed-in session, and the Gemini synopsis and video fallback have not run live.
+
+### Earlier deployments (2026-09-25)
+- `8b44f780` (commit `26281e0`): clicking a legend category highlights it and flies the camera to its cluster centre.
+- `15b98cf5` (commit `15a9833`): Focus Card Carousel view, a fifth view with a swipeable card deck; a node selected in the 2D/3D map can open the deck on that node.
 
 ### Next up
-- YouTube Transcript Pipeline (`/api/transcript`) and Web Content Fetcher (`/api/web-fetch`); see [ROADMAP.md](ROADMAP.md).
+- Web Content Fetcher (`/api/web-fetch`); see [ROADMAP.md](ROADMAP.md).
 
 ## Previous milestone
 Phase 3 complete: Gemini 2.5 Flash API + rainbow clustering
