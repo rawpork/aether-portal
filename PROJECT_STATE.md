@@ -1,6 +1,21 @@
 # Project State
 
 ## Active step
+Focus Card Carousel view shipped and live (2026-09-25)
+
+### Latest deployment
+- Commit `15a9833` - feat: add swipeable Focus Card Carousel view alongside 2D/3D map (pushed to `main`).
+- Deployed to Cloudflare Workers as `lingering-water-de49`, version `15b98cf5-9e3d-433e-ad09-e83c6c90c6fe`: https://lingering-water-de49.klo377.workers.dev
+- Carousel is a fifth view in the top-bar view switch (Graph / List / Timeline / Board / Carousel): the filtered nodes as a centered card deck with a scaled, faded depth stack behind the top card.
+- Touch and mouse swiping (left = next, right = previous), plus prev/next buttons, a position counter and arrow keys; tapping the top card opens the regular node card.
+- Selecting a node in the 2D/3D map and choosing "Carousel" (node card button or view switch) opens the deck on that exact node.
+- The 2D/3D force simulation and graph rendering are unchanged; the deck hooks in through the existing view switching.
+- Not yet checked by hand in a real browser after deploy: swipe feel, stack visuals and the phone layout.
+
+### Next up
+- YouTube Transcript Pipeline (`/api/transcript`) and Web Fetcher (`/api/web-fetch`); see [ROADMAP.md](ROADMAP.md).
+
+## Previous milestone
 Phase 3 complete: Gemini 2.5 Flash API + rainbow clustering
 
 ### Current status
