@@ -15,6 +15,17 @@ describe("buildMinerPrompt", () => {
 		expect(prompt).toContain("[0] (link) Vite docs | https://vitejs.dev");
 		expect(prompt).toContain("[1] (note) https://x.test");
 	});
+
+	it("adds the start of a node's page text or synopsis when it has one", () => {
+		const prompt = buildMinerPrompt(
+			[{ title: "Post", url: "https://p.test", category: "link", snippet: "  Edge   runtimes\nexplained. " + "x".repeat(400) }],
+			[{ title: "Plain", url: "https://q.test", category: "note", snippet: null }],
+			CATEGORIES
+		);
+		expect(prompt).toContain("[0] (link) Post | https://p.test :: Edge runtimes explained. x");
+		expect(prompt).toMatch(/\[1\] \(note\) Plain \| https:\/\/q\.test$/m);
+		expect(prompt.split("\n").find(line => line.startsWith("[0]")).split(" :: ")[1]).toHaveLength(200);
+	});
 });
 
 describe("parseMinerResponse", () => {

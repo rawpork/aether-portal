@@ -177,7 +177,7 @@ describe("Aether Portal worker", () => {
 		const html = await response.text();
 		expect(response.headers.get("Content-Type")).toContain("text/html");
 		expect(html).toContain("Aether Portal");
-		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status", "filter-toolbar", "filter-menu", "type-filter", "filters-reset", "card-transcript", "card-transcript-button", "card-transcript-read"]) {
+		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status", "filter-toolbar", "filter-menu", "type-filter", "filters-reset", "card-transcript", "card-transcript-button", "card-transcript-read", "card-web", "card-web-button", "card-web-read", "google-signin", "login-alt"]) {
 			expect(html, id).toContain(`id="${id}"`);
 		}
 		for (const usage of ["/research &lt;topic or link&gt;", "/ask &lt;question&gt;", "/link &lt;url&gt; [note]", "/help"]) {
@@ -251,6 +251,50 @@ describe("Aether Portal worker", () => {
 		const response = await SELF.fetch("http://example.com/api/node/abc");
 		expect(response.status).toBe(405);
 		expect(response.headers.get("Allow")).toBe("PATCH, DELETE");
+	});
+
+	it("requires sign-in to fetch or read web content", async () => {
+		const read = await SELF.fetch("http://example.com/api/web-fetch?id=abc");
+		expect(read.status).toBe(401);
+		const fetchNew = await SELF.fetch("http://example.com/api/web-fetch", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+			body: JSON.stringify({ url: "https://example.com" }),
+		});
+		expect(fetchNew.status).toBe(401);
+		const wrongMethod = await SELF.fetch("http://example.com/api/web-fetch", { method: "PUT" });
+		expect(wrongMethod.status).toBe(405);
+	});
+
+	it("only allows signed-in POSTs on /api/share", async () => {
+		expect((await SELF.fetch("http://example.com/api/share")).status).toBe(405);
+		const response = await SELF.fetch("http://example.com/api/share", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+			body: JSON.stringify({ url: "https://example.com" }),
+		});
+		expect(response.status).toBe(401);
+	});
+
+	it("sends signed-out share-sheet visits to sign in, keeping what was shared", async () => {
+		const response = await SELF.fetch("http://example.com/share?url=https%3A%2F%2Fa.test%2Fx&title=Hi", { redirect: "manual" });
+		expect(response.status).toBe(303);
+		const location = new URL(response.headers.get("Location"));
+		expect(location.pathname).toBe("/");
+		expect(location.searchParams.get("next")).toBe("/share?url=https%3A%2F%2Fa.test%2Fx&title=Hi");
+	});
+
+	it("reports Google sign-in as unconfigured without client credentials", async () => {
+		const start = await SELF.fetch("http://example.com/api/auth/google", { redirect: "manual" });
+		expect(start.status).toBe(302);
+		expect(new URL(start.headers.get("Location")).searchParams.get("auth_error")).toContain("not configured");
+		const oneTap = await SELF.fetch("http://example.com/api/auth/google", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+			body: JSON.stringify({ credential: "x.y.z" }),
+		});
+		expect(oneTap.status).toBe(500);
+		expect((await SELF.fetch("http://example.com/api/auth/callback", { method: "POST" })).status).toBe(405);
 	});
 
 	it("only allows GET and POST on /api/transcript", async () => {

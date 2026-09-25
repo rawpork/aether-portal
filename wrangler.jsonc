@@ -7,6 +7,10 @@
   "triggers": {
     "crons": ["0 0 * * *"]
   },
+  // PWA files (manifest, service worker, icons). Paths without a matching file fall through to the Worker.
+  "assets": {
+    "directory": "./public"
+  },
   "d1_databases": [
     {
       "binding": "DB",

@@ -1,6 +1,10 @@
 import { cleanLinkUrl, fallbackLinkTitle, fetchLinkMetadata, getYouTubeVideoId } from "./metadata.js";
 import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerResponse } from "./miner.js";
 import { buildTranscriptSynopsisPrompt, buildVideoSynopsisPrompt, fetchYouTubeTranscript } from "./transcript.js";
+import { WebFetchError, fetchWebContent } from "./webfetch.js";
+import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
+import { renderSharePage } from "./share-page.js";
+import { OAUTH_COOKIE, OAUTH_COOKIE_TTL_SECONDS, buildGoogleAuthUrl, createOAuthState, createPkcePair, exchangeGoogleCode, isAllowedGoogleEmail, readOAuthCookie, safeNextPath, signOAuthCookie, usernameFromEmail, verifyGoogleIdToken } from "./google-auth.js";
 
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch|share\/[rv]\/)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
 
@@ -19,6 +23,8 @@ const MAX_SEMANTIC_LINKS_PER_NODE = 5;
 // Tried in order: a model answering 503 (high demand) or 429 falls through to the next.
 const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"];
 const GEMINI_RETRYABLE_STATUSES = [429, 503];
+// Share sheet "Gemini Pro" tier: Pro is only offered as a preview, so Flash takes over when it is busy.
+const GEMINI_PRO_MODELS = ["gemini-3.1-pro-preview", "gemini-3.8-flash"];
 // Ask Elarion routing: Tier 1 answers note questions cheaply; Tier 2 adds Google Search for research questions.
 const ASK_TIER1_MODELS = ["gemini-3.5-flash-lite", "gemini-3.7-flash"]; // Flash only if Lite is busy (429/503)
 const ASK_TIER2_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash"];
@@ -89,7 +95,7 @@ export default {
       if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript FROM saved_nodes WHERE user_id = ?"
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript, content IS NOT NULL AS has_content FROM saved_nodes WHERE user_id = ?"
         ).bind(auth.user.id).all();
 
         const nodes = (results || []).map(node => {
@@ -114,7 +120,8 @@ export default {
             user_note: node.user_note ? String(node.user_note) : null,
             status: normalizeNodeStatus(node.status),
             synopsis: node.synopsis ? String(node.synopsis) : null,
-            has_transcript: Boolean(node.has_transcript)
+            has_transcript: Boolean(node.has_transcript),
+            has_content: Boolean(node.has_content)
           };
         });
 
@@ -492,6 +499,100 @@ export default {
       }
     }
 
+    // Endpoint 5c: Web Content Fetcher. POST { url?, nodeId? } downloads a page as readable text and, with a nodeId,
+    // saves it on that node (the node's own link is used when no url is given). GET ?id= returns the stored text.
+    if (url.pathname === "/api/web-fetch") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET, POST" });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
+
+      if (request.method === "GET") {
+        const id = String(url.searchParams.get("id") || "").trim();
+        if (!id) return jsonResponse({ error: "Missing node id." }, 400);
+        const row = await env.DB.prepare("SELECT id, content FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, userId).first();
+        if (!row) return jsonResponse({ error: "Node not found." }, 404);
+        return jsonResponse({ success: true, id, content: row.content || null });
+      }
+
+      const body = await request.json().catch(() => null);
+      const nodeId = body?.nodeId ? String(body.nodeId).trim() : "";
+      let target = String(body?.url || "").trim();
+      try {
+        if (nodeId) {
+          const node = await env.DB.prepare("SELECT id, url FROM saved_nodes WHERE id = ? AND user_id = ?").bind(nodeId, userId).first();
+          if (!node) return jsonResponse({ error: "Node not found." }, 404);
+          if (!target) target = String(node.url || "");
+        }
+        if (!target) return jsonResponse({ error: "Missing url." }, 400);
+        const page = await fetchWebContent(target);
+        if (nodeId) {
+          await env.DB.prepare("UPDATE saved_nodes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
+            .bind(page.content, nodeId, userId).run();
+        }
+        return jsonResponse({ success: true, content: page.content, title: page.title, url: page.url });
+      } catch (err) {
+        if (err instanceof WebFetchError) return jsonResponse({ success: false, error: err.message }, err.status);
+        console.error("Web Fetch Error:", err);
+        return jsonResponse({ success: false, error: "Web fetch failed." }, 500);
+      }
+    }
+
+    // Endpoint 5d: Share sheet ingest. Saves the node to the inbox at once; metadata and the chosen preset run afterwards.
+    if (url.pathname === "/api/share") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
+      const parsed = parseSharePayload(await request.json().catch(() => null));
+      if (parsed.error) return jsonResponse({ error: parsed.error }, 400);
+      const share = parsed.value;
+      if (share.preset && share.tier === "claude" && !env.ANTHROPIC_API_KEY) {
+        return jsonResponse({ error: "Claude Sonnet is not configured yet; pick a Gemini tier." }, 400);
+      }
+      if (share.preset && share.tier !== "claude" && !env.GEMINI_API_KEY) {
+        return jsonResponse({ error: "Gemini is not configured." }, 400);
+      }
+
+      try {
+        const id = "node_" + crypto.randomUUID();
+        const linkUrl = share.url ? cleanLinkUrl(share.url) : "";
+        const category = linkUrl ? inferNodeCategory(linkUrl, "link") : (share.note.length > 100 ? "article" : "note");
+        const title = share.title || (linkUrl ? fallbackLinkTitle(linkUrl) : share.note.slice(0, 80));
+        // An action task goes straight to the Active column; everything else lands in the inbox.
+        const status = share.preset === "task" ? "active" : "inbox";
+        await env.DB.prepare(
+          "INSERT INTO saved_nodes (id, user_id, url, title, category, user_note, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ).bind(id, userId, linkUrl || share.note, title, category, linkUrl ? (share.note || null) : null, status).run();
+        ctx.waitUntil(processSharedNode(env, userId, id, { ...share, url: linkUrl, hasSharedTitle: Boolean(share.title) }));
+        return jsonResponse({ success: true, id, title, status });
+      } catch (err) {
+        console.error("Share Ingest Error:", err);
+        return jsonResponse({ error: "Saving failed." }, 500);
+      }
+    }
+
+    // Endpoint 5e: PWA share target (manifest share_target). Signed-out visitors sign in first and come back here.
+    if (url.pathname === "/share") {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, POST" } });
+      }
+      const fields = request.method === "POST" ? await request.formData().catch(() => null) : url.searchParams;
+      const read = name => String(fields?.get(name) || "").trim();
+      const shared = { url: read("url"), title: read("title"), text: read("text") };
+      if (!await getSessionUser(request, env)) {
+        const query = new URLSearchParams(Object.entries(shared).filter(([, value]) => value)).toString();
+        return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/share" + (query ? "?" + query : "")), 303);
+      }
+      return new Response(renderSharePage(shared, { claudeAvailable: Boolean(env.ANTHROPIC_API_KEY) }), {
+        headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
+      });
+    }
+
     // Endpoint 6: Telegram Webhook POST
     if (request.method === "POST") {
       if (url.pathname !== "/") {
@@ -573,6 +674,10 @@ export default {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#080c14">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="google-client-id" content="${escapeHtmlText(env.GOOGLE_CLIENT_ID || "")}">
   <style>
     body { margin: 0; overflow: hidden; background-color: #080c14; font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
     #topbar {
@@ -1052,6 +1157,7 @@ export default {
     .settings-menu.open {
       display: block;
     }
+    /* Signed-out landing: a quiet, Apple-style card with Google sign-in first and the password form tucked below. */
     #login-gate {
       position: fixed;
       inset: 0;
@@ -1061,52 +1167,81 @@ export default {
       justify-content: center;
       padding: 16px;
       box-sizing: border-box;
-      background: radial-gradient(circle at 50% 35%, rgba(0,255,204,0.08), rgba(8,12,20,0.7) 60%);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      background: radial-gradient(circle at 50% 30%, rgba(0,255,204,0.10), rgba(8,12,20,0.78) 62%);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
     }
     #login-gate[hidden] { display: none; }
     .login-panel {
-      width: min(360px, 100%);
+      width: min(380px, 100%);
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      padding: 26px 24px 22px;
-      border-radius: 16px;
-      background: rgba(8, 12, 20, 0.72);
-      border: 1px solid rgba(0, 255, 204, 0.3);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      box-shadow: 0 18px 50px rgba(0,0,0,0.65);
-      color: #dffdf7;
+      align-items: stretch;
+      gap: 14px;
+      padding: 36px 28px 26px;
+      border-radius: 28px;
+      background: rgba(28, 28, 30, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(30px) saturate(1.5);
+      -webkit-backdrop-filter: blur(30px) saturate(1.5);
+      box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+      color: #f5f5f7;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+      text-align: center;
       box-sizing: border-box;
     }
-    .login-panel h2 { margin: 0; font-size: 20px; color: #00ffcc; letter-spacing: 0.04em; }
-    .login-panel .login-sub { margin: -6px 0 4px; font-size: 12px; color: #8a93a6; }
-    .login-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: rgba(223,253,247,0.75); }
-    .login-panel input {
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(0,255,204,0.3);
-      background: rgba(0,0,0,0.35);
-      color: #fff;
-      font: inherit;
-      font-size: 14px;
+    .login-logo { width: 64px; height: 64px; margin: 0 auto 2px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,255,204,0.18); }
+    .login-panel h2 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: #f5f5f7; }
+    .login-panel .login-sub { margin: -6px 0 10px; font-size: 15px; line-height: 1.4; color: #a1a1a6; }
+    .google-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      height: 48px;
+      border-radius: 999px;
+      background: #fff;
+      color: #1f1f1f;
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-    .login-panel input:focus { outline: none; border-color: #00ffcc; }
-    .login-panel button {
-      margin-top: 4px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      border: 1px solid rgba(0,255,204,0.6);
-      background: rgba(0,255,204,0.18);
-      color: #00ffcc;
-      font-weight: 700;
-      font-size: 14px;
+    .google-button:hover, .google-button:focus-visible { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); outline: none; }
+    .google-button:active { transform: scale(0.98); }
+    .google-button[hidden] { display: none; }
+    .google-button svg { width: 20px; height: 20px; flex: none; }
+    .login-alt { text-align: left; }
+    .login-alt summary { list-style: none; cursor: pointer; text-align: center; font-size: 13px; color: #2997ff; }
+    .login-alt summary::-webkit-details-marker { display: none; }
+    .login-alt[open] summary { margin-bottom: 12px; color: #a1a1a6; }
+    #login-form { display: flex; flex-direction: column; gap: 10px; }
+    .login-panel label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #a1a1a6; }
+    .login-panel input {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: #f5f5f7;
+      font: inherit;
+      font-size: 15px;
+    }
+    .login-panel input:focus { outline: none; border-color: #2997ff; box-shadow: 0 0 0 3px rgba(41,151,255,0.25); }
+    #login-submit {
+      margin-top: 2px;
+      height: 44px;
+      border-radius: 12px;
+      border: none;
+      background: rgba(255,255,255,0.12);
+      color: #f5f5f7;
+      font: inherit;
+      font-weight: 600;
+      font-size: 15px;
       cursor: pointer;
     }
-    .login-panel button:disabled { opacity: 0.5; cursor: wait; }
-    .login-error { margin: 0; min-height: 1em; font-size: 12px; color: #ff6b81; }
+    #login-submit:disabled { opacity: 0.5; cursor: wait; }
+    .login-error { margin: 0; min-height: 1em; font-size: 13px; color: #ff6b81; }
+    .login-error:empty { display: none; }
     .settings-option {
       width: 100%;
       border: 1px solid rgba(0,255,204,0.2);
@@ -1282,6 +1417,11 @@ export default {
     #node-card .card-transcript-actions button[hidden] { display: none; }
     #node-card .card-transcript-status { font-size: 11px; color: #aab3c5; }
     #node-card .card-transcript-status.error { color: #ff8a8a; }
+    /* Web links: the same action row in the app's teal. */
+    #node-card .card-web { margin: 0 0 12px; }
+    #node-card .card-web[hidden] { display: none; }
+    #node-card .card-web .card-transcript-actions button { border-color: rgba(0,255,204,0.5); background: rgba(0,255,204,0.08); color: #c9fff3; }
+    #node-card .card-web .card-transcript-actions button:hover:not(:disabled), #node-card .card-web .card-transcript-actions button:focus-visible { background: rgba(0,255,204,0.2); }
     #node-card .card-description { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; }
     .reader-button {
       display: none;
@@ -1698,6 +1838,13 @@ export default {
         <span id="card-transcript-status" class="card-transcript-status" aria-live="polite"></span>
       </div>
     </div>
+    <div id="card-web" class="card-web" hidden>
+      <div class="card-transcript-actions">
+        <button type="button" id="card-web-button">🌐 Fetch Web Content</button>
+        <button type="button" id="card-web-read" hidden>⤢ Read Web Content</button>
+        <span id="card-web-status" class="card-transcript-status" aria-live="polite"></span>
+      </div>
+    </div>
     <p id="card-meta" class="card-meta"></p>
     <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
@@ -1732,18 +1879,28 @@ export default {
   </aside>
 
   <div id="login-gate" hidden>
-    <form id="login-form" class="login-panel" autocomplete="on">
-      <h2>Aether Portal</h2>
-      <p class="login-sub">Sign in to open your knowledge graph.</p>
-      <label>Username
-        <input id="login-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
-      </label>
-      <label>Password
-        <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="200">
-      </label>
+    <div class="login-panel" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <img class="login-logo" src="/icons/icon-192.png" alt="" width="64" height="64">
+      <h2 id="login-title">Aether Portal</h2>
+      <p class="login-sub">Your knowledge, mapped in three dimensions.</p>
+      <a id="google-signin" class="google-button" href="/api/auth/google" hidden>
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        <span>Sign in with Google</span>
+      </a>
       <p id="login-error" class="login-error" role="alert"></p>
-      <button type="submit" id="login-submit">Sign In</button>
-    </form>
+      <details id="login-alt" class="login-alt">
+        <summary>Sign in with username and password</summary>
+        <form id="login-form" autocomplete="on">
+          <label>Username
+            <input id="login-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
+          </label>
+          <label>Password
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="200">
+          </label>
+          <button type="submit" id="login-submit">Sign In</button>
+        </form>
+      </details>
+    </div>
   </div>
 
   <div id="telegram-help-modal" class="modal-backdrop" hidden>
@@ -2225,6 +2382,10 @@ export default {
     const cardTranscriptButton = document.getElementById('card-transcript-button');
     const cardTranscriptRead = document.getElementById('card-transcript-read');
     const cardTranscriptStatus = document.getElementById('card-transcript-status');
+    const cardWeb = document.getElementById('card-web');
+    const cardWebButton = document.getElementById('card-web-button');
+    const cardWebRead = document.getElementById('card-web-read');
+    const cardWebStatus = document.getElementById('card-web-status');
     const readerModal = document.getElementById('reader-modal');
     const readerTitle = document.getElementById('reader-title');
     const readerMeta = document.getElementById('reader-meta');
@@ -2420,6 +2581,7 @@ export default {
       renderResearch(node);
       renderCardStatus(node);
       renderCardTranscript(node);
+      renderCardWeb(node);
       nodeCard.style.display = 'block';
       document.body.classList.add('card-open');
       // On phones the card is a bottom sheet over the legend, so the legend steps aside while it's open.
@@ -3606,6 +3768,90 @@ export default {
       if (isCardFor(node)) showReader('Transcript: ' + (node.title || node.name || 'Video'), 'YouTube transcript', text);
     };
 
+    // Web Content Fetcher for ordinary links (YouTube has the transcript instead). Like transcripts, the text is
+    // only downloaded when someone asks for it, then kept for the session.
+    const webTexts = new Map();
+    const webBusy = new Set();
+    // Platforms other than 'notes', 'images' and 'youtube' are all http(s) links.
+    const isWebLink = node => ['links', 'x', 'facebook'].includes(getPlatform(node));
+
+    function renderCardWeb(node) {
+      const show = isWebLink(node);
+      cardWeb.hidden = !show;
+      if (!show) return;
+      const busy = webBusy.has(node.id);
+      cardWebButton.disabled = busy;
+      cardWebButton.textContent = busy ? '⏳ Fetching…' : node.has_content ? '↻ Fetch Again' : '🌐 Fetch Web Content';
+      cardWebRead.hidden = !node.has_content;
+      cardWebStatus.classList.remove('error');
+      cardWebStatus.textContent = busy ? 'Reading the page…' : '';
+    }
+
+    const showWebContent = (node, text) => {
+      const site = node.site_name || getHostname(String(node.url || ''));
+      showReader('Web content: ' + (node.title || node.name || site || 'Link'), site, text);
+    };
+
+    const showWebError = (node, message) => {
+      if (!isCardFor(node)) return;
+      cardWebStatus.textContent = message;
+      cardWebStatus.classList.add('error');
+    };
+
+    const fetchWeb = async node => {
+      if (webBusy.has(node.id)) return;
+      webBusy.add(node.id);
+      renderCardWeb(node);
+      try {
+        const result = await apiFetch('/api/web-fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodeId: node.id })
+        });
+        node.has_content = true;
+        webTexts.set(node.id, result.content);
+        webBusy.delete(node.id);
+        if (!isCardFor(node)) return;
+        renderCardWeb(node);
+        showWebContent(node, result.content);
+      } catch (err) {
+        console.error('Web fetch failed:', err);
+        webBusy.delete(node.id);
+        if (isCardFor(node)) renderCardWeb(node);
+        showWebError(node, err.message || 'Could not fetch the page.');
+      }
+    };
+
+    const openWeb = async node => {
+      let text = webTexts.get(node.id);
+      if (!text) {
+        cardWebRead.disabled = true;
+        try {
+          const result = await apiFetch('/api/web-fetch?id=' + encodeURIComponent(node.id));
+          text = result.content || '';
+          if (text) webTexts.set(node.id, text);
+        } catch (err) {
+          console.error('Web content load failed:', err);
+          showWebError(node, err.message || 'Could not load the page text.');
+          return;
+        } finally {
+          cardWebRead.disabled = false;
+        }
+      }
+      if (!text) {
+        showWebError(node, 'No page text is stored for this link.');
+        return;
+      }
+      if (isCardFor(node)) showWebContent(node, text);
+    };
+
+    cardWebButton.addEventListener('click', () => {
+      if (focus.node) fetchWeb(focus.node);
+    });
+    cardWebRead.addEventListener('click', () => {
+      if (focus.node) openWeb(focus.node);
+    });
+
     cardTranscriptButton.addEventListener('click', () => {
       if (focus.node) fetchTranscript(focus.node);
     });
@@ -4582,15 +4828,80 @@ export default {
     const loginError = document.getElementById('login-error');
     const loginSubmit = document.getElementById('login-submit');
 
+    // Google sign-in: the button runs the redirect flow; One Tap offers the signed-in Google account in place.
+    const googleClientId = (document.querySelector('meta[name="google-client-id"]') || {}).content || '';
+    const googleSignin = document.getElementById('google-signin');
+    const loginAlt = document.getElementById('login-alt');
+    const pageParams = new URLSearchParams(window.location.search);
+    // Where to go after signing in (the share sheet sends people here first); same-site paths only.
+    const nextPath = (() => {
+      const next = pageParams.get('next') || '';
+      return next.charAt(0) === '/' && next.charAt(1) !== '/' && next.charCodeAt(1) !== 92 ? next : '';
+    })();
+    googleSignin.href = '/api/auth/google' + (nextPath ? '?next=' + encodeURIComponent(nextPath) : '');
+    googleSignin.hidden = !googleClientId;
+    if (!googleClientId) loginAlt.open = true;
+
+    const afterSignIn = async () => {
+      if (nextPath) {
+        window.location.href = nextPath;
+        return;
+      }
+      loginGate.hidden = true;
+      await loadGraph();
+    };
+
+    const handleGoogleCredential = async response => {
+      loginError.textContent = '';
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || ('Google sign-in failed: ' + res.status));
+        await afterSignIn();
+      } catch (err) {
+        loginError.textContent = err.message || 'Google sign-in failed.';
+      }
+    };
+
+    let oneTapRequested = false;
+    const startOneTap = () => {
+      if (!googleClientId || oneTapRequested) return;
+      oneTapRequested = true;
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.onload = () => {
+        const gsi = window.google && window.google.accounts && window.google.accounts.id;
+        if (!gsi) return;
+        gsi.initialize({ client_id: googleClientId, callback: handleGoogleCredential, auto_select: false, cancel_on_tap_outside: false, use_fedcm_for_prompt: true });
+        gsi.prompt();
+      };
+      script.onerror = () => console.warn('Google One Tap could not load; the Sign in with Google button still works.');
+      document.head.append(script);
+    };
+
     function showLoginGate() {
       if (!loginGate.hidden) return;
       closeReader();
       closeAddNodeModal();
       settingsMenu.classList.remove('open');
       loginError.textContent = '';
+      // A failed Google redirect comes back with ?auth_error=; show it once and tidy the address bar.
+      const authError = pageParams.get('auth_error');
+      if (authError) {
+        loginError.textContent = authError;
+        pageParams.delete('auth_error');
+        history.replaceState(null, '', window.location.pathname + (pageParams.toString() ? '?' + pageParams.toString() : ''));
+      }
       loginPassword.value = '';
       loginGate.hidden = false;
-      (loginUsername.value ? loginPassword : loginUsername).focus();
+      if (loginAlt.open) (loginUsername.value ? loginPassword : loginUsername).focus();
+      else googleSignin.focus();
+      startOneTap();
     }
 
     loginForm.addEventListener('submit', async event => {
@@ -4607,8 +4918,7 @@ export default {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || ('Sign-in failed: ' + res.status));
         loginPassword.value = '';
-        loginGate.hidden = true;
-        await loadGraph();
+        await afterSignIn();
       } catch (err) {
         loginError.textContent = err.message || 'Sign-in failed.';
         loginPassword.select();
@@ -4625,6 +4935,10 @@ export default {
     });
 
     loadGraph().catch(err => console.error('Graph Load Error:', err));
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.warn('Service worker registration failed:', err));
+    }
   </script>
 </body>
 </html>`;
@@ -4674,6 +4988,7 @@ const DUMMY_PASSWORD_HASH = `pbkdf2$${PBKDF2_ITERATIONS}$AAAAAAAAAAAAAAAAAAAAAA$
 
 async function handleAuthRoute(request, env, url) {
   const route = url.pathname.slice("/api/auth/".length);
+  if (route === "google" || route === "callback") return handleGoogleAuthRoute(request, env, url, route);
   const allowed = { login: "POST", logout: "POST", me: "GET", users: "POST" }[route];
   if (!allowed) return jsonResponse({ error: "Not found" }, 404);
   if (request.method !== allowed) {
@@ -4687,10 +5002,10 @@ async function handleAuthRoute(request, env, url) {
   if (route === "me") {
     const session = await getSessionUser(request, env);
     const user = session
-      ? await env.DB.prepare("SELECT id, username FROM users WHERE id = ?").bind(session.id).first()
+      ? await env.DB.prepare("SELECT id, username, email, tier FROM users WHERE id = ?").bind(session.id).first()
       : null;
     if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
-    return jsonResponse({ user: { id: user.id, username: user.username } });
+    return jsonResponse({ user: { id: user.id, username: user.username, email: user.email || null, tier: user.tier || "free" } });
   }
 
   if (route === "login") {
@@ -4724,6 +5039,10 @@ async function handleAuthRoute(request, env, url) {
   if (password !== null && (password.length < PASSWORD_MIN_LENGTH || password.length > 200)) {
     return jsonResponse({ error: `Password must be ${PASSWORD_MIN_LENGTH}-200 characters.` }, 400);
   }
+  // undefined keeps the current email; null or "" clears it. Google sign-in matches accounts by this email.
+  const emailInput = body?.email;
+  const email = emailInput === undefined || emailInput === null ? emailInput : String(emailInput).trim().toLowerCase();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return jsonResponse({ error: "Email address is not valid." }, 400);
   // undefined keeps the current link; null or "" unlinks the chat.
   const chatInput = body?.telegramChatId;
   const chatId = chatInput === undefined || chatInput === null ? chatInput : String(chatInput).trim();
@@ -4731,20 +5050,21 @@ async function handleAuthRoute(request, env, url) {
 
   try {
     const passwordHash = password === null ? null : await hashPassword(password);
-    const existing = await env.DB.prepare("SELECT id, username, password_hash, telegram_chat_id FROM users WHERE username = ?").bind(username).first();
+    const existing = await env.DB.prepare("SELECT id, username, password_hash, telegram_chat_id, email FROM users WHERE username = ?").bind(username).first();
     const nextChatId = chatId === undefined ? (existing?.telegram_chat_id ?? null) : (chatId || null);
+    const nextEmail = email === undefined ? (existing?.email ?? null) : (email || null);
     if (existing) {
-      await env.DB.prepare("UPDATE users SET password_hash = ?, telegram_chat_id = ? WHERE id = ?")
-        .bind(passwordHash || existing.password_hash, nextChatId, existing.id).run();
-      return jsonResponse({ created: false, user: { id: existing.id, username: existing.username, telegramChatId: nextChatId } });
+      await env.DB.prepare("UPDATE users SET password_hash = ?, telegram_chat_id = ?, email = ? WHERE id = ?")
+        .bind(passwordHash || existing.password_hash, nextChatId, nextEmail, existing.id).run();
+      return jsonResponse({ created: false, user: { id: existing.id, username: existing.username, telegramChatId: nextChatId, email: nextEmail } });
     }
     const id = "user_" + crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO users (id, username, password_hash, telegram_chat_id) VALUES (?, ?, ?, ?)")
-      .bind(id, username, passwordHash, nextChatId).run();
-    return jsonResponse({ created: true, user: { id, username, telegramChatId: nextChatId } }, 201);
+    await env.DB.prepare("INSERT INTO users (id, username, password_hash, telegram_chat_id, email) VALUES (?, ?, ?, ?, ?)")
+      .bind(id, username, passwordHash, nextChatId, nextEmail).run();
+    return jsonResponse({ created: true, user: { id, username, telegramChatId: nextChatId, email: nextEmail } }, 201);
   } catch (err) {
     if (String(err.message).includes("UNIQUE")) {
-      return jsonResponse({ error: "That Telegram chat is already linked to another account." }, 409);
+      return jsonResponse({ error: "That Telegram chat or email is already linked to another account." }, 409);
     }
     console.error("User Upsert Error:", err);
     return jsonResponse({ error: "Saving the user failed." }, 500);
@@ -4766,11 +5086,119 @@ function isSameOrigin(request, url) {
 }
 
 // Fails closed (no one is signed in) if SESSION_SECRET is unset.
-async function getSessionUser(request, env) {
-  const prefix = SESSION_COOKIE + "=";
+function readCookie(request, name) {
+  const prefix = name + "=";
   const cookie = (request.headers.get("Cookie") || "").split(";").map(part => part.trim()).find(part => part.startsWith(prefix));
-  if (!cookie || !env.SESSION_SECRET) return null;
-  return verifySession(cookie.slice(prefix.length), env.SESSION_SECRET);
+  return cookie ? cookie.slice(prefix.length) : null;
+}
+
+async function getSessionUser(request, env) {
+  const token = readCookie(request, SESSION_COOKIE);
+  if (!token || !env.SESSION_SECRET) return null;
+  return verifySession(token, env.SESSION_SECRET);
+}
+
+// Google sign-in. GET /api/auth/google starts the redirect flow (PKCE + state in a short-lived signed cookie scoped
+// to the callback); POST /api/auth/google takes a One Tap credential; GET /api/auth/callback finishes the redirect.
+async function handleGoogleAuthRoute(request, env, url, route) {
+  const methods = route === "google" ? ["GET", "POST"] : ["GET"];
+  if (!methods.includes(request.method)) {
+    return jsonResponse({ error: "Method not allowed" }, 405, { Allow: methods.join(", ") });
+  }
+  const isJson = request.method === "POST";
+  const fail = (message, status) => isJson
+    ? jsonResponse({ error: message }, status)
+    : redirectWithCookies(url.origin + "/?auth_error=" + encodeURIComponent(message), [oauthCookie("", 0)]);
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.SESSION_SECRET) {
+    console.error("Google sign-in is missing GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET or SESSION_SECRET.");
+    return fail("Google sign-in is not configured.", 500);
+  }
+  const redirectUri = url.origin + "/api/auth/callback";
+
+  if (route === "google" && request.method === "GET") {
+    const { verifier, challenge } = await createPkcePair();
+    const state = createOAuthState();
+    const cookie = await signOAuthCookie(env.SESSION_SECRET, { state, verifier, next: safeNextPath(url.searchParams.get("next")) });
+    return redirectWithCookies(
+      buildGoogleAuthUrl({ clientId: env.GOOGLE_CLIENT_ID, redirectUri, state, codeChallenge: challenge }),
+      [oauthCookie(cookie, OAUTH_COOKIE_TTL_SECONDS)]
+    );
+  }
+
+  let claims;
+  let next = "/";
+  try {
+    if (route === "google") {
+      if (!isSameOrigin(request, url)) return jsonResponse({ error: "Forbidden" }, 403);
+      const body = await request.json().catch(() => null);
+      claims = await verifyGoogleIdToken(String(body?.credential || ""), env.GOOGLE_CLIENT_ID);
+    } else {
+      if (url.searchParams.get("error")) return fail("Google sign-in was cancelled.", 400);
+      const saved = await readOAuthCookie(env.SESSION_SECRET, readCookie(request, OAUTH_COOKIE));
+      const code = url.searchParams.get("code");
+      if (!saved || !code || saved.state !== url.searchParams.get("state")) return fail("Sign-in expired. Please try again.", 400);
+      next = safeNextPath(saved.next);
+      const idToken = await exchangeGoogleCode({ code, verifier: saved.verifier, clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET, redirectUri });
+      claims = await verifyGoogleIdToken(idToken, env.GOOGLE_CLIENT_ID);
+    }
+  } catch (err) {
+    console.warn("Google sign-in rejected:", err.message);
+    return fail("Google sign-in failed. Please try again.", 401);
+  }
+
+  try {
+    const result = await signInGoogleUser(env, claims);
+    if (result.error) return fail(result.error, result.status);
+    const session = sessionCookie(await signSession(result.user.id, env.SESSION_SECRET));
+    if (isJson) return jsonResponse({ user: result.user, created: result.created }, 200, { "Set-Cookie": session });
+    return redirectWithCookies(url.origin + next, [session, oauthCookie("", 0)]);
+  } catch (err) {
+    console.error("Google Sign-in Error:", err);
+    return fail("Google sign-in failed. Please try again.", 500);
+  }
+}
+
+// Matches the Google account by subject id, then by (verified) email; otherwise creates a free-tier account if the
+// email is on GOOGLE_ALLOWED_EMAILS. Returns { user, created } or { error, status }.
+async function signInGoogleUser(env, claims) {
+  const email = String(claims.email).trim().toLowerCase();
+  let user = await env.DB.prepare("SELECT id, username, email, tier, google_sub FROM users WHERE google_sub = ?").bind(claims.sub).first();
+  if (!user) {
+    user = await env.DB.prepare("SELECT id, username, email, tier, google_sub FROM users WHERE email = ? COLLATE NOCASE").bind(email).first();
+    if (user?.google_sub && user.google_sub !== claims.sub) {
+      return { error: "This email is already linked to a different Google account.", status: 409 };
+    }
+    if (user) await env.DB.prepare("UPDATE users SET google_sub = ? WHERE id = ?").bind(claims.sub, user.id).run();
+  }
+  if (user) return { user: { id: user.id, username: user.username, tier: user.tier || "free" }, created: false };
+
+  if (!isAllowedGoogleEmail(email, env.GOOGLE_ALLOWED_EMAILS)) {
+    return { error: "This Google account has not been invited to Aether Portal.", status: 403 };
+  }
+  const base = usernameFromEmail(email);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const username = attempt ? base.slice(0, 27) + "-" + Math.floor(1000 + Math.random() * 9000) : base;
+    const id = "user_" + crypto.randomUUID();
+    try {
+      await env.DB.prepare("INSERT INTO users (id, username, email, google_sub, tier) VALUES (?, ?, ?, ?, 'free')")
+        .bind(id, username, email, claims.sub).run();
+      return { user: { id, username, tier: "free" }, created: true };
+    } catch (err) {
+      // A taken username gets a numbered retry; any other conflict (same email or Google id) is a real error.
+      if (!String(err.message).includes("users.username")) throw err;
+    }
+  }
+  throw new Error("Could not find a free username for " + email);
+}
+
+function oauthCookie(value, maxAge) {
+  return `${OAUTH_COOKIE}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/api/auth/callback; Max-Age=${maxAge}`;
+}
+
+function redirectWithCookies(location, cookies) {
+  const headers = new Headers({ Location: location, "Cache-Control": "no-store" });
+  cookies.forEach(cookie => headers.append("Set-Cookie", cookie));
+  return new Response(null, { status: 302, headers });
 }
 
 function sessionCookie(token) {
@@ -4879,6 +5307,58 @@ async function appendResearch(env, userId, nodeId, { question, answer, sources }
   await env.DB.prepare("UPDATE saved_nodes SET research = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
     .bind(JSON.stringify(research), nodeId, userId).run();
   return research;
+}
+
+// Runs after /api/share has answered: fills in link metadata, fetches the page (or YouTube captions) when a preset
+// needs it, runs the preset on the chosen tier and saves the result as a research entry on the node.
+async function processSharedNode(env, userId, nodeId, share) {
+  if (share.url) {
+    try {
+      const metadata = await fetchLinkMetadata(share.url);
+      if (metadata) {
+        await env.DB.prepare(
+          "UPDATE saved_nodes SET title = CASE WHEN ? THEN title ELSE COALESCE(?, title) END, description = COALESCE(description, ?), image_url = COALESCE(image_url, ?), site_name = COALESCE(site_name, ?), source_url = COALESCE(source_url, ?), favicon_url = COALESCE(favicon_url, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
+        ).bind(share.hasSharedTitle ? 1 : 0, metadata.title, metadata.description, metadata.image, metadata.siteName, metadata.sourceUrl, metadata.favicon, nodeId, userId).run();
+      }
+    } catch (err) {
+      console.warn("Share metadata failed:", err.message);
+    }
+  }
+  if (!share.preset) return;
+
+  let content = "";
+  const videoId = share.url ? getYouTubeVideoId(share.url) : null;
+  try {
+    if (videoId) {
+      const captions = await fetchYouTubeTranscript(videoId);
+      if (captions) {
+        content = captions.text;
+        await env.DB.prepare("UPDATE saved_nodes SET raw_transcript = ? WHERE id = ? AND user_id = ?").bind(content, nodeId, userId).run();
+      }
+    } else if (share.url) {
+      content = (await fetchWebContent(share.url)).content;
+      await env.DB.prepare("UPDATE saved_nodes SET content = ? WHERE id = ? AND user_id = ?").bind(content, nodeId, userId).run();
+    }
+  } catch (err) {
+    console.warn("Share content fetch failed:", err.message);
+  }
+
+  const prompt = buildPresetPrompt(share.preset, { title: share.title, url: share.url, note: share.note, content });
+  const label = SHARE_PRESET_LABELS[share.preset] + " · " + SHARE_TIER_LABELS[share.tier];
+  let answer;
+  try {
+    if (share.tier === "claude") answer = await callClaude(env.ANTHROPIC_API_KEY, prompt);
+    else answer = (await callGeminiText(env.GEMINI_API_KEY, share.tier === "pro" ? GEMINI_PRO_MODELS : GEMINI_MODELS, prompt, 4096, false)).text.trim();
+  } catch (err) {
+    console.error("Share preset failed:", err);
+    answer = "";
+  }
+  // A failed run is recorded too, so the card says what happened instead of showing nothing.
+  await appendResearch(env, userId, nodeId, {
+    question: label,
+    answer: answer || "This action could not run when the link was shared. Ask Elarion on the card to try again.",
+    sources: []
+  }).catch(err => console.warn("Share result save failed:", err.message));
 }
 
 function extractKeywords(text) {
@@ -5617,13 +6097,13 @@ async function mineConnections(env) {
 
 async function mineUserConnections(env, userId) {
   const { results: newRows } = await env.DB.prepare(
-    "SELECT id, title, url, category FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
+    "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
   ).bind(userId, MINER_BATCH_SIZE).all();
   const newNodes = newRows || [];
   if (!newNodes.length) return;
 
   const { results: contextRows } = await env.DB.prepare(
-    "SELECT id, title, url, category FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
+    "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
   ).bind(userId, MINER_CONTEXT_SIZE).all();
   const allNodes = [...newNodes, ...(contextRows || [])];
 

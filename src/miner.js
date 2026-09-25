@@ -5,6 +5,8 @@ export const MINER_BATCH_SIZE = 40;
 export const MINER_CONTEXT_SIZE = 60;
 const MAX_EDGES_PER_NEW_NODE = 3;
 const MAX_ITEM_TEXT_LENGTH = 160;
+// Opening words of a node's fetched page text or video synopsis, so items are judged by what they say, not just titles.
+const MAX_SNIPPET_LENGTH = 200;
 const MAX_RELATION_LENGTH = 60;
 
 // Items are numbered in the prompt so Gemini never has to echo (or invent) node ids.
@@ -13,7 +15,8 @@ export function buildMinerPrompt(newNodes, contextNodes, categories) {
     const title = String(node.title || "");
     const url = String(node.url || "");
     const text = title && title !== url ? title + " | " + url : url || title;
-    return "[" + index + "] (" + (node.category || "note") + ") " + text.replace(/\s+/g, " ").slice(0, MAX_ITEM_TEXT_LENGTH);
+    const snippet = String(node.snippet || "").replace(/\s+/g, " ").trim().slice(0, MAX_SNIPPET_LENGTH);
+    return "[" + index + "] (" + (node.category || "note") + ") " + text.replace(/\s+/g, " ").slice(0, MAX_ITEM_TEXT_LENGTH) + (snippet ? " :: " + snippet : "");
   };
   const lines = [...newNodes, ...contextNodes].map(describe);
   const lastNew = newNodes.length - 1;
