@@ -590,6 +590,48 @@ export default {
       font-weight: 600;
     }
     #add-node-button { font-size: 18px; line-height: 1; }
+    /* Platform bar: a second toolbar row under the header; panels below it start at about 104px. */
+    #platform-bar {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 29;
+      display: flex;
+      gap: 6px;
+      max-width: calc(100% - 20px);
+      box-sizing: border-box;
+      padding: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      touch-action: pan-x;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(8, 12, 20, 0.6);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    #platform-bar::-webkit-scrollbar { display: none; }
+    .platform-pill {
+      flex: none;
+      appearance: none;
+      height: 26px;
+      padding: 0 11px;
+      border-radius: 999px;
+      border: 1px solid rgba(0,255,204,0.2);
+      background: rgba(255,255,255,0.03);
+      color: #dffdf7;
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .platform-pill:hover:not(:disabled) { border-color: rgba(0,255,204,0.5); }
+    .platform-pill[aria-pressed="true"] {
+      background: linear-gradient(135deg, rgba(0,255,204,0.3), rgba(79,132,255,0.3));
+      border-color: rgba(0,255,204,0.65);
+      color: #fff;
+    }
+    .platform-pill:disabled { opacity: 0.4; cursor: default; }
     #telegram-help-button { gap: 6px; flex: none; }
     #filter-menu summary { gap: 6px; }
     .bar-icon { width: 14px; height: 14px; flex: none; }
@@ -646,7 +688,7 @@ export default {
     #collection-view {
       display: none;
       position: fixed;
-      top: 64px;
+      top: 104px;
       left: 0;
       right: 0;
       bottom: 0;
@@ -1115,7 +1157,7 @@ export default {
     }
     #cluster-drawer {
       position: absolute;
-      top: 62px;
+      top: 102px;
       right: 12px;
       bottom: 20px;
       width: 340px;
@@ -1197,7 +1239,7 @@ export default {
     .card-handle { display: none; }
     /* Desktop / laptop: a floating side panel, so the graph stays visible. */
     @media (min-width: 768px) {
-      #node-card { left: auto; right: 15px; top: 66px; bottom: auto; width: clamp(440px, 34vw, 480px); max-height: 80vh; }
+      #node-card { left: auto; right: 15px; top: 106px; bottom: auto; width: clamp(440px, 34vw, 480px); max-height: 80vh; }
     }
     @media (min-width: 1100px) {
       body.collection-mode.card-open #collection-view { padding-right: 510px; padding-bottom: 24px; }
@@ -1323,7 +1365,8 @@ export default {
       #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
       #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
-      body.drawer-open #node-card { right: 15px; top: 62px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
+      body.drawer-open #node-card { right: 15px; top: 102px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
+      #platform-bar { left: 10px; right: 10px; transform: none; max-width: none; }
       #view-switch .view-label { display: none; }
       /* Phones: icon-only Filter, short 2D/3D label, and Telegram help moves into the settings menu. */
       #telegram-help-button { display: none; }
@@ -1390,6 +1433,16 @@ export default {
     </div>
   </div>
   </header>
+
+  <nav id="platform-bar" aria-label="Platform filter">
+    <button type="button" class="platform-pill" data-platform="all" aria-pressed="true">All</button>
+    <button type="button" class="platform-pill" data-platform="youtube" aria-pressed="false">YouTube</button>
+    <button type="button" class="platform-pill" data-platform="x" aria-pressed="false">X/Twitter</button>
+    <button type="button" class="platform-pill" data-platform="facebook" aria-pressed="false">Facebook</button>
+    <button type="button" class="platform-pill" data-platform="links" aria-pressed="false">Links</button>
+    <button type="button" class="platform-pill" data-platform="notes" aria-pressed="false">Notes</button>
+    <button type="button" class="platform-pill" data-platform="images" aria-pressed="false">Images</button>
+  </nav>
 
   <div id="node-card">
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
@@ -1548,6 +1601,8 @@ export default {
       hideOrphans: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
       highlighted: new Set(),
+      // Platform bar: 'all' or one platform; the graph dims the rest, list and timeline show only matches.
+      platform: 'all',
       // Active view (graph, list or timeline) and the list view's layout and sort; remembered per browser.
       view: 'graph',
       listLayout: 'list',
@@ -1610,7 +1665,22 @@ export default {
 
     const getRainbowColor = node => 'hsl(' + getNodeHue(node) + ', 80%, 60%)';
 
-    const isHighlighted = node => filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node));
+    // Where a node came from, for the platform bar: a photo, a note (no link), a known social site, or any other link.
+    const getPlatform = node => {
+      if (getNodeCategory(node) === 'image') return 'images';
+      const url = String(node.url || '');
+      if (!/^https?:/i.test(url)) return 'notes';
+      const host = getHostname(url).toLowerCase();
+      const onDomain = domains => domains.some(domain => host === domain || host.endsWith('.' + domain));
+      if (onDomain(['youtube.com', 'youtu.be'])) return 'youtube';
+      if (onDomain(['x.com', 'twitter.com'])) return 'x';
+      if (onDomain(['facebook.com', 'fb.watch', 'fb.com'])) return 'facebook';
+      return 'links';
+    };
+    const matchesPlatform = node => filterState.platform === 'all' || getPlatform(node) === filterState.platform;
+    const isDimming = () => filterState.highlighted.size > 0 || filterState.platform !== 'all';
+    // Full color only for nodes that pass both the legend highlight and the platform bar.
+    const isHighlighted = node => (filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node))) && matchesPlatform(node);
 
     // Selecting a node focuses its 1-hop neighborhood: everything else fades to FOCUS_DIM_OPACITY.
     const FOCUS_DIM_OPACITY = 0.15;
@@ -1724,7 +1794,7 @@ export default {
       if (isActiveLink(link)) return withAlpha(base, 1);
       // Hover and focus lift the global link opacity to 1, so the quiet fade lives in each link's alpha.
       if (hover.id || focus.node) return withAlpha(base, QUIET_LINK_OPACITY);
-      return filterState.highlighted.size && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end)) ? DIM_LINK_COLOR : base;
+      return isDimming() && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end)) ? DIM_LINK_COLOR : base;
     };
 
     const isSameCategoryLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
@@ -2093,6 +2163,7 @@ export default {
       // Custom meshes ignore nodeColor/nodeOpacity, so they are rebuilt with the current colors.
       if (THREE) Graph.nodeThreeObject(node => buildNodeMesh(node));
       if (territories.group) territories.group.visible = !focus.node;
+      syncTerritoryEmphasis();
     };
 
     // Each visible category gets a faint wireframe shell and a floating label around its cluster.
@@ -2140,6 +2211,22 @@ export default {
         territories.entries.set(category, { shell, label });
       });
       updateTerritories();
+      syncTerritoryEmphasis();
+    };
+
+    // While the legend highlight or platform bar is dimming, a category's shell and label fade unless it
+    // still holds an emphasized node, so the lit nodes stand out instead of every cluster glowing.
+    const SHELL_OPACITY = 0.07;
+    const LABEL_OPACITY = 0.75;
+    const syncTerritoryEmphasis = () => {
+      if (!territories.group) return;
+      const dimming = isDimming();
+      const lit = new Set(dimming ? territories.visibleNodes.filter(isHighlighted).map(getNodeCategory) : []);
+      territories.entries.forEach((entry, category) => {
+        const on = !dimming || lit.has(category);
+        entry.shell.material.opacity = on ? SHELL_OPACITY : 0.015;
+        entry.label.material.opacity = on ? LABEL_OPACITY : 0.15;
+      });
     };
 
     const updateTerritories = () => {
@@ -2671,6 +2758,37 @@ export default {
       .strength(link => isSameCategoryLink(link) ? 0.5 : 0.03);
     Graph.d3Force('cluster', clusterForce());
 
+    // Pill labels carry counts of the nodes the other filters leave visible, e.g. "YouTube (4)".
+    const platformBar = document.getElementById('platform-bar');
+    const PLATFORM_LABELS = { all: 'All', youtube: 'YouTube', x: 'X/Twitter', facebook: 'Facebook', links: 'Links', notes: 'Notes', images: 'Images' };
+    const renderPlatformBar = visibleNodes => {
+      const counts = { all: visibleNodes.length };
+      visibleNodes.forEach(node => {
+        const platform = getPlatform(node);
+        counts[platform] = (counts[platform] || 0) + 1;
+      });
+      platformBar.querySelectorAll('[data-platform]').forEach(pill => {
+        const key = pill.dataset.platform;
+        const active = filterState.platform === key;
+        pill.textContent = PLATFORM_LABELS[key] + ' (' + (counts[key] || 0) + ')';
+        pill.setAttribute('aria-pressed', String(active));
+        pill.disabled = !active && key !== 'all' && !counts[key];
+      });
+    };
+
+    // Recolors in place (no layout restart); list and timeline re-render to show only the matching platform.
+    // Clicking the active pill again goes back to All.
+    const setPlatform = platform => {
+      filterState.platform = PLATFORM_LABELS[platform] && platform !== filterState.platform ? platform : 'all';
+      refreshGraphStyles();
+      renderPlatformBar(currentVisibleNodes);
+      if (filterState.view !== 'graph') renderCollection();
+    };
+    platformBar.addEventListener('click', event => {
+      const pill = event.target.closest('[data-platform]');
+      if (pill && !pill.disabled) setPlatform(pill.dataset.platform);
+    });
+
     const toggleHighlight = category => {
       if (filterState.highlighted.has(category)) filterState.highlighted.delete(category);
       else filterState.highlighted.add(category);
@@ -2752,6 +2870,7 @@ export default {
       }
       else refreshGraphStyles();
       renderLegend(filteredNodes);
+      renderPlatformBar(filteredNodes);
       syncTerritories(filteredNodes);
       renderClusterDrawer();
       currentVisibleNodes = filteredNodes;
@@ -2808,10 +2927,10 @@ export default {
       Graph.d3ReheatSimulation();
     });
 
-    document.querySelectorAll('.filter-pill').forEach(button => {
+    document.querySelectorAll('#type-filters .filter-pill').forEach(button => {
       button.addEventListener('click', () => {
         filterState.type = button.dataset.filter || 'all';
-        document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.toggle('active', btn === button));
+        document.querySelectorAll('#type-filters .filter-pill').forEach(btn => btn.classList.toggle('active', btn === button));
         applyGraphFilters();
       });
     });
@@ -2871,7 +2990,8 @@ export default {
       searchInput.value = '';
       clusterToggle.textContent = 'Category View';
       clusterToggle.classList.add('active');
-      document.querySelectorAll('.filter-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
+      document.querySelectorAll('#type-filters .filter-pill').forEach(btn => btn.classList.toggle('active', btn.dataset.filter === 'all'));
+      filterState.platform = 'all';
       settingsMenu.classList.remove('open');
       filterMenu.open = false;
       applyGraphFilters();
@@ -3422,7 +3542,7 @@ export default {
     };
 
     const renderCollection = () => {
-      const nodes = currentVisibleNodes;
+      const nodes = currentVisibleNodes.filter(matchesPlatform);
       const isTimeline = filterState.view === 'timeline';
       const isGrid = !isTimeline && filterState.listLayout === 'grid';
       collectionCount.textContent = nodes.length + (nodes.length === 1 ? ' node' : ' nodes');
