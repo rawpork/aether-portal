@@ -69,6 +69,8 @@ const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const PBKDF2_ITERATIONS = 100000;
 const PASSWORD_MIN_LENGTH = 10;
 const USERNAME_PATTERN = /^[a-z0-9_.-]{3,32}$/i;
+// Longest id a /node/<id> deep link accepts (ids are "node_" + a UUID).
+const NODE_ID_MAX = 200;
 
 const STOP_WORDS = new Set(["the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "https", "http", "com", "www"]);
 
@@ -591,6 +593,19 @@ export default {
       return new Response(renderSharePage(shared, { claudeAvailable: Boolean(env.ANTHROPIC_API_KEY) }), {
         headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
       });
+    }
+
+    // Endpoint 5f: Deep link to one node (/node/<id>, e.g. the share sheet's View Node button). Signed-in visits get
+    // the usual app, whose client script opens that node's card; signed-out visitors sign in first and come back here.
+    const nodeRoute = parseNodeRoute(url.pathname);
+    if (nodeRoute && request.method !== "POST") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+      }
+      if (!nodeRoute.id) return Response.redirect(url.origin + "/", 303);
+      if (!await getSessionUser(request, env)) {
+        return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/node/" + encodeURIComponent(nodeRoute.id)), 303);
+      }
     }
 
     // Endpoint 6: Telegram Webhook POST
@@ -1211,35 +1226,6 @@ export default {
     .google-button:active { transform: scale(0.98); }
     .google-button[hidden] { display: none; }
     .google-button svg { width: 20px; height: 20px; flex: none; }
-    .login-alt { text-align: left; }
-    .login-alt summary { list-style: none; cursor: pointer; text-align: center; font-size: 13px; color: #2997ff; }
-    .login-alt summary::-webkit-details-marker { display: none; }
-    .login-alt[open] summary { margin-bottom: 12px; color: #a1a1a6; }
-    #login-form { display: flex; flex-direction: column; gap: 10px; }
-    .login-panel label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #a1a1a6; }
-    .login-panel input {
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.06);
-      color: #f5f5f7;
-      font: inherit;
-      font-size: 15px;
-    }
-    .login-panel input:focus { outline: none; border-color: #2997ff; box-shadow: 0 0 0 3px rgba(41,151,255,0.25); }
-    #login-submit {
-      margin-top: 2px;
-      height: 44px;
-      border-radius: 12px;
-      border: none;
-      background: rgba(255,255,255,0.12);
-      color: #f5f5f7;
-      font: inherit;
-      font-weight: 600;
-      font-size: 15px;
-      cursor: pointer;
-    }
-    #login-submit:disabled { opacity: 0.5; cursor: wait; }
     .login-error { margin: 0; min-height: 1em; font-size: 13px; color: #ff6b81; }
     .login-error:empty { display: none; }
     .settings-option {
@@ -1883,23 +1869,11 @@ export default {
       <img class="login-logo" src="/icons/icon-192.png" alt="" width="64" height="64">
       <h2 id="login-title">Aether Portal</h2>
       <p class="login-sub">Your knowledge, mapped in three dimensions.</p>
-      <a id="google-signin" class="google-button" href="/api/auth/google" hidden>
+      <a id="google-signin" class="google-button" href="/api/auth/google">
         <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         <span>Sign in with Google</span>
       </a>
       <p id="login-error" class="login-error" role="alert"></p>
-      <details id="login-alt" class="login-alt">
-        <summary>Sign in with username and password</summary>
-        <form id="login-form" autocomplete="on">
-          <label>Username
-            <input id="login-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
-          </label>
-          <label>Password
-            <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="200">
-          </label>
-          <button type="submit" id="login-submit">Sign In</button>
-        </form>
-      </details>
     </div>
   </div>
 
@@ -3442,6 +3416,33 @@ export default {
       applyGraphFilters();
       // First load in graph view: the layout grows out from the origin, so frame it once it has spread.
       if (filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
+      if (deepLinkId) openDeepLink();
+    };
+
+    // A /node/<id> deep link (the share sheet's View Node button) opens that node's card on the first load.
+    let deepLinkId = (() => {
+      const match = /^[/]node[/]([^/]+)[/]?$/.exec(window.location.pathname);
+      if (!match) return '';
+      try {
+        return decodeURIComponent(match[1]).trim();
+      } catch (err) {
+        return '';
+      }
+    })();
+    const openDeepLink = () => {
+      const id = deepLinkId;
+      deepLinkId = '';
+      if (!graphData.nodes.some(node => String(node.id) === id)) return;
+      const findShown = () => Graph.graphData().nodes.find(node => String(node.id) === id);
+      // A filter left over from last time may hide it; clear the filters rather than open nothing.
+      if (!findShown()) resetFilters();
+      const node = findShown();
+      if (!node) return;
+      selectNode(node);
+      // The layout has no positions yet on first load; fly once it has spread, if the card is still open.
+      setTimeout(() => {
+        if (focus.node === node && filterState.view === 'graph') flyToNode(node);
+      }, FIT_SETTLE_MS);
     };
 
     // fz is honored by the d3 simulation; null releases the node back into 3D.
@@ -4822,25 +4823,21 @@ export default {
     renderActiveView();
 
     const loginGate = document.getElementById('login-gate');
-    const loginForm = document.getElementById('login-form');
-    const loginUsername = document.getElementById('login-username');
-    const loginPassword = document.getElementById('login-password');
     const loginError = document.getElementById('login-error');
-    const loginSubmit = document.getElementById('login-submit');
 
-    // Google sign-in: the button runs the redirect flow; One Tap offers the signed-in Google account in place.
+    // Sign-in is Google only: the button goes straight to /api/auth/google (OAuth 2.0 with PKCE), and One Tap
+    // offers the signed-in Google account in place when a client id is configured.
     const googleClientId = (document.querySelector('meta[name="google-client-id"]') || {}).content || '';
     const googleSignin = document.getElementById('google-signin');
-    const loginAlt = document.getElementById('login-alt');
     const pageParams = new URLSearchParams(window.location.search);
-    // Where to go after signing in (the share sheet sends people here first); same-site paths only.
+    // Where to go after signing in (the share sheet and /node/<id> links send people here first); same-site paths only.
+    // A session that lapses on a /node/<id> page comes back to that node.
     const nextPath = (() => {
       const next = pageParams.get('next') || '';
-      return next.charAt(0) === '/' && next.charAt(1) !== '/' && next.charCodeAt(1) !== 92 ? next : '';
+      if (next.charAt(0) === '/' && next.charAt(1) !== '/' && next.charCodeAt(1) !== 92) return next;
+      return deepLinkId ? window.location.pathname : '';
     })();
     googleSignin.href = '/api/auth/google' + (nextPath ? '?next=' + encodeURIComponent(nextPath) : '');
-    googleSignin.hidden = !googleClientId;
-    if (!googleClientId) loginAlt.open = true;
 
     const afterSignIn = async () => {
       if (nextPath) {
@@ -4897,36 +4894,10 @@ export default {
         pageParams.delete('auth_error');
         history.replaceState(null, '', window.location.pathname + (pageParams.toString() ? '?' + pageParams.toString() : ''));
       }
-      loginPassword.value = '';
       loginGate.hidden = false;
-      if (loginAlt.open) (loginUsername.value ? loginPassword : loginUsername).focus();
-      else googleSignin.focus();
+      googleSignin.focus();
       startOneTap();
     }
-
-    loginForm.addEventListener('submit', async event => {
-      event.preventDefault();
-      loginSubmit.disabled = true;
-      loginSubmit.textContent = 'Signing in…';
-      loginError.textContent = '';
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: loginUsername.value.trim(), password: loginPassword.value })
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body.error || ('Sign-in failed: ' + res.status));
-        loginPassword.value = '';
-        await afterSignIn();
-      } catch (err) {
-        loginError.textContent = err.message || 'Sign-in failed.';
-        loginPassword.select();
-      } finally {
-        loginSubmit.disabled = false;
-        loginSubmit.textContent = 'Sign In';
-      }
-    });
 
     // Reloading after sign-out drops every in-memory node; the empty session then shows the gate.
     document.getElementById('logout-button').addEventListener('click', async () => {
@@ -4948,6 +4919,19 @@ export default {
     });
   }
 };
+
+// "/node/<id>" (one trailing slash allowed) -> { id }; id is "" when it is not valid. Other paths -> null.
+export function parseNodeRoute(pathname) {
+  const match = /^\/node\/([^/]+)\/?$/.exec(String(pathname || ""));
+  if (!match) return null;
+  let id = "";
+  try {
+    id = decodeURIComponent(match[1]).trim();
+  } catch {
+    id = "";
+  }
+  return { id: id.length <= NODE_ID_MAX ? id : "" };
+}
 
 function jsonResponse(body, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {

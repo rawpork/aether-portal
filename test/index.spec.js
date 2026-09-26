@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { NODE_STATUSES, TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, normalizeNodeStatus, parseImageDescription, parseResearch, parseTelegramCommand, pickTelegramImage, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
+import { NODE_STATUSES, parseNodeRoute, TELEGRAM_COMMANDS, buildTelegramHelp, chunkTelegramMessage, formatTelegramAnswer, hashPassword, needsWebResearch, normalizeNodeStatus, parseImageDescription, parseResearch, parseTelegramCommand, pickTelegramImage, rankNodesForQuestion, signSession, splitLinkMessage, verifyPassword, verifySession } from "../src/index.js";
 
 describe("needsWebResearch", () => {
 	it("routes research-intent questions to the search tier", () => {
@@ -13,6 +13,16 @@ describe("needsWebResearch", () => {
 		for (const q of ["summarize these notes", "how do these nodes relate", "write a function to sort", "newsletter ideas", ""]) {
 			expect(needsWebResearch(q), q).toBe(false);
 		}
+	});
+});
+
+describe("parseNodeRoute", () => {
+	it("reads the id from /node/<id> and ignores other paths", () => {
+		expect(parseNodeRoute("/node/node_1")).toEqual({ id: "node_1" });
+		expect(parseNodeRoute("/node/a%20b/")).toEqual({ id: "a b" });
+		expect(parseNodeRoute("/node/%E0%A4%A")).toEqual({ id: "" });
+		expect(parseNodeRoute("/node/" + "x".repeat(201))).toEqual({ id: "" });
+		for (const path of ["/", "/node", "/node/", "/node/a/b", "/api/node/a"]) expect(parseNodeRoute(path), path).toBeNull();
 	});
 });
 
@@ -177,7 +187,7 @@ describe("Aether Portal worker", () => {
 		const html = await response.text();
 		expect(response.headers.get("Content-Type")).toContain("text/html");
 		expect(html).toContain("Aether Portal");
-		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status", "filter-toolbar", "filter-menu", "type-filter", "filters-reset", "card-transcript", "card-transcript-button", "card-transcript-read", "card-web", "card-web-button", "card-web-read", "google-signin", "login-alt"]) {
+		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status", "filter-toolbar", "filter-menu", "type-filter", "filters-reset", "card-transcript", "card-transcript-button", "card-transcript-read", "card-web", "card-web-button", "card-web-read", "google-signin"]) {
 			expect(html, id).toContain(`id="${id}"`);
 		}
 		for (const usage of ["/research &lt;topic or link&gt;", "/ask &lt;question&gt;", "/link &lt;url&gt; [note]", "/help"]) {
@@ -282,6 +292,16 @@ describe("Aether Portal worker", () => {
 		const location = new URL(response.headers.get("Location"));
 		expect(location.pathname).toBe("/");
 		expect(location.searchParams.get("next")).toBe("/share?url=https%3A%2F%2Fa.test%2Fx&title=Hi");
+	});
+
+	it("sends signed-out /node/<id> deep links to sign in and back", async () => {
+		const response = await SELF.fetch("http://example.com/node/node_abc-123", { redirect: "manual" });
+		expect(response.status).toBe(303);
+		const location = new URL(response.headers.get("Location"));
+		expect(location.pathname).toBe("/");
+		expect(location.searchParams.get("next")).toBe("/node/node_abc-123");
+		expect(new URL((await SELF.fetch("http://example.com/node/%E0%A4%A", { redirect: "manual" })).headers.get("Location")).search).toBe("");
+		expect((await SELF.fetch("http://example.com/node/x", { method: "PUT" })).status).toBe(405);
 	});
 
 	it("reports Google sign-in as unconfigured without client credentials", async () => {

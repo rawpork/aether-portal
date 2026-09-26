@@ -61,4 +61,11 @@ describe("renderSharePage", () => {
 		expect(scripts.length).toBe(1);
 		expect(() => new Function(scripts[0])).not.toThrow();
 	});
+
+	it("offers View Node after saving instead of closing the window", () => {
+		const html = renderSharePage({ url: "https://x.test/a" });
+		expect(html).toContain('id="view-node"');
+		expect(html).toContain("'/node/' + encodeURIComponent(id)");
+		expect(html).not.toMatch(/setTimeout[(]finish/);
+	});
 });

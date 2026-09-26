@@ -36,10 +36,27 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
   <meta charset="utf-8">
   <title>Save to Aether</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#09090b">
+  <meta name="theme-color" content="#000000">
   <link rel="manifest" href="/manifest.json">
   <style>
-    :root { color-scheme: dark; --accent: #00ffcc; --text: #fafafa; --muted: #a1a1aa; --faint: #71717a; --line: rgba(255,255,255,0.1); }
+    /* DESIGN.md: system type on the Dynamic Type scale, an 8pt grid, one accent reserved for the primary action,
+       44pt targets that press down to scale(0.98) on pointer-down and settle back with a critically damped ease. */
+    :root {
+      color-scheme: dark;
+      --bg-primary: #000000;
+      --bg-elevated: rgba(28, 28, 30, 0.82);
+      --fill-secondary: rgba(120, 120, 128, 0.24);
+      --fill-tertiary: rgba(118, 118, 128, 0.18);
+      --text-primary: #ffffff;
+      --text-secondary: rgba(235, 235, 245, 0.6);
+      --text-tertiary: rgba(235, 235, 245, 0.3);
+      --separator: rgba(255, 255, 255, 0.08);
+      --accent: #0a84ff;
+      --on-accent: #ffffff;
+      --destructive: #ff453a;
+      --success: #30d158;
+      --ease-settle: cubic-bezier(0.25, 1, 0.5, 1);
+    }
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; }
     body {
@@ -49,69 +66,81 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       justify-content: center;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-      color: var(--text);
-      background: radial-gradient(circle at 20% 10%, rgba(0,255,204,0.16), transparent 45%), radial-gradient(circle at 85% 90%, rgba(99,102,241,0.18), transparent 50%), #09090b;
+      font-size: 17px;
+      line-height: 1.29;
+      color: var(--text-primary);
+      background: var(--bg-primary);
       -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
     }
-    /* backdrop-blur-2xl bg-zinc-900/90 border border-white/10 rounded-3xl */
     .sheet {
       width: 100%;
       max-width: 440px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      padding: 20px;
-      border-radius: 24px;
-      border: 1px solid var(--line);
-      background: rgba(24, 24, 27, 0.9);
-      backdrop-filter: blur(40px) saturate(1.4);
-      -webkit-backdrop-filter: blur(40px) saturate(1.4);
-      box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+      gap: 24px;
+      padding: 16px 16px 24px;
+      border-radius: 16px;
+      border: 1px solid var(--separator);
+      background: var(--bg-elevated);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
     @media (max-width: 520px) {
       body { align-items: flex-end; padding: 0; }
-      .sheet { max-width: none; border-radius: 24px 24px 0 0; border-bottom: none; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+      .sheet { max-width: none; border-radius: 16px 16px 0 0; border-width: 1px 0 0; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
     }
-    .sheet-head { display: flex; align-items: center; justify-content: space-between; }
-    .sheet-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-    .close { width: 30px; height: 30px; border-radius: 50%; border: none; background: rgba(255,255,255,0.08); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
-    .preview { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); min-width: 0; }
-    .preview-domain { font-size: 12px; color: var(--accent); font-weight: 600; letter-spacing: 0.02em; }
-    .preview-title { font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-    .preview-url { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .section-label { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
-    .segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255,255,255,0.06); }
-    .segments button { min-width: 0; padding: 8px 4px; border: none; border-radius: 10px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 1.25; cursor: pointer; }
-    .segments button span { display: block; font-size: 10px; color: var(--faint); }
-    .segments button[aria-pressed="true"] { background: rgba(255,255,255,0.14); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
-    .segments button:disabled { opacity: 0.35; cursor: not-allowed; }
+    button, .button { font: inherit; color: inherit; cursor: pointer; transition: transform 300ms var(--ease-settle), background-color 300ms var(--ease-settle); }
+    button:active:not(:disabled), .button:active { transform: scale(0.98); transition-duration: 0s; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px -8px -4px 0; }
+    .sheet-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
+    .close { width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 0; border: none; background: none; }
+    .close::before { content: "×"; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--fill-secondary); color: var(--text-secondary); font-size: 20px; line-height: 1; }
+    .preview { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--separator); }
+    .preview-domain { font-size: 13px; color: var(--text-secondary); }
+    .preview-title { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+    .preview-url { font-size: 13px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .section-label { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
+    .segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill-tertiary); }
+    .segments button { min-width: 0; min-height: 44px; padding: 4px; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; line-height: 1.2; }
+    .segments button span { display: block; font-size: 11px; color: var(--text-tertiary); }
+    .segments button[aria-pressed="true"] { background: var(--fill-secondary); color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,0.24); }
+    .segments button:disabled { opacity: 0.4; cursor: not-allowed; }
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chips button { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
-    .chips button[aria-pressed="true"] { border-color: var(--accent); background: rgba(0,255,204,0.14); }
+    .chips button { min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid var(--separator); background: var(--fill-tertiary); color: var(--text-primary); font-size: 15px; }
+    .chips button[aria-pressed="true"] { background: var(--text-primary); border-color: var(--text-primary); color: var(--bg-primary); }
     .palette { position: relative; }
-    .palette input { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(0,0,0,0.35); color: var(--text); font: inherit; font-size: 14px; outline: none; }
-    .palette input:focus { border-color: rgba(0,255,204,0.6); }
-    .suggestions { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: flex; flex-direction: column; padding: 6px; border-radius: 14px; border: 1px solid var(--line); background: rgba(24,24,27,0.98); box-shadow: 0 12px 30px rgba(0,0,0,0.5); z-index: 2; }
+    .palette input { width: 100%; min-height: 44px; padding: 12px 16px; border-radius: 10px; border: 1px solid transparent; background: var(--fill-tertiary); color: var(--text-primary); font: inherit; font-size: 17px; outline: none; }
+    .palette input::placeholder { color: var(--text-tertiary); }
+    .palette input:focus { border-color: var(--separator); background: var(--fill-secondary); }
+    .suggestions { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: flex; flex-direction: column; padding: 4px; border-radius: 12px; border: 1px solid var(--separator); background: var(--bg-elevated); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 2; }
     .suggestions[hidden] { display: none; }
-    .suggestions button { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border: none; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
-    .suggestions button:hover, .suggestions button.active { background: rgba(255,255,255,0.08); }
-    .suggestions button span { color: var(--faint); }
-    .hint { margin: 6px 2px 0; font-size: 11px; color: var(--faint); }
-    .ingest { width: 100%; padding: 14px; border: none; border-radius: 16px; background: var(--accent); color: #04221c; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
-    .ingest:disabled { opacity: 0.6; cursor: progress; }
-    .status { min-height: 1.2em; margin: -6px 0 0; font-size: 12px; text-align: center; color: var(--muted); }
-    .status.error { color: #fb7185; }
-    .done { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 0 6px; text-align: center; }
+    .suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border: none; border-radius: 8px; background: transparent; font-size: 15px; text-align: left; }
+    .suggestions button:hover, .suggestions button.active { background: var(--fill-tertiary); }
+    .suggestions button span { color: var(--text-secondary); }
+    .hint { margin: 8px 4px 0; font-size: 12px; color: var(--text-secondary); }
+    .primary { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; padding: 0 16px; border: none; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 600; text-decoration: none; }
+    .primary:disabled { opacity: 0.5; cursor: progress; }
+    .status { min-height: 16px; margin: -16px 0 0; font-size: 13px; text-align: center; color: var(--text-secondary); }
+    .status.error { color: var(--destructive); }
+    .done { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 8px; text-align: center; }
     .done[hidden] { display: none; }
-    .done-mark { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0,255,204,0.16); color: var(--accent); font-size: 26px; }
-    .done a { color: var(--accent); font-size: 14px; }
+    .done-mark { width: 56px; height: 56px; color: var(--success); }
+    .done-title { margin: 8px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .done-text { margin: 0 0 16px; font-size: 15px; color: var(--text-secondary); }
+    .secondary { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; color: var(--text-secondary); font-size: 15px; text-decoration: none; }
+    @media (prefers-reduced-motion: reduce) {
+      button, .button { transition: none; }
+      button:active:not(:disabled), .button:active { transform: none; }
+    }
   </style>
 </head>
 <body>
   <main class="sheet" aria-labelledby="sheet-title">
     <div class="sheet-head">
       <h1 id="sheet-title">Save to Aether</h1>
-      <button type="button" class="close" id="close" aria-label="Close">×</button>
+      <button type="button" class="close" id="close" aria-label="Close"></button>
     </div>
     <div id="form-area" style="display: contents">
       <div class="preview">
@@ -141,13 +170,15 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         <input id="command" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Link, note and commands" placeholder="Paste a link, add a note, or type / for commands">
         <p class="hint">Type <b>/</b> for commands: /pro, /claude, /summary, /event, /branch, /task. Other words are saved as a note.</p>
       </div>
-      <button type="button" class="ingest" id="ingest">Ingest to Aether</button>
+      <button type="button" class="primary" id="ingest">Ingest to Aether</button>
       <p class="status" id="status" role="status"></p>
     </div>
     <div class="done" id="done" hidden>
-      <div class="done-mark">✓</div>
-      <div id="done-text">Saved to your Aether inbox.</div>
-      <a href="/">Open Aether Portal</a>
+      <svg class="done-mark" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="26" fill="none" stroke="currentColor" stroke-width="3"/><path d="M17 29l7.5 7.5L39 21" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <h2 class="done-title">Saved</h2>
+      <p class="done-text" id="done-text">It's in your Aether inbox.</p>
+      <a class="primary button" id="view-node" href="/">View Node</a>
+      <a class="secondary button" href="/">Open Aether Portal</a>
     </div>
   </main>
   <script type="application/json" id="share-data">${escapeJson(data)}</script>
@@ -300,11 +331,15 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     });
     input.addEventListener('blur', () => { suggestions.hidden = true; });
 
-    const finish = () => {
+    // /api/share answers with the new node's id; View Node deep-links to its card at /node/<id>.
+    const finish = id => {
       document.getElementById('form-area').style.display = 'none';
       document.getElementById('done').hidden = false;
       const label = state.preset ? presets.querySelector('[data-preset="' + state.preset + '"]').textContent : '';
-      document.getElementById('done-text').textContent = label ? 'Saved. ' + label + ' will appear on the card shortly.' : 'Saved to your Aether inbox.';
+      document.getElementById('done-text').textContent = label ? label + ' will appear on the card shortly.' : "It's in your Aether inbox.";
+      const viewNode = document.getElementById('view-node');
+      if (id) viewNode.href = '/node/' + encodeURIComponent(id);
+      viewNode.focus();
     };
 
     async function submit() {
@@ -330,10 +365,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         }
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || ('Saving failed: ' + res.status));
-        ingest.textContent = '✓ Saved';
-        // Share-sheet windows can close themselves; anywhere else the confirmation stays up.
-        window.close();
-        setTimeout(finish, 350);
+        finish(typeof body.id === 'string' ? body.id : '');
       } catch (err) {
         setStatus(err.message || 'Saving failed.', true);
         ingest.disabled = false;
@@ -346,6 +378,8 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       window.close();
       setTimeout(() => { window.location.href = '/'; }, 200);
     });
+    // iOS Safari only applies :active while a touch listener exists; this makes presses show on touch-start.
+    document.addEventListener('touchstart', () => {}, { passive: true });
     render();
   </script>
 </body>
