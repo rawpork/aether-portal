@@ -2186,7 +2186,10 @@ export default {
     const DIM_LINK_COLOR = 'rgba(90, 100, 120, 0.06)';
     const MINED_LINK_COLOR = 'rgba(255, 209, 102, 0.75)';
     const DEFAULT_LINK_COLOR = 'rgba(255, 255, 255, 0.2)';
-    const getCategoryColor = category => CATEGORY_COLORS[category] || FALLBACK_CATEGORY_COLOR;
+    // Outcome Nodes (SPATIAL_ARCHITECTURE.md section 8) are Outcome Gold everywhere; kept out of CATEGORY_COLORS so the
+    // category island slots (CATEGORY_ORDER) do not shift.
+    const OUTCOME_COLOR = '#ffb627';
+    const getCategoryColor = category => CATEGORY_COLORS[category] || (category === 'outcome' ? OUTCOME_COLOR : FALLBACK_CATEGORY_COLOR);
 
     const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
     const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => HTML_ESCAPES[ch]);
@@ -2300,10 +2303,21 @@ export default {
       categoryLabel: getNodeCategory(node),
       group: getNodeGroup(node)
     });
+    // Hub weighting (SPATIAL_ARCHITECTURE.md 2.9, D9): how connected each visible card is, relative to what is on
+    // screen; recomputed with the filters. node.__hub is the hero scale the collision force reads.
+    let hubWeights = new Map();
+    const updateHubWeights = (nodes, links) => {
+      if (!window.AetherSpatial) return;
+      hubWeights = window.AetherSpatial.computeHubWeights(nodes, links);
+      // Outcome Nodes (SPATIAL_ARCHITECTURE.md section 8) are always the top hub.
+      nodes.forEach(node => { if (getNodeCategory(node) === window.AetherSpatial.OUTCOME_CATEGORY) hubWeights.set(node.id, 1); });
+      nodes.forEach(node => { node.__hub = window.AetherSpatial.hubScale(hubWeights.get(node.id) || 0); });
+    };
     // heat: 1 focused, 0.5 hovered; dim: outside the focused neighbourhood, or filtered out by the legend or platform bar.
     const getCardTargets = node => ({
       heat: focus.node && focus.node.id === node.id ? 1 : hover.id === node.id ? 0.5 : 0,
-      dim: focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1)
+      dim: focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1),
+      weight: hubWeights.get(node.id) || 0
     });
     const syncCards = () => {
       if (!cardField) return;
@@ -4033,6 +4047,7 @@ export default {
       Graph.d3Force('charge').strength(getChargeStrength(filteredNodes.length));
       updateClusters(filteredNodes);
       updateClusterSpacing(filteredNodes);
+      updateHubWeights(filteredNodes, shownLinks);
       Graph.graphData({ nodes: filteredNodes, links: shownLinks });
       // The engine's 15 s cooldown runs even while the canvas is hidden, so a layout started behind
       // List/Timeline/Board can stop before it ever ran; returning to the graph restarts it.

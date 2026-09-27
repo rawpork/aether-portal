@@ -8,6 +8,7 @@ import { CameraRig, createViewer, fitRectDistance, fitSphereDistance, uncoveredT
 import { faceFromNode } from './card-faces.js';
 import { CARD_HEIGHT, CARD_WIDTH, createCardField, createCollideForce } from './card-nodes.js';
 import { galleryLayout, slotToWorld, yawToward } from './layout-gallery.js';
+import { OUTCOME_CATEGORY, computeHubWeights, hubScale } from './hub-weights.js';
 
 window.AetherSpatial = {
   tokens: readDocumentTokens(),
@@ -28,6 +29,9 @@ window.AetherSpatial = {
   createCollideForce,
   galleryLayout,
   slotToWorld,
-  yawToward
+  yawToward,
+  computeHubWeights,
+  hubScale,
+  OUTCOME_CATEGORY
 };
 window.dispatchEvent(new Event('aether-spatial-ready'));

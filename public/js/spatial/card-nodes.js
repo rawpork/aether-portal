@@ -5,6 +5,7 @@
 import { FACE_HEIGHT, FACE_WIDTH, drawDistantFace, drawFace, faceKey } from './card-faces.js';
 import { galleryLayout, slotToWorld } from './layout-gallery.js';
 import { smoothDamp } from './camera-rig.js';
+import { HUB_MAX_SCALE, OUTCOME_CATEGORY, OUTCOME_GOLD, glowOpacity, hubScale } from './hub-weights.js';
 
 export const CARD_WIDTH = 12;
 export const CARD_HEIGHT = 7.5;
@@ -52,10 +53,12 @@ function roundedRectShape(THREE, w, h, r) {
   return shape;
 }
 
-// Pushes overlapping cards apart. A grid hash keeps it close to linear; radius is a card's half diagonal.
+// Pushes overlapping cards apart. A grid hash keeps it close to linear; radius is a card's half diagonal, grown by
+// the node's hub scale (node.__hub, set by the page) so big hubs keep their neighbours back.
 export function createCollideForce(radius, strength = 0.7) {
   let nodes = [];
-  const diameter = radius * 2;
+  const diameter = radius * 2 * HUB_MAX_SCALE;
+  const radiusOf = node => radius * (node.__hub || 1);
   const force = () => {
     const grid = new Map();
     const cell = (x, y, z) => Math.floor(x / diameter) + ',' + Math.floor(y / diameter) + ',' + Math.floor(z / diameter);
@@ -77,8 +80,9 @@ export function createCollideForce(radius, strength = 0.7) {
           const oy = other.y - node.y;
           const oz = (other.z || 0) - (node.z || 0);
           const distance = Math.hypot(ox, oy, oz) || 0.01;
-          if (distance >= diameter) continue;
-          const push = ((diameter - distance) / distance) * strength * 0.5;
+          const reach = radiusOf(node) + radiusOf(other);
+          if (distance >= reach) continue;
+          const push = ((reach - distance) / distance) * strength * 0.5;
           node.vx -= ox * push;
           node.vy -= oy * push;
           other.vx += ox * push;
@@ -127,6 +131,37 @@ export function createCardField({ THREE, reducedMotion = false }) {
     texture.anisotropy = 4;
     return texture;
   };
+
+  // One soft radial falloff shared by every glow sprite (DESIGN.md glow exception: hubs and Outcome Nodes only).
+  let glowTexture = null;
+  const getGlowTexture = () => {
+    if (glowTexture) return glowTexture;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+    gradient.addColorStop(0.7, 'rgba(255,255,255,0.12)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+    glowTexture = makeTexture(canvas);
+    return glowTexture;
+  };
+  // The glow sprite is created the first time a card needs one and hidden when it no longer does.
+  const ensureGlow = card => {
+    if (card.glow) return card.glow;
+    const material = new THREE.SpriteMaterial({ map: getGlowTexture(), color: WHITE, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.z = -CARD_DEPTH;
+    sprite.renderOrder = -1;
+    card.root.add(sprite);
+    card.glow = sprite;
+    return sprite;
+  };
+  const glowColor = new THREE.Color();
+  let clock = 0;
 
   const distantTexture = face => {
     const key = face.type + '|' + face.color;
@@ -232,7 +267,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     const card = {
       id, node, root, face, faceMaterial, bodyMaterial, edgeMaterial,
       texture: null, canvas: null, drawnKey: null, tier: 'plain',
-      heat: 0, heatGoal: 0, dim: 0, dimGoal: 0,
+      heat: 0, heatGoal: 0, dim: 0, dimGoal: 0, weight: 0, weightGoal: 0,
       lean: { x: ((seed % 100) / 100 - 0.5) * 0.25, y: (((seed >> 7) % 100) / 100 - 0.5) * 0.35 },
       gallery: { goal: 0, weight: 0, velocity: 0, delay: 0, position: null, rotationY: 0 },
       oriented: false
@@ -242,6 +277,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
   }
 
   function dispose(card) {
+    if (card.glow) card.glow.material.dispose();
     if (card.texture) card.texture.dispose();
     card.faceMaterial.dispose();
     card.bodyMaterial.dispose();
@@ -266,12 +302,13 @@ export function createCardField({ THREE, reducedMotion = false }) {
     }
   }
 
-  // heat: 0 rest, 0.5 hover, 1 focus. dim: 0 normal, 1 receded.
-  function setTargets(id, { heat = 0, dim = 0 }) {
+  // heat: 0 rest, 0.5 hover, 1 focus. dim: 0 normal, 1 receded. weight: hub weight 0..1 (section 2.9).
+  function setTargets(id, { heat = 0, dim = 0, weight }) {
     const card = cards.get(String(id));
     if (!card) return;
     card.heatGoal = heat;
     card.dimGoal = dim;
+    if (Number.isFinite(weight)) card.weightGoal = weight;
   }
 
   // Near faces go to the hot card, gallery cards and then the nearest cards; far faces to the next ones. Each card
@@ -345,6 +382,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
 
   function frame(dt, camera) {
     const step = Math.min(Math.max(dt, 0), 0.05);
+    clock += step;
     camera.getWorldPosition(temp.viewer);
     const viewer = temp.viewer;
     if (frameCount++ % RANK_EVERY === 0) rankTextures(viewer);
@@ -361,6 +399,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
       if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
       card.heat = damp(card.heat, card.heatGoal, heatLambda, step);
       card.dim = damp(card.dim, card.dimGoal, dimLambda, step);
+      card.weight = damp(card.weight, card.weightGoal, dimLambda, step);
 
       // Gallery weight follows the same critically damped spring as the camera, after its stagger delay.
       const g = card.gallery;
@@ -409,7 +448,9 @@ export function createCardField({ THREE, reducedMotion = false }) {
       }
 
       const grow = inGallery ? GALLERY_FOCUS_SCALE : card.heatGoal >= 1 ? FOCUS_SCALE : HOVER_SCALE;
-      card.root.scale.setScalar(1 + card.heat * grow * 2);
+      // Hubs are bigger in the cloud; on the gallery wall every card is the same size so the arc stays even.
+      const hub = 1 + (hubScale(card.weight) - 1) * (1 - w);
+      card.root.scale.setScalar(hub * (1 + card.heat * grow * 2));
       const shade = 1 - card.dim * 0.6;
       card.faceMaterial.color.setScalar(shade);
       card.faceMaterial.opacity = 1 - card.dim * 0.55;
@@ -417,6 +458,27 @@ export function createCardField({ THREE, reducedMotion = false }) {
       card.bodyMaterial.emissiveIntensity = card.heat * 0.3;
       card.edgeMaterial.color.copy(temp.color.copy(white).lerp(teal, Math.min(1, card.heat * 1.5)));
       card.edgeMaterial.opacity = (0.14 + card.heat * 0.8) * (1 - card.dim * 0.7);
+
+      // Glow: hubs in their category colour, Outcome Nodes in Outcome Gold with a slow breathing pulse. It fades out
+      // with dimming, and the card's own scale carries it (the sprite is a child of the card).
+      const outcome = String(node.category || '').toLowerCase() === OUTCOME_CATEGORY;
+      const pulse = reducedMotion ? 0.85 : 0.75 + 0.25 * Math.sin((clock * Math.PI * 2) / 4);
+      const glow = (outcome ? 0.7 * pulse : glowOpacity(card.weight)) * (1 - card.dim);
+      if (glow > 0.005 || card.glow) {
+        const sprite = ensureGlow(card);
+        sprite.visible = glow > 0.005;
+        if (sprite.visible) {
+          try {
+            glowColor.set(outcome ? OUTCOME_GOLD : card.face.color);
+          } catch {
+            glowColor.set(WHITE);
+          }
+          sprite.material.color.copy(glowColor);
+          sprite.material.opacity = glow;
+          const spread = outcome ? 2 : 1.4 + 0.5 * Math.min(1, card.weight);
+          sprite.scale.set(CARD_WIDTH * spread, CARD_HEIGHT * spread * 1.25, 1);
+        }
+      }
     });
   }
 
