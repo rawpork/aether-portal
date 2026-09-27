@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phase 1 in progress.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phase 1 shipped (8e8f341); migration 0013 applied to D1; Phase 2 in progress.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -90,7 +90,7 @@ CREATE INDEX IF NOT EXISTS node_tags_user_tag ON node_tags (user_id, tag);
 | `POST /api/groups` | `{ name }` | Creates a `user` group, or returns the existing one with the same name (case-insensitive). |
 | `PATCH /api/groups/:id` | `{ name }` | Renames; an `ai` group becomes `user`. |
 | `DELETE /api/groups/:id` | | Deletes; its nodes become unsorted (`group_id` and `group_source` NULL). |
-| `PATCH /api/nodes/:id/group` | `{ group_id }` or `{ new_group: "Name" }` or `{ group_id: null }` | Sets `group_source = 'user'`, creating the group if named. Returns `{ node_id, group }`. |
+| `PATCH /api/node/:id` (existing board-status route) | `{ group_id }` or `{ new_group: "Name" }` or `{ group_id: null }` | Sets `group_source = 'user'`, creating the group if named. Returns `{ id, group, group_source }`. `{ status }` still moves the board column. |
 
 All routes are scoped by `user_id` the same way as today's node routes. Names are validated: 1-40 characters after trimming, with control characters stripped.
 
@@ -135,7 +135,7 @@ One DOM component, `GroupPicker`, is used in three places:
 1. Updates `node.group_id` on the client immediately (optimistic).
 2. Calls `Spatial.setData()`, which rebuilds the hierarchy and moves the node's anchor to the new group's island (creating an anchor for a new group).
 3. Reheats the simulation gently (`d3AlphaTarget(0.15)` for 1.2 s), so the node glides to its new cluster while everything else barely moves. In 2D mode it moves to its new grid slot through the morph channel instead.
-4. Sends `PATCH /api/nodes/:id/group`. On failure the client reverts the change, the node glides back, and the picker shows a short error.
+4. Sends `PATCH /api/node/:id`. On failure the client reverts the change, the node glides back, and an alert explains the error.
 
 ### 1.7 Hierarchy levels
 
@@ -422,8 +422,8 @@ Each phase ships on its own and keeps the app working.
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| **1. Foundations** (in progress) | Self-host and pin three and 3d-force-graph under `public/vendor/`; `public/js/spatial/` with `tokens.js`, `grouping.js` (`category` and `platform` keys) and `index.js`; the page loads the module and takes its link-particle accent from the tokens; a Node vitest project with tests. | The graph looks and behaves the same; no unpkg requests remain; `npm test` covers grouping and tokens. |
-| **2. Groups, tags and semantic mining** | Migration 0013; group and tag API; `#hashtag` parsing; miner prompt and parser extended; `/api/remine` backfill; `GroupPicker` on the node card and collection cards; hybrid `group` key as the default layout; live re-cluster; `concept` links. | Reassign a node from a card and watch it glide to its new island; create a group from the picker; the miner fills tags and suggested groups; user choices survive re-mining. |
+| **1. Foundations** (shipped) | Self-host and pin three and 3d-force-graph under `public/vendor/`; `public/js/spatial/` with `tokens.js`, `grouping.js` (`category` and `platform` keys) and `index.js`; the page loads the module and takes its link-particle accent from the tokens; a Node vitest project with tests. | The graph looks and behaves the same; no unpkg requests remain; `npm test` covers grouping and tokens. |
+| **2. Groups, tags and semantic mining** (in progress) | Migration 0013; group and tag API; `#hashtag` parsing; miner prompt and parser extended; `/api/remine` backfill; `GroupPicker` on the node card and collection cards; hybrid `group` key as the default layout; live re-cluster; `concept` links. | Reassign a node from a card and watch it glide to its new island; create a group from the picker; the miner fills tags and suggested groups; user choices survive re-mining. |
 | **3. Camera rig and Macro startup** | `camera-rig.js`; Macro, Group and Node states; card-aware offset; startup ease-in to Macro; filtered zooms (Day and group). | The portal opens on the wide cloud; Day and group filters glide the camera; interrupting a flight never jumps; the card never covers the focused node. |
 | **4. Preview cards and semantic zoom** | `card-faces.js`, atlas, instancing, group proxies, LOD blend, 3D picker overlay; remove shapes and territory shells. | 500 nodes at 60 fps on a mid-range phone; zooming out collapses groups into proxies. |
 | **5. 2D morph** | `layout-2d.js`, 12° dolly-zoom morph, Bézier links, pinned simulation, drag-to-column reassignment. | The toggle morphs both ways in about 0.5 s with no layout pop; switching back restores 3D positions. |

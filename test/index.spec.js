@@ -351,6 +351,37 @@ describe("Aether Portal worker", () => {
 		expect(response.status).toBe(401);
 	});
 
+	it("requires sign-in for groups and allows only their methods", async () => {
+		expect((await SELF.fetch("http://example.com/api/groups")).status).toBe(401);
+		const create = await SELF.fetch("http://example.com/api/groups", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+			body: JSON.stringify({ name: "Reading" }),
+		});
+		expect(create.status).toBe(401);
+		const wrongList = await SELF.fetch("http://example.com/api/groups", { method: "DELETE" });
+		expect(wrongList.status).toBe(405);
+		expect(wrongList.headers.get("Allow")).toBe("GET, POST");
+		const wrongItem = await SELF.fetch("http://example.com/api/groups/grp_1");
+		expect(wrongItem.status).toBe(405);
+		expect(wrongItem.headers.get("Allow")).toBe("PATCH, DELETE");
+	});
+
+	it("requires sign-in to move a node to a group", async () => {
+		const response = await SELF.fetch("http://example.com/api/node/abc", {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+			body: JSON.stringify({ new_group: "Reading" }),
+		});
+		expect(response.status).toBe(401);
+	});
+
+	it("only allows admin POSTs on /api/remine", async () => {
+		expect((await SELF.fetch("http://example.com/api/remine")).status).toBe(405);
+		const response = await SELF.fetch("http://example.com/api/remine", { method: "POST", headers: { Authorization: "Bearer wrong" } });
+		expect(response.status).toBe(401);
+	});
+
 	it("only allows POST on /api/ask", async () => {
 		const response = await SELF.fetch("http://example.com/api/ask");
 		expect(response.status).toBe(405);

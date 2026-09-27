@@ -2,11 +2,15 @@
 // talks to them only through window.AetherSpatial, and waits for the 'aether-spatial-ready' event because module
 // scripts run after it.
 import { readDocumentTokens } from './tokens.js';
-import { GROUP_KEYS, buildHierarchy } from './grouping.js';
+import { GROUP_KEYS, buildHierarchy, groupColor } from './grouping.js';
+import { closeGroupPicker, createGroupPicker } from './group-picker.js';
 
 window.AetherSpatial = {
   tokens: readDocumentTokens(),
   GROUP_KEYS,
-  buildHierarchy
+  buildHierarchy,
+  groupColor,
+  createGroupPicker,
+  closeGroupPicker
 };
 window.dispatchEvent(new Event('aether-spatial-ready'));

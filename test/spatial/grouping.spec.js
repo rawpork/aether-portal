@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHierarchy, getNodeCategory, getNodePlatform } from "../../public/js/spatial/grouping.js";
+import { GROUP_PALETTE, buildHierarchy, getNodeCategory, getNodePlatform, groupColor } from "../../public/js/spatial/grouping.js";
 
 const nodes = [
 	{ id: "a", category: "video", url: "https://www.youtube.com/watch?v=1" },
@@ -52,6 +52,33 @@ describe("buildHierarchy", () => {
 		const all = buildHierarchy(nodes);
 		const some = buildHierarchy(nodes.filter(node => node.id !== "b"));
 		expect(some.groupOf.get("d")).toBe(all.groupOf.get("d"));
+	});
+
+	it("groups by the hybrid group key, with unsorted nodes on their category islands", () => {
+		const groups = new Map([["g1", { name: "Memory & Learning", source: "ai" }], ["g2", { name: "Reading", source: "user" }]]);
+		const grouped = nodes.map((node, i) => ({ ...node, group_id: i < 3 ? "g1" : i === 3 ? "gone" : null }));
+		const { groups: result, groupOf } = buildHierarchy(grouped, { key: "group", groups });
+		expect(result.get("group:g1")).toMatchObject({ key: "group", label: "Memory & Learning", source: "ai", nodeIds: ["a", "b", "c"], color: groupColor("group:g1") });
+		expect(groupOf.get("d")).toBe("category:link");
+		expect(groupOf.get("g")).toBe(buildHierarchy(nodes, { key: "category" }).groupOf.get("g"));
+		expect(result.has("group:g2")).toBe(false);
+	});
+
+	it("groups by each node's strongest tag, user tags first", () => {
+		const tagged = [
+			{ id: "a", category: "note", tags: [{ tag: "anki", source: "miner", weight: 0.9 }, { tag: "study", source: "user", weight: 1 }] },
+			{ id: "b", category: "note", tags: [{ tag: "memory", source: "miner", weight: 0.7 }, { tag: "anki", source: "miner", weight: 0.7 }] },
+			{ id: "c", category: "link" },
+		];
+		const { groupOf, groups } = buildHierarchy(tagged, { key: "tag" });
+		expect([...groupOf.values()]).toEqual(["tag:study", "tag:anki", "category:link"]);
+		expect(groups.get("tag:anki").label).toBe("#anki");
+	});
+
+	it("gives groups a stable palette colour", () => {
+		expect(groupColor("group:g1")).toBe(groupColor("group:g1"));
+		expect(GROUP_PALETTE).toContain(groupColor("tag:anki"));
+		expect(buildHierarchy(nodes, { key: "category" }).groups.get("category:link").color).toBeNull();
 	});
 
 	it("handles an empty graph and rejects unknown keys", () => {

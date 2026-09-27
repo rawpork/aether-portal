@@ -1,5 +1,6 @@
 import { cleanLinkUrl, fallbackLinkTitle, fetchLinkMetadata, getYouTubeVideoId } from "./metadata.js";
 import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerResponse } from "./miner.js";
+import { GROUP_NAME_MAX, buildConceptLinks, ensureGroup, listGroups, loadNodeTags, normalizeGroupName, saveUserTags } from "./groups.js";
 import { buildTranscriptSynopsisPrompt, buildVideoSynopsisPrompt, fetchYouTubeTranscript } from "./transcript.js";
 import { WebFetchError, fetchWebContent } from "./webfetch.js";
 import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
@@ -18,6 +19,8 @@ const RECLUSTER_CATEGORIES = ["note", "general", "link", "article", "dev_task", 
 const RECLUSTER_BATCH_SIZE = 10;
 // One metadata fetch (4 s timeout) + one update per link.
 const METADATA_BACKFILL_BATCH_SIZE = 10;
+// Nodes per /api/remine request; one Gemini call per user found in the batch.
+const REMINE_BATCH_SIZE = 20;
 const MAX_SEMANTIC_LINKS_PER_NODE = 5;
 // gemini-2.5-flash started returning 404 in July 2026; 3.x Flash models replace it.
 // Tried in order: a model answering 503 (high demand) or 429 falls through to the next.
@@ -97,8 +100,15 @@ export default {
       if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript, content IS NOT NULL AS has_content FROM saved_nodes WHERE user_id = ?"
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript, content IS NOT NULL AS has_content, group_id, group_source FROM saved_nodes WHERE user_id = ?"
         ).bind(auth.user.id).all();
+        let groups = [];
+        let tagsByNode = new Map();
+        try {
+          [groups, tagsByNode] = await Promise.all([listGroups(env, auth.user.id), loadNodeTags(env, auth.user.id)]);
+        } catch (err) {
+          console.error("Group and tag lookup failed:", err);
+        }
 
         const nodes = (results || []).map(node => {
           const rawUrl = String(node.url || "");
@@ -123,13 +133,17 @@ export default {
             status: normalizeNodeStatus(node.status),
             synopsis: node.synopsis ? String(node.synopsis) : null,
             has_transcript: Boolean(node.has_transcript),
-            has_content: Boolean(node.has_content)
+            has_content: Boolean(node.has_content),
+            group_id: node.group_id || null,
+            group_source: node.group_source || null,
+            tags: tagsByNode.get(node.id) || []
           };
         });
 
         const links = buildGraphLinks(nodes);
+        links.push(...buildConceptLinks(nodes.map(node => node.id), tagsByNode, links));
         mergeMinedEdges(links, nodes, await loadMinedEdges(env, auth.user.id));
-        return jsonResponse({ nodes, links });
+        return jsonResponse({ nodes, links, groups });
       } catch (e) {
         console.error("D1 Graph Fetch Error:", e);
         return jsonResponse({ nodes: [], links: [] });
@@ -230,6 +244,105 @@ export default {
       }
     }
 
+    // Endpoint 3b: One-off backfill for nodes the daily miner analyzed before tags and groups existed: mines their tags
+    // and concept groups (categories are left alone) and picks up #hashtags already in their notes. Paged like recluster.
+    if (url.pathname === "/api/remine") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      if (!isAuthorizedAdmin(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+      if (!env.GEMINI_API_KEY) {
+        return jsonResponse({ error: "Gemini API key is missing." }, 500);
+      }
+
+      try {
+        const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
+        const { results } = await env.DB.prepare(
+          "SELECT rowid AS row_id, id, user_id, title, url, category, user_note, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id IS NOT NULL AND rowid > ? ORDER BY rowid LIMIT ?"
+        ).bind(cursor, REMINE_BATCH_SIZE).all();
+        const rows = results || [];
+        const byUser = new Map();
+        for (const row of rows) {
+          if (!byUser.has(row.user_id)) byUser.set(row.user_id, []);
+          byUser.get(row.user_id).push(row);
+          // Notes keep their text in url; links carry the user's words in user_note.
+          const text = [row.user_note, /^https?:/i.test(String(row.url || "")) ? "" : row.url].filter(Boolean).join(" ");
+          await saveUserTags(env, row.user_id, row.id, text);
+        }
+        let updated = 0;
+        for (const [userId, userRows] of byUser) {
+          const result = await mineNodes(env, userId, userRows, { retag: false });
+          if (result) updated += result.tagged;
+        }
+        return jsonResponse({
+          processed: rows.length,
+          updated,
+          nextCursor: rows.length ? rows[rows.length - 1].row_id : cursor,
+          done: rows.length < REMINE_BATCH_SIZE
+        });
+      } catch (err) {
+        console.error("Remine Error:", err);
+        return jsonResponse({ error: "Remine failed." }, 500);
+      }
+    }
+
+    // Endpoint 3c: The signed-in user's groups (AI-suggested and user-made): list and create at /api/groups, rename and
+    // delete at /api/groups/<id>. Deleting a group leaves its nodes unsorted.
+    if (url.pathname === "/api/groups" || url.pathname.startsWith("/api/groups/")) {
+      const isItem = url.pathname.startsWith("/api/groups/");
+      const allowed = isItem ? ["PATCH", "DELETE"] : ["GET", "POST"];
+      if (!allowed.includes(request.method)) {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: allowed.join(", ") });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const userId = auth.user.id;
+
+      try {
+        if (!isItem) {
+          if (request.method === "GET") return jsonResponse({ groups: await listGroups(env, userId) });
+          const name = normalizeGroupName((await request.json().catch(() => null))?.name);
+          if (!name) return jsonResponse({ error: `Group names must be 1-${GROUP_NAME_MAX} characters.` }, 400);
+          return jsonResponse({ group: await ensureGroup(env, userId, name, "user") });
+        }
+
+        let id = "";
+        try {
+          id = decodeURIComponent(url.pathname.slice("/api/groups/".length)).trim();
+        } catch (err) {
+          id = "";
+        }
+        if (!id) return jsonResponse({ error: "Missing group id." }, 400);
+
+        if (request.method === "PATCH") {
+          const name = normalizeGroupName((await request.json().catch(() => null))?.name);
+          if (!name) return jsonResponse({ error: `Group names must be 1-${GROUP_NAME_MAX} characters.` }, 400);
+          const clash = await env.DB.prepare(
+            "SELECT id FROM node_groups WHERE user_id = ? AND name = ? COLLATE NOCASE AND id != ?"
+          ).bind(userId, name, id).first();
+          if (clash) return jsonResponse({ error: "You already have a group with that name." }, 409);
+          // A renamed AI group is now the user's own, so the miner treats it like any user group.
+          const result = await env.DB.prepare(
+            "UPDATE node_groups SET name = ?, source = 'user' WHERE id = ? AND user_id = ?"
+          ).bind(name, id, userId).run();
+          if (!result?.meta?.changes) return jsonResponse({ error: "Group not found." }, 404);
+          return jsonResponse({ group: { id, name, source: "user" } });
+        }
+
+        const [, groupResult] = await env.DB.batch([
+          env.DB.prepare("UPDATE saved_nodes SET group_id = NULL, group_source = NULL WHERE group_id = ? AND user_id = ?").bind(id, userId),
+          env.DB.prepare("DELETE FROM node_groups WHERE id = ? AND user_id = ?").bind(id, userId)
+        ]);
+        if (!groupResult?.meta?.changes) return jsonResponse({ error: "Group not found." }, 404);
+        return jsonResponse({ deleted: id });
+      } catch (err) {
+        console.error("Group Route Error:", err);
+        return jsonResponse({ error: "Group update failed." }, 500);
+      }
+    }
+
     // Endpoint 4a: Create a node from the UI, optionally linked to an existing node
     if (url.pathname === "/api/node") {
       if (request.method !== "POST") {
@@ -280,6 +393,7 @@ export default {
           ).bind(sourceId, targetId, "manual", userId));
         }
         await env.DB.batch(statements);
+        const tags = await saveUserTags(env, userId, id, content);
 
         const node = {
           id,
@@ -293,6 +407,9 @@ export default {
           created_at: new Date().toISOString(),
           research: [],
           user_note: null,
+          group_id: null,
+          group_source: null,
+          tags: tags.map(tag => ({ tag, source: "user", weight: 1 })),
           ...preview
         };
         const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual" } : null;
@@ -337,7 +454,7 @@ export default {
       }
     }
 
-    // Endpoint 4b: Move a node to another board column (PATCH), or delete it and its mined edges (DELETE)
+    // Endpoint 4b: Move a node to another board column or group (PATCH), or delete it with its edges and tags (DELETE)
     if (url.pathname.startsWith("/api/node/")) {
       if (request.method !== "DELETE" && request.method !== "PATCH") {
         return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "PATCH, DELETE" });
@@ -355,6 +472,32 @@ export default {
 
       if (request.method === "PATCH") {
         const body = await request.json().catch(() => null);
+        // Group changes: { group_id: "<id>" }, { new_group: "Name" } (created if new) or { group_id: null } (no group).
+        // Any of them marks the choice as the user's, which the miner never overrides.
+        if (body && (Object.hasOwn(body, "group_id") || Object.hasOwn(body, "new_group"))) {
+          try {
+            const node = await env.DB.prepare("SELECT id FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, userId).first();
+            if (!node) return jsonResponse({ error: "Node not found." }, 404);
+            let group = null;
+            if (Object.hasOwn(body, "new_group")) {
+              const name = normalizeGroupName(body.new_group);
+              if (!name) return jsonResponse({ error: `Group names must be 1-${GROUP_NAME_MAX} characters.` }, 400);
+              group = await ensureGroup(env, userId, name, "user");
+            } else if (body.group_id !== null) {
+              const groupId = typeof body.group_id === "string" ? body.group_id.trim() : "";
+              if (!groupId) return jsonResponse({ error: "group_id must be a group id or null." }, 400);
+              group = await env.DB.prepare("SELECT id, name, source FROM node_groups WHERE id = ? AND user_id = ?").bind(groupId, userId).first();
+              if (!group) return jsonResponse({ error: "Group not found." }, 404);
+            }
+            await env.DB.prepare(
+              "UPDATE saved_nodes SET group_id = ?, group_source = 'user', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
+            ).bind(group ? group.id : null, id, userId).run();
+            return jsonResponse({ id, group, group_source: "user" });
+          } catch (err) {
+            console.error("Node Group Update Error:", err);
+            return jsonResponse({ error: "Update failed." }, 500);
+          }
+        }
         const status = typeof body?.status === "string" ? body.status.trim().toLowerCase() : "";
         if (!NODE_STATUSES.includes(status)) {
           return jsonResponse({ error: `status must be one of: ${NODE_STATUSES.join(", ")}.` }, 400);
@@ -372,8 +515,9 @@ export default {
       }
 
       try {
-        const [, nodeResult] = await env.DB.batch([
+        const [, , nodeResult] = await env.DB.batch([
           env.DB.prepare("DELETE FROM node_edges WHERE user_id = ? AND (source_id = ? OR target_id = ?)").bind(userId, id, id),
+          env.DB.prepare("DELETE FROM node_tags WHERE user_id = ? AND node_id = ?").bind(userId, id),
           env.DB.prepare("DELETE FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, userId)
         ]);
         if (!nodeResult?.meta?.changes) return jsonResponse({ error: "Node not found." }, 404);
@@ -570,6 +714,7 @@ export default {
         await env.DB.prepare(
           "INSERT INTO saved_nodes (id, user_id, url, title, category, user_note, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
         ).bind(id, userId, linkUrl || share.note, title, category, linkUrl ? (share.note || null) : null, status).run();
+        await saveUserTags(env, userId, id, share.note);
         ctx.waitUntil(processSharedNode(env, userId, id, { ...share, url: linkUrl, hasSharedTitle: Boolean(share.title) }));
         return jsonResponse({ success: true, id, title, status });
       } catch (err) {
@@ -784,7 +929,7 @@ export default {
       gap: 8px;
       flex-wrap: wrap;
     }
-    .filter-pill, .toggle-button, #time-filter, #type-filter, #collection-sort {
+    .filter-pill, .toggle-button, #time-filter, #type-filter, #group-by, #collection-sort {
       appearance: none;
       border: var(--hairline);
       background: var(--bg-raised);
@@ -800,8 +945,8 @@ export default {
       border-color: var(--accent-line);
       color: #ffffff;
     }
-    #time-filter, #type-filter { min-width: 140px; color: #dffdf7; }
-    #time-filter option, #type-filter option { background: #0b1320; }
+    #time-filter, #type-filter, #group-by { min-width: 140px; color: #dffdf7; }
+    #time-filter option, #type-filter option, #group-by option { background: #0b1320; }
     .filter-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #8a93a6; }
     .filter-badge { min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; box-sizing: border-box; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
     .filter-badge[hidden] { display: none; }
@@ -1085,7 +1230,11 @@ export default {
       text-transform: uppercase;
       white-space: nowrap;
     }
-    .item-date { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .item-date { margin-left: auto; flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    /* Group picker chips (public/js/spatial/group-picker.js) shrink before the date does. */
+    .item-head .gp-chip { flex: 0 1 auto; }
+    .card-group { display: inline-flex; min-width: 0; }
+    .card-group:empty { display: none; }
     .item-title { font-size: 14px; font-weight: 600; color: #fff; line-height: 1.3; overflow-wrap: anywhere; }
     .item-preview { font-size: 12px; color: #aab3c5; line-height: 1.45; overflow-wrap: anywhere; }
     .item-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; min-width: 0; }
@@ -1739,6 +1888,7 @@ export default {
     <div class="settings-menu" id="settings-menu">
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
       <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
+      <button class="settings-option" id="remine-button">🏷️ Mine Tags &amp; Groups for Old Nodes</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
       <button class="settings-option phone-only" id="telegram-help-menu-option">✈️ Telegram Commands</button>
       <button class="settings-option" id="logout-button">⎋ Sign Out</button>
@@ -1778,6 +1928,14 @@ export default {
             <option value="image">Images</option>
           </select>
         </label>
+        <label class="filter-field"><span>Group by</span>
+          <select id="group-by">
+            <option value="group">Groups</option>
+            <option value="category">Category</option>
+            <option value="platform">Platform</option>
+            <option value="tag">Top tag</option>
+          </select>
+        </label>
         <div class="filter-field"><span>Graph Colors</span><button type="button" id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button></div>
         <div class="filter-field"><span>Unlinked Nodes</span><button type="button" id="orphan-toggle" class="toggle-button" aria-pressed="false">Hide Unlinked</button></div>
         <button type="button" id="filters-reset" class="filters-reset">Clear All Filters</button>
@@ -1791,6 +1949,7 @@ export default {
     <div class="card-handle" aria-hidden="true"></div>
     <div class="card-head">
       <span id="card-tag" class="card-tag">NOTE</span>
+      <span id="card-group" class="card-group"></span>
       <div id="card-carousel" class="card-carousel" hidden>
         <button type="button" id="card-prev" class="carousel-btn" title="Previous card (←)" aria-label="Previous card in cluster">‹</button>
         <span id="card-counter" class="card-counter" aria-live="polite"></span>
@@ -1963,22 +2122,27 @@ export default {
       // Active view (graph, list, timeline, board or carousel) and the list view's layout and sort; remembered per browser.
       view: 'graph',
       listLayout: 'list',
-      listSort: 'newest'
+      listSort: 'newest',
+      // What the graph clusters by (SPATIAL_ARCHITECTURE.md 1.7): 'group' (AI and user groups), 'category',
+      // 'platform' or 'tag'; remembered per browser.
+      groupBy: 'group'
     };
 
     const VIEW_PREFS_KEY = 'aetherViewPrefs';
     const VIEW_MODES = ['graph', 'list', 'timeline', 'board', 'carousel'];
     const LIST_LAYOUTS = ['list', 'grid'];
     const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
+    const GROUP_BY_KEYS = ['group', 'category', 'platform', 'tag'];
     try {
       const saved = JSON.parse(localStorage.getItem(VIEW_PREFS_KEY) || '{}') || {};
       if (VIEW_MODES.includes(saved.view)) filterState.view = saved.view;
       if (LIST_LAYOUTS.includes(saved.listLayout)) filterState.listLayout = saved.listLayout;
       if (LIST_SORTS.includes(saved.listSort)) filterState.listSort = saved.listSort;
+      if (GROUP_BY_KEYS.includes(saved.groupBy)) filterState.groupBy = saved.groupBy;
     } catch (err) {}
     const saveViewPrefs = () => {
       try {
-        localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ view: filterState.view, listLayout: filterState.listLayout, listSort: filterState.listSort }));
+        localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ view: filterState.view, listLayout: filterState.listLayout, listSort: filterState.listSort, groupBy: filterState.groupBy }));
       } catch (err) {}
     };
 
@@ -2043,6 +2207,31 @@ export default {
       return 'links';
     };
     const matchesPlatform = node => filterState.platform === 'all' || getPlatform(node) === filterState.platform;
+
+    // Clusters (SPATIAL_ARCHITECTURE.md 1.7): each visible node's island, from the Group by setting through the
+    // spatial grouping engine. Until the spatial modules load, and for nodes with no group or tag, a node's cluster is
+    // its category, so an ungrouped graph keeps its category islands.
+    let clusterOf = new Map();
+    let clusterInfo = new Map();
+    const getClusterKey = node => clusterOf.get(node.id) || ('category:' + getNodeCategory(node));
+    const getClusterLabel = key => {
+      const info = clusterInfo.get(key);
+      return info ? info.label : key.slice(key.indexOf(':') + 1).replace(/_/g, ' ');
+    };
+    const isAiCluster = key => Boolean(clusterInfo.get(key) && clusterInfo.get(key).source === 'ai');
+    const getClusterColor = key => {
+      const info = clusterInfo.get(key);
+      if (info && info.color) return info.color;
+      if (key.startsWith('category:')) return getCategoryColor(key.slice('category:'.length));
+      return window.AetherSpatial ? window.AetherSpatial.groupColor(key) : FALLBACK_CATEGORY_COLOR;
+    };
+    const updateClusters = nodes => {
+      if (!window.AetherSpatial) return;
+      const groups = new Map((graphData.groups || []).map(group => [group.id, group]));
+      const hierarchy = window.AetherSpatial.buildHierarchy(nodes, { key: filterState.groupBy, groups });
+      clusterOf = hierarchy.groupOf;
+      clusterInfo = hierarchy.groups;
+    };
     const isDimming = () => filterState.highlighted.size > 0 || filterState.platform !== 'all';
     // Full color only for nodes that pass both the legend highlight and the platform bar.
     const isHighlighted = node => (filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node))) && matchesPlatform(node);
@@ -2162,8 +2351,8 @@ export default {
       return isDimming() && ![link.source, link.target].some(end => isNodeObject(end) && isHighlighted(end)) ? DIM_LINK_COLOR : base;
     };
 
-    const isSameCategoryLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
-      getNodeCategory(link.source) === getNodeCategory(link.target);
+    const isSameClusterLink = link => isNodeObject(link.source) && isNodeObject(link.target) &&
+      getClusterKey(link.source) === getClusterKey(link.target);
 
     // Each category gets a fixed anchor on a sphere; a weak pull toward it turns categories into separate islands.
     // The sphere is at least CLUSTER_RADIUS, and larger when needed so neighbouring anchors sit two cluster radii
@@ -2176,34 +2365,43 @@ export default {
     const estimateClusterRadius = count => 60 + 12 * Math.sqrt(count);
     let clusterGap = MIN_CLUSTER_GAP;
     const CLUSTER_STRENGTH = 0.06;
-    const clusterAnchors = new Map();
+    // Category clusters keep their fixed slots; other clusters (groups, tags, platforms) take the next free slot in the
+    // order they first appear, so adding one never moves the others.
     const clusterIndexes = new Map();
-    const getClusterIndex = category => {
-      if (!clusterIndexes.has(category)) {
-        const known = CATEGORY_ORDER.indexOf(category);
-        clusterIndexes.set(category, known >= 0 ? known : CATEGORY_ORDER.length + clusterIndexes.size);
+    let extraClusters = 0;
+    const getClusterIndex = key => {
+      if (!clusterIndexes.has(key)) {
+        const known = key.startsWith('category:') ? CATEGORY_ORDER.indexOf(key.slice('category:'.length)) : -1;
+        clusterIndexes.set(key, known >= 0 ? known : CATEGORY_ORDER.length + extraClusters++);
       }
-      return clusterIndexes.get(category);
+      return clusterIndexes.get(key);
+    };
+    // Slots on the anchor sphere: exactly the categories until other clusters exist, then rounded up in eights so a
+    // new group rarely changes the total (which would shift every anchor).
+    const getSlotTotal = () => extraClusters
+      ? Math.ceil((CATEGORY_ORDER.length + extraClusters) / 8) * 8
+      : CATEGORY_ORDER.length;
+    // A saved group replaces its temporary id; it keeps the slot it was given while the save was in flight.
+    const renameClusterSlot = (fromKey, toKey) => {
+      if (!clusterIndexes.has(fromKey)) return;
+      clusterIndexes.set(toKey, clusterIndexes.get(fromKey));
+      clusterIndexes.delete(fromKey);
     };
 
     // In 2D mode categories sit on a flat grid of wide rows, like a node editor canvas.
     const FLAT_COLUMNS = 4;
     const FLAT_SPACING_X = 200;
     const FLAT_SPACING_Y = 150;
-    const flatAnchors = new Map();
-    const getFlatAnchor = category => {
-      if (!flatAnchors.has(category)) {
-        const index = getClusterIndex(category);
-        const rows = Math.ceil(Math.max(CATEGORY_ORDER.length, index + 1) / FLAT_COLUMNS);
-        const col = index % FLAT_COLUMNS;
-        const row = Math.floor(index / FLAT_COLUMNS);
-        flatAnchors.set(category, {
-          x: (col - (FLAT_COLUMNS - 1) / 2) * FLAT_SPACING_X,
-          y: ((rows - 1) / 2 - row) * FLAT_SPACING_Y,
-          z: 0
-        });
-      }
-      return flatAnchors.get(category);
+    const getFlatAnchor = key => {
+      const index = getClusterIndex(key);
+      const rows = Math.ceil(getSlotTotal() / FLAT_COLUMNS);
+      const col = index % FLAT_COLUMNS;
+      const row = Math.floor(index / FLAT_COLUMNS);
+      return {
+        x: (col - (FLAT_COLUMNS - 1) / 2) * FLAT_SPACING_X,
+        y: ((rows - 1) / 2 - row) * FLAT_SPACING_Y,
+        z: 0
+      };
     };
 
     // Fibonacci sphere: unit points spread evenly around the origin.
@@ -2228,19 +2426,16 @@ export default {
     };
     const updateClusterSpacing = nodes => {
       const counts = new Map();
-      nodes.forEach(node => counts.set(getNodeCategory(node), (counts.get(getNodeCategory(node)) || 0) + 1));
+      nodes.forEach(node => counts.set(getClusterKey(node), (counts.get(getClusterKey(node)) || 0) + 1));
       const largest = Math.max(0, ...counts.values());
       clusterGap = Math.max(MIN_CLUSTER_GAP, 2 * estimateClusterRadius(largest) + CLUSTER_MARGIN);
     };
 
-    const getClusterAnchor = category => {
-      if (filterState.flat) return getFlatAnchor(category);
-      if (!clusterAnchors.has(category)) {
-        const index = getClusterIndex(category);
-        const total = Math.max(CATEGORY_ORDER.length, index + 1);
-        clusterAnchors.set(category, { point: getSpherePoint(index, total), total });
-      }
-      const { point, total } = clusterAnchors.get(category);
+    const getClusterAnchor = key => {
+      if (filterState.flat) return getFlatAnchor(key);
+      const index = getClusterIndex(key);
+      const total = getSlotTotal();
+      const point = getSpherePoint(index, total);
       const radius = getSphereRadius(total);
       return { x: point.x * radius, y: point.y * radius, z: point.z * radius };
     };
@@ -2250,7 +2445,7 @@ export default {
       const force = alpha => {
         const k = CLUSTER_STRENGTH * alpha;
         nodes.forEach(node => {
-          const anchor = getClusterAnchor(getNodeCategory(node));
+          const anchor = getClusterAnchor(getClusterKey(node));
           node.vx += (anchor.x - node.x) * k;
           node.vy += (anchor.y - node.y) * k;
           node.vz += (anchor.z - (node.z || 0)) * k;
@@ -2307,17 +2502,21 @@ export default {
         type: category,
         created_at,
         url: node.url || '',
-        status: NODE_STATUSES.includes(node.status) ? node.status : 'inbox'
+        status: NODE_STATUSES.includes(node.status) ? node.status : 'inbox',
+        group_id: node.group_id || null,
+        group_source: node.group_source || null,
+        tags: Array.isArray(node.tags) ? node.tags : []
       };
     };
 
     const normalizeGraphData = data => {
       const nodes = (data && Array.isArray(data.nodes) ? data.nodes : []).map(safeGraphNode);
       const links = (data && Array.isArray(data.links)) ? data.links : [];
-      return { nodes, links };
+      const groups = (data && Array.isArray(data.groups)) ? data.groups : [];
+      return { nodes, links, groups };
     };
 
-    let graphData = { nodes: [], links: [] };
+    let graphData = { nodes: [], links: [], groups: [] };
 
     const nodeCard = document.getElementById('node-card');
     const cardStatus = document.getElementById('card-status');
@@ -2339,6 +2538,7 @@ export default {
     const compactLayout = window.matchMedia('(max-width: 767px)');
     const cardTitle = document.getElementById('card-title');
     const cardTag = document.getElementById('card-tag');
+    const cardGroup = document.getElementById('card-group');
     const cardDescription = document.getElementById('card-description');
     const cardMeta = document.getElementById('card-meta');
     const cardLink = document.getElementById('card-link');
@@ -2382,7 +2582,7 @@ export default {
     const drawerAskAnswer = document.getElementById('drawer-ask-answer');
     // Client-side mirror of the server's ASK_MAX_NODES.
     const ASK_MAX_NODES = 150;
-    let drawerCategory = null;
+    let drawerCluster = null;
 
     const setAskAnswer = (output, text, isError) => {
       output.textContent = text || '';
@@ -2528,6 +2728,7 @@ export default {
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       cardTitle.textContent = node.title || node.name || 'Saved Entry';
       cardTag.textContent = getTypeIcon(getNodeCategory(node)) + ' ' + getNodeCategory(node).replace(/_/g, ' ').toUpperCase();
+      renderCardGroup(node);
 
       renderCardPreview(node, isLink);
 
@@ -2578,7 +2779,7 @@ export default {
       syncTerritoryEmphasis();
     };
 
-    // Each visible category gets a faint wireframe shell and a floating label around its cluster.
+    // Each visible cluster gets a faint wireframe shell and a floating label; AI-suggested groups are marked with a spark.
     const territories = { group: null, entries: new Map(), visibleNodes: [] };
 
     const makeLabelSprite = (text, color) => {
@@ -2607,20 +2808,24 @@ export default {
     const syncTerritories = visibleNodes => {
       territories.visibleNodes = visibleNodes;
       if (!territories.group) return;
-      const categories = new Set(visibleNodes.map(getNodeCategory));
-      territories.entries.forEach((entry, category) => {
-        if (categories.has(category)) return;
+      const keys = new Set(visibleNodes.map(getClusterKey));
+      territories.entries.forEach((entry, key) => {
+        if (keys.has(key)) return;
         disposeTerritory(entry);
-        territories.entries.delete(category);
+        territories.entries.delete(key);
       });
-      categories.forEach(category => {
-        if (territories.entries.has(category)) return;
-        const color = getCategoryColor(category);
+      keys.forEach(key => {
+        const color = getClusterColor(key);
+        const text = (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key).toUpperCase();
+        const existing = territories.entries.get(key);
+        // A renamed or recoloured cluster gets a fresh label.
+        if (existing && existing.text === text && existing.color === color) return;
+        if (existing) disposeTerritory(existing);
         const shell = new THREE.Mesh(territories.shellGeometry, new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.07, depthWrite: false }));
-        const label = makeLabelSprite(category.replace(/_/g, ' ').toUpperCase(), color);
-        label.userData.category = category;
+        const label = makeLabelSprite(text, color);
+        label.userData.cluster = key;
         territories.group.add(shell, label);
-        territories.entries.set(category, { shell, label });
+        territories.entries.set(key, { shell, label, text, color });
       });
       updateTerritories();
       syncTerritoryEmphasis();
@@ -2633,9 +2838,9 @@ export default {
     const syncTerritoryEmphasis = () => {
       if (!territories.group) return;
       const dimming = isDimming();
-      const lit = new Set(dimming ? territories.visibleNodes.filter(isHighlighted).map(getNodeCategory) : []);
-      territories.entries.forEach((entry, category) => {
-        const on = !dimming || lit.has(category);
+      const lit = new Set(dimming ? territories.visibleNodes.filter(isHighlighted).map(getClusterKey) : []);
+      territories.entries.forEach((entry, key) => {
+        const on = !dimming || lit.has(key);
         entry.shell.material.opacity = on ? SHELL_OPACITY : 0.015;
         entry.label.material.opacity = on ? LABEL_OPACITY : 0.15;
       });
@@ -2646,12 +2851,12 @@ export default {
       const groups = new Map();
       territories.visibleNodes.forEach(node => {
         if (!Number.isFinite(node.x)) return;
-        const category = getNodeCategory(node);
-        if (!groups.has(category)) groups.set(category, []);
-        groups.get(category).push(node);
+        const key = getClusterKey(node);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(node);
       });
-      territories.entries.forEach((entry, category) => {
-        const nodes = groups.get(category) || [];
+      territories.entries.forEach((entry, key) => {
+        const nodes = groups.get(key) || [];
         entry.shell.visible = entry.label.visible = nodes.length > 0;
         if (!nodes.length) return;
         const center = { x: 0, y: 0, z: 0 };
@@ -2683,14 +2888,12 @@ export default {
       raycaster.setFromCamera(pointer, Graph.camera());
       const labels = [...territories.entries.values()].map(entry => entry.label).filter(label => label.visible);
       const hit = raycaster.intersectObjects(labels, false)[0];
-      return hit ? hit.object.userData.category : null;
+      return hit ? hit.object.userData.cluster : null;
     };
 
-    const flyToCategory = category => {
-      const entry = territories.entries.get(category);
-      if (!entry || !entry.center) return;
-      const center = entry.center;
-      const distance = entry.radius * 2.5 + 60;
+    // Frames a bounding sphere from the current viewing direction (straight on in 2D).
+    const flyToBounds = (center, radius) => {
+      const distance = radius * 2.5 + 60;
       let position;
       if (filterState.flat) {
         position = { x: center.x, y: center.y, z: distance };
@@ -2702,10 +2905,23 @@ export default {
       }
       pauseAutoRotate();
       Graph.cameraPosition(position, { x: center.x, y: center.y, z: center.z }, 1200);
+    };
 
-      const onlyThis = filterState.highlighted.size === 1 && filterState.highlighted.has(category);
-      filterState.highlighted = onlyThis ? new Set() : new Set([category]);
-      applyGraphFilters();
+    const flyToCluster = key => {
+      const entry = territories.entries.get(key);
+      if (entry && entry.center) flyToBounds(entry.center, entry.radius);
+    };
+
+    const flyToCategory = category => {
+      const nodes = Graph.graphData().nodes.filter(node => getNodeCategory(node) === category && [node.x, node.y, node.z].every(Number.isFinite));
+      if (!nodes.length) return;
+      const center = { x: 0, y: 0, z: 0 };
+      nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z; });
+      center.x /= nodes.length;
+      center.y /= nodes.length;
+      center.z /= nodes.length;
+      const spread = Math.max(...nodes.map(node => Math.hypot(node.x - center.x, node.y - center.y, node.z - center.z)));
+      flyToBounds(center, Math.max(spread + 12, 18));
     };
 
     const formatCategory = category => category.replace(/_/g, ' ');
@@ -2798,23 +3014,23 @@ export default {
     };
 
     // Visible nodes only, so the drawer agrees with the current filters.
-    const getClusterNodes = category => Graph.graphData().nodes
-      .filter(node => getNodeCategory(node) === category)
+    const getClusterNodes = key => Graph.graphData().nodes
+      .filter(node => getClusterKey(node) === key)
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
 
     const renderClusterDrawer = () => {
-      if (!drawerCategory) return;
-      const nodes = getClusterNodes(drawerCategory);
+      if (!drawerCluster) return;
+      const nodes = getClusterNodes(drawerCluster);
       drawerCount.textContent = nodes.length + (nodes.length === 1 ? ' card' : ' cards');
       clusterCards.replaceChildren(...nodes.map(buildMiniCard));
     };
 
-    const openClusterDrawer = category => {
-      const changed = drawerCategory !== category;
-      drawerCategory = category;
-      drawerDot.style.background = getCategoryColor(category);
-      drawerTitle.textContent = formatCategory(category);
-      drawerAskInput.placeholder = 'Ask Elarion about ' + formatCategory(category);
+    const openClusterDrawer = key => {
+      const changed = drawerCluster !== key;
+      drawerCluster = key;
+      drawerDot.style.background = getClusterColor(key);
+      drawerTitle.textContent = (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key);
+      drawerAskInput.placeholder = 'Ask Elarion about ' + getClusterLabel(key);
       if (changed) {
         drawerAskInput.value = '';
         setAskAnswer(drawerAskAnswer, '');
@@ -2832,7 +3048,7 @@ export default {
       document.body.classList.remove('drawer-open');
       // A hidden card never fires mouseleave, so its hover is dropped here.
       if (hover.source === 'drawer') setHover(null);
-      drawerCategory = null;
+      drawerCluster = null;
       if (nodeCard.style.display !== 'block') legend.style.display = 'block';
     };
 
@@ -2880,9 +3096,9 @@ export default {
     const SEED_SPREAD = 14;
     let layoutDirty = false;
 
-    const countByCategory = nodes => {
+    const countByCluster = nodes => {
       const counts = new Map();
-      nodes.forEach(node => counts.set(getNodeCategory(node), (counts.get(getNodeCategory(node)) || 0) + 1));
+      nodes.forEach(node => counts.set(getClusterKey(node), (counts.get(getClusterKey(node)) || 0) + 1));
       return counts;
     };
 
@@ -2891,31 +3107,31 @@ export default {
       const sums = new Map();
       for (const node of nodes) {
         if (![node.x, node.y, node.z].every(Number.isFinite)) return true;
-        const category = getNodeCategory(node);
-        const sum = sums.get(category) || { x: 0, y: 0, z: 0, n: 0 };
+        const key = getClusterKey(node);
+        const sum = sums.get(key) || { x: 0, y: 0, z: 0, n: 0 };
         sum.x += node.x;
         sum.y += node.y;
         sum.z += node.z;
         sum.n += 1;
-        sums.set(category, sum);
+        sums.set(key, sum);
       }
       let centreDistance = 0;
       let anchorDistance = 0;
-      sums.forEach((sum, category) => {
-        const anchor = getClusterAnchor(category);
+      sums.forEach((sum, key) => {
+        const anchor = getClusterAnchor(key);
         centreDistance += Math.hypot(sum.x / sum.n, sum.y / sum.n, sum.z / sum.n);
         anchorDistance += Math.hypot(anchor.x, anchor.y, anchor.z);
       });
       return centreDistance < anchorDistance * COLLAPSE_SHARE;
     };
 
-    // Each node starts in a small cloud around its category anchor, so the graph is spread out from the first frame.
+    // Each node starts in a small cloud around its cluster anchor, so the graph is spread out from the first frame.
     const seedLayout = nodes => {
-      const counts = countByCategory(nodes);
+      const counts = countByCluster(nodes);
       nodes.forEach(node => {
-        const category = getNodeCategory(node);
-        const anchor = getClusterAnchor(category);
-        const spread = SEED_SPREAD * Math.sqrt(counts.get(category));
+        const key = getClusterKey(node);
+        const anchor = getClusterAnchor(key);
+        const spread = SEED_SPREAD * Math.sqrt(counts.get(key));
         const jitter = () => (Math.random() - 0.5) * 2 * spread;
         node.x = anchor.x + jitter();
         node.y = anchor.y + jitter();
@@ -2964,11 +3180,11 @@ export default {
     let lastBackgroundTap = null;
 
     const handleBackgroundClick = () => {
-      const category = pickLabel();
-      if (category) {
+      const cluster = pickLabel();
+      if (cluster) {
         lastBackgroundTap = null;
-        flyToCategory(category);
-        openClusterDrawer(category);
+        flyToCluster(cluster);
+        openClusterDrawer(cluster);
         return;
       }
       const now = Date.now();
@@ -3096,10 +3312,10 @@ export default {
         carousel.label = 'Connected Cluster';
         return;
       }
-      const category = getNodeCategory(node);
-      const members = getClusterNodes(category).map(item => item.id);
+      const key = getClusterKey(node);
+      const members = getClusterNodes(key).map(item => item.id);
       carousel.ids = members.length > 1 ? members : [];
-      carousel.label = titleCase(formatCategory(category)) + ' Cluster';
+      carousel.label = titleCase(getClusterLabel(key)) + ' Cluster';
     };
 
     const renderCarousel = node => {
@@ -3128,7 +3344,7 @@ export default {
 
     const selectNode = (node, options = {}) => {
       // Keep the drawer only when the node belongs to the cluster it lists.
-      if (drawerCategory !== getNodeCategory(node)) closeClusterDrawer();
+      if (drawerCluster !== getClusterKey(node)) closeClusterDrawer();
       showNodeCard(node);
       if (!options.keepCarousel || !carousel.ids.includes(node.id)) buildCarousel(node);
       renderCarousel(node);
@@ -3142,6 +3358,7 @@ export default {
     };
 
     const hideNodeCard = () => {
+      if (window.AetherSpatial) window.AetherSpatial.closeGroupPicker();
       nodeCard.style.display = 'none';
       nodeCard.style.transform = '';
       document.body.classList.remove('card-open');
@@ -3149,6 +3366,104 @@ export default {
       clearFocus();
       syncDrawerSelection();
       scheduleResume();
+    };
+
+    // ---- Group picker (SPATIAL_ARCHITECTURE.md 1.6): move a node to a group or create one, from any card ----
+    const toPickerGroup = (group, count) => ({
+      id: group.id,
+      name: group.name,
+      source: group.source,
+      count,
+      color: window.AetherSpatial.groupColor('group:' + group.id)
+    });
+    const getPickerGroups = () => {
+      const counts = new Map();
+      graphData.nodes.forEach(node => { if (node.group_id) counts.set(node.group_id, (counts.get(node.group_id) || 0) + 1); });
+      return (graphData.groups || []).map(group => toPickerGroup(group, counts.get(group.id) || 0));
+    };
+    const getNodeGroup = node => {
+      const group = node.group_id ? (graphData.groups || []).find(item => item.id === node.group_id) : null;
+      return group ? toPickerGroup(group, 0) : null;
+    };
+    const makeGroupPicker = node => window.AetherSpatial ? window.AetherSpatial.createGroupPicker({
+      getGroups: getPickerGroups,
+      getCurrent: () => getNodeGroup(node),
+      onChoose: choice => assignGroup(node, choice)
+    }) : null;
+    const renderCardGroup = node => {
+      const picker = makeGroupPicker(node);
+      cardGroup.replaceChildren(...(picker ? [picker.element] : []));
+    };
+
+    // A group change re-clusters in place: new cluster keys, anchors, labels and lists, then a reheat so the moved
+    // node glides to its new island (the rest of the layout is already settled and barely moves).
+    const reclusterLive = () => {
+      updateClusters(currentVisibleNodes);
+      updateClusterSpacing(currentVisibleNodes);
+      syncTerritories(currentVisibleNodes);
+      renderClusterDrawer();
+      if (focus.node && nodeCard.style.display === 'block') {
+        renderCardGroup(focus.node);
+        buildCarousel(focus.node);
+        renderCarousel(focus.node);
+      }
+      if (filterState.view === 'graph') Graph.d3ReheatSimulation();
+      else {
+        layoutDirty = true;
+        renderCollection();
+      }
+    };
+
+    // Optimistic: the node moves at once and the choice is saved after; a failed save moves it back. A new group gets
+    // a temporary id until the server returns the real one.
+    const assignGroup = async (node, choice) => {
+      const before = { group_id: node.group_id, group_source: node.group_source };
+      let body;
+      let tempId = null;
+      if (choice.newName) {
+        const existing = (graphData.groups || []).find(group => group.name.toLowerCase() === choice.newName.toLowerCase());
+        if (existing) {
+          node.group_id = existing.id;
+          body = { group_id: existing.id };
+        } else {
+          tempId = 'pending_' + Date.now();
+          graphData.groups = [...(graphData.groups || []), { id: tempId, name: choice.newName, source: 'user', count: 0 }];
+          node.group_id = tempId;
+          body = { new_group: choice.newName };
+        }
+      } else if (choice.remove) {
+        node.group_id = null;
+        body = { group_id: null };
+      } else {
+        node.group_id = choice.groupId;
+        body = { group_id: choice.groupId };
+      }
+      node.group_source = 'user';
+      reclusterLive();
+
+      try {
+        const res = await fetch('/api/node/' + encodeURIComponent(node.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ('Saving the group failed: ' + res.status));
+        if (tempId && data.group) {
+          graphData.groups = graphData.groups.filter(group => group.id !== tempId);
+          if (!graphData.groups.some(group => group.id === data.group.id)) graphData.groups.push(data.group);
+          renameClusterSlot('group:' + tempId, 'group:' + data.group.id);
+          graphData.nodes.forEach(item => { if (item.group_id === tempId) item.group_id = data.group.id; });
+          reclusterLive();
+        }
+      } catch (err) {
+        console.error('Group change failed:', err);
+        node.group_id = before.group_id;
+        node.group_source = before.group_source;
+        if (tempId) graphData.groups = graphData.groups.filter(group => group.id !== tempId);
+        reclusterLive();
+        alert(err.message || 'Saving the group failed.');
+      }
     };
 
     // The spatial modules (public/js/spatial/) load as a module script, after this one; their design tokens
@@ -3161,7 +3476,9 @@ export default {
     const Graph = ForceGraph3D({ controlType: 'orbit' })(document.getElementById('3d-graph'))
       .nodeLabel(node => {
         const title = node.title || node.name || 'Saved Entry';
-        return escapeHtml(title + ' [' + getNodeCategory(node).toUpperCase() + ']');
+        const key = getClusterKey(node);
+        const cluster = key.startsWith('category:') ? '' : ' · ' + getClusterLabel(key);
+        return escapeHtml(title + ' [' + getNodeCategory(node).toUpperCase() + ']' + cluster);
       })
       .nodeOpacity(BASE_NODE_OPACITY)
       .linkOpacity(BASE_LINK_OPACITY)
@@ -3268,8 +3585,8 @@ export default {
     const getChargeStrength = count => -Math.max(40, Math.min(120, 1200 / Math.sqrt(Math.max(count, 1))));
     Graph.d3Force('charge').strength(getChargeStrength(0)).distanceMax(260);
     Graph.d3Force('link')
-      .distance(link => isSameCategoryLink(link) ? 22 : 110)
-      .strength(link => isSameCategoryLink(link) ? 0.5 : 0.03);
+      .distance(link => isSameClusterLink(link) ? 22 : 110)
+      .strength(link => isSameClusterLink(link) ? 0.5 : 0.03);
     Graph.d3Force('cluster', clusterForce());
 
     // Pill labels carry counts of the nodes the other filters leave visible, e.g. "YouTube (4)".
@@ -3384,6 +3701,7 @@ export default {
 
       if (hover.id && !visibleIds.has(hover.id)) setHover(null);
       Graph.d3Force('charge').strength(getChargeStrength(filteredNodes.length));
+      updateClusters(filteredNodes);
       updateClusterSpacing(filteredNodes);
       Graph.graphData({ nodes: filteredNodes, links: shownLinks });
       // The engine's 15 s cooldown runs even while the canvas is hidden, so a layout started behind
@@ -3515,6 +3833,21 @@ export default {
       clusterToggle.classList.toggle('active', filterState.clusterMode === 'category');
       applyGraphFilters();
     });
+
+    const groupBySelect = document.getElementById('group-by');
+    groupBySelect.value = filterState.groupBy;
+    groupBySelect.addEventListener('change', () => {
+      filterState.groupBy = GROUP_BY_KEYS.includes(groupBySelect.value) ? groupBySelect.value : 'group';
+      saveViewPrefs();
+      reclusterLive();
+      if (filterState.view === 'graph' && !focus.node) scheduleFit();
+    });
+
+    // Clustering by group needs the spatial modules, which load after this script: re-run the filters once they do.
+    window.addEventListener('aether-spatial-ready', () => {
+      if (graphLoaded) applyGraphFilters();
+      if (focus.node && nodeCard.style.display === 'block') renderCardGroup(focus.node);
+    }, { once: true });
 
     const orphanToggle = document.getElementById('orphan-toggle');
     orphanToggle.addEventListener('click', () => {
@@ -3892,14 +4225,14 @@ export default {
     bindAskShortcut(cardAskInput, cardAskButton);
 
     drawerAskButton.addEventListener('click', () => {
-      if (!drawerCategory) return;
+      if (!drawerCluster) return;
       askElarion({
         button: drawerAskButton,
         input: drawerAskInput,
         output: drawerAskAnswer,
-        label: drawerCategory,
+        label: getClusterLabel(drawerCluster),
         focusId: null,
-        nodeIds: getClusterNodes(drawerCategory).map(node => node.id)
+        nodeIds: getClusterNodes(drawerCluster).map(node => node.id)
       });
     });
     bindAskShortcut(drawerAskInput, drawerAskButton);
@@ -4076,6 +4409,14 @@ export default {
       summarize: (updated, processed) => 'Fetched titles for ' + updated + ' of ' + processed + ' links.'
     }));
 
+    const remineButton = document.getElementById('remine-button');
+    remineButton.addEventListener('click', () => runAdminBatches({
+      button: remineButton,
+      path: '/api/remine',
+      busyLabel: '🏷️ Mining tags & groups...',
+      summarize: (updated, processed) => 'Tagged ' + updated + ' of ' + processed + ' nodes and suggested groups.'
+    }));
+
     // ---- View modes: Graph (canvas), List/Grid and Timeline share the filters and the node card ----
     const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -4190,7 +4531,8 @@ export default {
       const date = document.createElement('span');
       date.className = 'item-date';
       date.textContent = formatItemDate(node, dateMode || 'date');
-      head.append(chip, date);
+      const picker = makeGroupPicker(node);
+      head.append(...(picker ? [chip, picker.element, date] : [chip, date]));
 
       const title = document.createElement('div');
       title.className = 'item-title';
@@ -5538,6 +5880,7 @@ async function saveTelegramImage(env, chatId, userId, { fileId, fileSize, captio
   await env.DB.prepare(
     "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, telegram_file_id, user_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).bind(id, userId, "", title, description, "image", `/api/node-image/${id}`, "Telegram", fileId, note).run();
+  await saveUserTags(env, userId, id, note);
 
   const pairing = `\nText you send in the next ${LINK_PAIRING_WINDOW_SECONDS / 60} minutes is added to this photo.`;
   await sendTelegram(
@@ -5638,6 +5981,7 @@ async function saveTelegramLink(env, chatId, userId, linkUrl, noteText, { quiet 
   await env.DB.prepare(
     "INSERT INTO saved_nodes (id, user_id, url, title, description, category, image_url, site_name, source_url, favicon_url, user_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   ).bind(id, userId, linkUrl, title, description, category, metadata?.image || null, metadata?.siteName || null, metadata?.sourceUrl || null, metadata?.favicon || null, note).run();
+  await saveUserTags(env, userId, id, note);
   if (!quiet) {
     await sendTelegram(
       env,
@@ -5652,9 +5996,11 @@ async function saveTelegramNote(env, chatId, userId, text) {
   const category = text.length > 100 ? "article" : "note";
   const title = text.length > 30 ? text.slice(0, 30) + "..." : text;
   // Notes keep their full text in url (the card and Ask read it from there).
+  const id = "node_" + crypto.randomUUID();
   await env.DB.prepare(
     "INSERT INTO saved_nodes (id, user_id, url, title, description, category) VALUES (?, ?, ?, ?, ?, ?)"
-  ).bind("node_" + crypto.randomUUID(), userId, text, title, null, category).run();
+  ).bind(id, userId, text, title, null, category).run();
+  await saveUserTags(env, userId, id, text);
   await sendTelegram(
     env,
     chatId,
@@ -5837,7 +6183,9 @@ async function attachUserNote(env, userId, nodeId, text) {
   const result = await env.DB.prepare(
     "UPDATE saved_nodes SET user_note = substr(CASE WHEN user_note IS NULL OR user_note = '' THEN ? ELSE user_note || char(10) || char(10) || ? END, 1, ?), updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
   ).bind(note, note, USER_NOTE_MAX, nodeId, userId).run();
-  return Boolean(result?.meta?.changes);
+  if (!result?.meta?.changes) return false;
+  await saveUserTags(env, userId, nodeId, note);
+  return true;
 }
 
 function isGenericPlaceholder(text) {
@@ -6088,46 +6436,89 @@ async function mineUserConnections(env, userId) {
   const { results: newRows } = await env.DB.prepare(
     "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
   ).bind(userId, MINER_BATCH_SIZE).all();
-  const newNodes = newRows || [];
-  if (!newNodes.length) return;
+  if (newRows?.length) await mineNodes(env, userId, newRows, { retag: true });
+}
 
+// One Gemini call for a batch of one user's nodes. It links them to each other and to recently analyzed nodes,
+// replaces their miner tags, and assigns concept groups (never over a group the user chose). retag also updates
+// AI-managed categories and marks the batch analyzed (the daily run); the /api/remine backfill leaves both alone.
+// Returns counts, or null when Gemini failed (nothing is written, so the batch is retried later).
+async function mineNodes(env, userId, newNodes, { retag }) {
+  const batchIds = new Set(newNodes.map(node => node.id));
   const { results: contextRows } = await env.DB.prepare(
     "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
-  ).bind(userId, MINER_CONTEXT_SIZE).all();
-  const allNodes = [...newNodes, ...(contextRows || [])];
+  ).bind(userId, MINER_CONTEXT_SIZE + newNodes.length).all();
+  const contextNodes = (contextRows || []).filter(row => !batchIds.has(row.id)).slice(0, MINER_CONTEXT_SIZE);
+  const allNodes = [...newNodes, ...contextNodes];
+  let groupNames = [];
+  try {
+    groupNames = (await listGroups(env, userId)).map(group => group.name);
+  } catch (err) {
+    console.error("Miner group lookup failed:", err);
+  }
 
   let mined;
   try {
-    const prompt = buildMinerPrompt(newNodes, contextRows || [], RECLUSTER_CATEGORIES);
+    const prompt = buildMinerPrompt(newNodes, contextNodes, RECLUSTER_CATEGORIES, groupNames);
     const parsed = await callGeminiJson(env.GEMINI_API_KEY, prompt, 16384);
-    mined = parseMinerResponse(parsed, newNodes.length, allNodes.length, normalizeCategory);
+    mined = parseMinerResponse(parsed, newNodes.length, allNodes.length, normalizeCategory, groupNames);
   } catch (err) {
     console.error("Connection miner Gemini call failed:", err);
-    return;
+    return null;
+  }
+
+  // Concept groups the batch uses, created as AI groups when they are new.
+  const groupIds = new Map();
+  for (const name of new Set(mined.groups.values())) {
+    const group = await ensureGroup(env, userId, name, "ai");
+    if (group) groupIds.set(name.toLowerCase(), group.id);
   }
 
   const statements = [];
-  mined.categories.forEach((category, i) => {
-    const node = newNodes[i];
-    const current = String(node.category || "").toLowerCase();
-    // Videos are detected from the URL; like /api/recluster, only re-tag the AI-managed categories.
-    if (!RECLUSTER_CATEGORIES.includes(current) || category === current) return;
-    statements.push(env.DB.prepare(
-      "UPDATE saved_nodes SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-    ).bind(category, node.id));
-  });
+  let retagged = 0;
+  if (retag) {
+    mined.categories.forEach((category, i) => {
+      const node = newNodes[i];
+      const current = String(node.category || "").toLowerCase();
+      // Videos are detected from the URL; like /api/recluster, only re-tag the AI-managed categories.
+      if (!RECLUSTER_CATEGORIES.includes(current) || category === current) return;
+      retagged++;
+      statements.push(env.DB.prepare(
+        "UPDATE saved_nodes SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+      ).bind(category, node.id));
+    });
+  }
   for (const { a, b, relation } of mined.edges) {
     const [sourceId, targetId] = [String(allNodes[a].id), String(allNodes[b].id)].sort();
     statements.push(env.DB.prepare(
       "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, user_id) VALUES (?, ?, ?, ?)"
     ).bind(sourceId, targetId, relation, userId));
   }
-  statements.push(env.DB.prepare(
-    `UPDATE saved_nodes SET ai_processed_at = CURRENT_TIMESTAMP WHERE id IN (${newNodes.map(() => "?").join(", ")})`
-  ).bind(...newNodes.map(node => node.id)));
+  // A node's miner tags are replaced as a set; a user tag with the same name stays a user tag.
+  mined.tags.forEach((tags, i) => {
+    const nodeId = newNodes[i].id;
+    statements.push(env.DB.prepare("DELETE FROM node_tags WHERE node_id = ? AND user_id = ? AND source = 'miner'").bind(nodeId, userId));
+    tags.forEach(({ tag, weight }) => statements.push(env.DB.prepare(
+      "INSERT INTO node_tags (node_id, tag, user_id, source, weight) VALUES (?, ?, ?, 'miner', ?) ON CONFLICT (node_id, tag) DO NOTHING"
+    ).bind(nodeId, tag, userId, weight)));
+  });
+  mined.groups.forEach((name, i) => {
+    const groupId = groupIds.get(name.toLowerCase());
+    if (!groupId) return;
+    statements.push(env.DB.prepare(
+      "UPDATE saved_nodes SET group_id = ?, group_source = 'ai' WHERE id = ? AND user_id = ? AND (group_source IS NULL OR group_source = 'ai')"
+    ).bind(groupId, newNodes[i].id, userId));
+  });
+  if (retag) {
+    statements.push(env.DB.prepare(
+      `UPDATE saved_nodes SET ai_processed_at = CURRENT_TIMESTAMP WHERE id IN (${newNodes.map(() => "?").join(", ")})`
+    ).bind(...newNodes.map(node => node.id)));
+  }
 
-  await env.DB.batch(statements);
-  console.log(`Connection miner: analyzed ${newNodes.length} nodes, ${statements.length - 1 - mined.edges.length} re-tagged, ${mined.edges.length} edges.`);
+  if (statements.length) await env.DB.batch(statements);
+  const counts = { analyzed: newNodes.length, retagged, edges: mined.edges.length, tagged: mined.tags.size, grouped: mined.groups.size };
+  console.log(`Connection miner: analyzed ${counts.analyzed} nodes, ${counts.retagged} re-tagged, ${counts.edges} edges, ${counts.tagged} tagged, ${counts.grouped} grouped.`);
+  return counts;
 }
 
 // Missing table (migration not applied yet) just means no mined edges.
