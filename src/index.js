@@ -302,7 +302,7 @@ export default {
     }
 
     // Endpoint 3d: Run the synthesis pass now (it also runs after the daily miner). Admin-only; pages through users with
-    // ?cursor=<offset>, a few per request, each capped at MAX_OUTCOMES_PER_DAY new outcomes per day.
+    // ?cursor=<offset>, a few per request. A manual run skips the daily limit (at most 2 new outcomes per user per run).
     if (url.pathname === "/api/synthesize") {
       if (request.method !== "POST") {
         return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
@@ -322,7 +322,7 @@ export default {
         let created = 0;
         const report = [];
         for (const { user_id: userId } of users) {
-          const result = await synthesizeForUser(env, userId);
+          const result = await synthesizeForUser(env, userId, { manual: true });
           created += result.created;
           report.push(result);
         }
@@ -4194,7 +4194,7 @@ export default {
     // into its group's 180-degree gallery, centred on the wall and focused, rather than the whole graph. It waits up to
     // 2 s for the graph to build the card and give it a position; in 2D, or before the cards load, it falls back to the
     // plain close-up.
-    const focusNewNode = id => {
+    const focusNewNode = (id, waitMs = 2000) => {
       if (filterState.view !== 'graph') setView('graph');
       const started = performance.now();
       const attempt = () => {
@@ -4202,7 +4202,7 @@ export default {
         const placed = node && [node.x, node.y, node.z].every(Number.isFinite);
         const ready = placed && (!cardField || cardField.has(node.id));
         if (!ready) {
-          if (performance.now() - started < 2000) requestAnimationFrame(attempt);
+          if (performance.now() - started < waitMs) requestAnimationFrame(attempt);
           else if (placed) selectNode(node, { fly: true });
           return;
         }
@@ -5077,7 +5077,8 @@ export default {
     });
 
     // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
-    const runAdminBatches = async ({ button, path, busyLabel, summarize }) => {
+    // finish(updated, processed, bodies), when given, runs after the graph reloads; returning true skips the summary alert.
+    const runAdminBatches = async ({ button, path, busyLabel, summarize, finish }) => {
       const token = getAdminToken();
       if (!token) return;
 
@@ -5086,6 +5087,7 @@ export default {
       let processed = 0;
       let updated = 0;
       let cursor = 0;
+      const bodies = [];
       try {
         while (true) {
           button.textContent = busyLabel + ' (' + processed + ')';
@@ -5099,13 +5101,15 @@ export default {
           }
           const body = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(body.error || ('Request failed: ' + res.status));
+          bodies.push(body);
           processed += body.processed || 0;
           updated += body.updated || 0;
           if (body.done || body.nextCursor === cursor) break;
           cursor = body.nextCursor;
         }
         await loadGraph();
-        alert(summarize(updated, processed));
+        settingsMenu.classList.remove('open');
+        if (!(finish && finish(updated, processed, bodies))) alert(summarize(updated, processed));
       } catch (err) {
         console.error(path + ' failed:', err);
         alert(err.message || 'Request failed.');
@@ -5139,7 +5143,20 @@ export default {
       busyLabel: '✦ Elarion is looking for patterns...',
       summarize: (created, users) => created
         ? 'Elarion proposed ' + created + (created === 1 ? ' Outcome' : ' Outcomes') + '. Look for the gold cards.'
-        : 'No new Outcome this time: no cross-topic pattern was strong enough, or today’s limit (2) is reached.'
+        : 'No new Outcome this time: no new cross-topic pattern was strong enough.',
+      // Fly straight into the gallery of the newest Outcome instead of leaving the camera on the wide view.
+      finish: (created, users, bodies) => {
+        const ids = [];
+        bodies.forEach(body => (body.report || []).forEach(result => ids.push(...(result.ids || []))));
+        // The run covers every user; only this user's Outcomes are in the loaded graph.
+        const own = ids.filter(id => graphData.nodes.some(item => item.id === id));
+        if (!own.length) return false;
+        const id = own[own.length - 1];
+        // Active filters (type, search, Hide Unlinked) may hide it; clear them so it shows.
+        if (!Graph.graphData().nodes.some(item => item.id === id)) resetFilters();
+        focusNewNode(id, 6000);
+        return true;
+      }
     }));
 
     const remineButton = document.getElementById('remine-button');
@@ -7237,12 +7254,17 @@ const planJson = outcome => JSON.stringify({ template: outcome.template, goal: o
 
 // Finds candidate patterns and, when any qualify, asks Gemini for at most the day's remaining outcomes. Returns
 // { user, candidates, created, reason? }. Nothing is written when Gemini fails or proposes nothing valid.
-async function synthesizeForUser(env, userId) {
-  const { today } = await env.DB.prepare(
-    "SELECT COUNT(*) AS today FROM saved_nodes WHERE user_id = ? AND category = 'outcome' AND created_at >= datetime('now', '-1 day')"
-  ).bind(userId).first();
-  const budget = MAX_OUTCOMES_PER_DAY - Number(today || 0);
-  if (budget <= 0) return { user: userId, candidates: 0, created: 0, reason: "daily limit reached" };
+// The daily cron keeps to MAX_OUTCOMES_PER_DAY per user. A manual admin run ({ manual: true }) skips that limit and
+// can add up to MAX_OUTCOMES_PER_DAY more each time it is pressed.
+async function synthesizeForUser(env, userId, { manual = false } = {}) {
+  let budget = MAX_OUTCOMES_PER_DAY;
+  if (!manual) {
+    const { today } = await env.DB.prepare(
+      "SELECT COUNT(*) AS today FROM saved_nodes WHERE user_id = ? AND category = 'outcome' AND created_at >= datetime('now', '-1 day')"
+    ).bind(userId).first();
+    budget -= Number(today || 0);
+    if (budget <= 0) return { user: userId, candidates: 0, created: 0, reason: "daily limit reached" };
+  }
 
   const { nodes, links, familyLabel } = await loadSynthesisGraph(env, userId);
   const previous = [...(await loadOutcomeInputs(env, userId)).values()];
@@ -7255,8 +7277,10 @@ async function synthesizeForUser(env, userId) {
   if (!outcomes.length) return { user: userId, candidates: bundles.length, created: 0, reason: "no outcome passed validation" };
 
   const statements = [];
+  const ids = [];
   for (const outcome of outcomes) {
     const id = "node_" + crypto.randomUUID();
+    ids.push(id);
     statements.push(env.DB.prepare(
       "INSERT INTO saved_nodes (id, user_id, url, title, description, category, status, outcome_status, outcome_fingerprint, outcome_plan, ai_processed_at) VALUES (?, ?, ?, ?, ?, 'outcome', 'inbox', 'proposed', ?, ?, CURRENT_TIMESTAMP)"
     ).bind(id, userId, "aether:outcome/" + id, outcome.title, outcome.why || null, outcome.fingerprint, planJson(outcome)));
@@ -7266,7 +7290,7 @@ async function synthesizeForUser(env, userId) {
   }
   await env.DB.batch(statements);
   console.log(`Synthesis: ${bundles.length} candidate patterns, ${outcomes.length} outcomes for ${userId}.`);
-  return { user: userId, candidates: bundles.length, created: outcomes.length, titles: outcomes.map(outcome => outcome.title) };
+  return { user: userId, candidates: bundles.length, created: outcomes.length, ids, titles: outcomes.map(outcome => outcome.title) };
 }
 
 // A fresh plan for an existing outcome from the same inputs. Returns the updated fields, or null when Gemini did not
