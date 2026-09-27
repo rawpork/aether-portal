@@ -1929,6 +1929,7 @@ export default {
             <option value="day">Today</option>
             <option value="week">Last 7 Days</option>
             <option value="month">Last 30 Days</option>
+            <option value="groups">All Time as Groups</option>
           </select>
         </label>
         <label class="filter-field"><span>Category</span>
@@ -2845,6 +2846,7 @@ export default {
       territories.entries.forEach((entry, key) => {
         const nodes = groups.get(key) || [];
         entry.label.visible = nodes.length > 0;
+        entry.hasNodes = nodes.length > 0;
         if (!nodes.length) return;
         const center = { x: 0, y: 0, z: 0 };
         nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z || 0; });
@@ -2857,12 +2859,26 @@ export default {
         entry.center = center;
         entry.radius = radius;
       });
+      // Group proxies (SPATIAL_ARCHITECTURE.md 2.5): each cluster's centre, size, members and newest card.
+      if (cardField) {
+        const newestFirst = (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''));
+        cardField.setClusters([...groups].filter(([key]) => territories.entries.get(key) && territories.entries.get(key).center).map(([key, nodes]) => ({
+          key,
+          center: territories.entries.get(key).center,
+          radius: territories.entries.get(key).radius,
+          ids: nodes.map(node => node.id),
+          label: (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key),
+          color: getClusterColor(key),
+          count: nodes.length,
+          topId: [...nodes].sort(newestFirst)[0].id
+        })));
+      }
     };
 
     // Labels live outside the library's picking, so a click on one arrives as a background click.
     let lastPointer = null;
     const pickLabel = () => {
-      if (!THREE || !territories.group || !territories.group.visible || !lastPointer) return null;
+      if (!THREE || !territories.group || !lastPointer) return null;
       const rect = Graph.renderer().domElement.getBoundingClientRect();
       const pointer = new THREE.Vector2(
         ((lastPointer.x - rect.left) / rect.width) * 2 - 1,
@@ -2872,7 +2888,8 @@ export default {
       raycaster.camera = Graph.camera();
       raycaster.setFromCamera(pointer, Graph.camera());
       const labels = [...territories.entries.values()].map(entry => entry.label).filter(label => label.visible);
-      const hit = raycaster.intersectObjects(labels, false)[0];
+      const proxies = cardField ? cardField.proxyTargets() : [];
+      const hit = raycaster.intersectObjects([...labels, ...proxies], false)[0];
       return hit ? hit.object.userData.cluster : null;
     };
 
@@ -3713,7 +3730,13 @@ export default {
     const cardLoop = time => {
       const dt = cardLastTime ? (time - cardLastTime) / 1000 : 1 / 60;
       cardLastTime = time;
-      if (filterState.view === 'graph') cardField.frame(dt, Graph.camera());
+      if (filterState.view === 'graph') {
+        cardField.frame(dt, Graph.camera());
+        const showLabels = !focus.node && !gallery;
+        territories.entries.forEach((entry, key) => {
+          entry.label.visible = showLabels && entry.hasNodes !== false && cardField.clusterLod(key) < 0.5;
+        });
+      }
       cardFrame = requestAnimationFrame(cardLoop);
     };
     const initCards = () => {
@@ -3734,6 +3757,9 @@ export default {
         .nodePositionUpdate(() => true);
       // Cards are wider than the old points: keep them from overlapping (radius = half the card's diagonal).
       Graph.d3Force('collide', spatial.createCollideForce(Math.hypot(spatial.CARD_WIDTH, spatial.CARD_HEIGHT) / 2));
+      Graph.scene().add(cardField.proxyRoot);
+      cardField.setLodMode(getLodMode());
+      updateTerritories();
       Graph.d3ReheatSimulation();
       if (!cardFrame) cardFrame = requestAnimationFrame(cardLoop);
     };
@@ -3854,8 +3880,9 @@ export default {
     // ---- Time scope and semantic zoom (SPATIAL_ARCHITECTURE.md 2.7) ----
     // The portal opens on a small, recent set of cards and widens its time span step by step: with the stepper in the
     // filter toolbar, or by pulling the camera well back past the framing of what is shown.
-    const SCOPES = ['day', 'week', 'month', 'all'];
-    const SCOPE_LABELS = { day: 'Today', week: 'This week', month: 'This month', all: 'All time' };
+    // 'groups' is all time with every cluster collapsed into its group proxy (section 2.5).
+    const SCOPES = ['day', 'week', 'month', 'groups', 'all'];
+    const SCOPE_LABELS = { day: 'Today', week: 'This week', month: 'This month', groups: 'Groups', all: 'All time' };
     // The startup scope is the shortest span with at least this many cards.
     const MIN_STARTUP_CARDS = 5;
     // Pulling back past this multiple of the fitted distance widens the span one step.
@@ -3869,7 +3896,11 @@ export default {
       scopeNarrow.disabled = index <= 0;
       scopeWiden.disabled = index < 0 || index >= SCOPES.length - 1;
     };
-    const pickStartupScope = nodes => SCOPES.find(horizon => horizon === 'all' || nodes.filter(node => isWithinHorizon(node, horizon)).length >= MIN_STARTUP_CARDS);
+    // Level of detail per scope (lod.js): short spans always show cards, Groups always shows proxies, All time follows
+    // how large each cluster appears.
+    const getLodMode = () => filterState.horizon === 'groups' ? 'groups' : filterState.horizon === 'all' ? 'auto' : 'cards';
+    const pickStartupScope = nodes => SCOPES.filter(horizon => horizon !== 'groups')
+      .find(horizon => horizon === 'all' || nodes.filter(node => isWithinHorizon(node, horizon)).length >= MIN_STARTUP_CARDS);
     // Changing the span leaves any gallery or open card and reframes what is now shown, again once the new cards settle.
     const setScope = horizon => {
       if (!SCOPES.includes(horizon) || horizon === filterState.horizon) return;
@@ -4069,6 +4100,7 @@ export default {
       renderClusterDrawer();
       currentVisibleNodes = filteredNodes;
       renderScope();
+      if (cardField) cardField.setLodMode(getLodMode());
       if (cardField) cardField.retain(visibleIds);
       refreshGallery();
       renderActiveView();

@@ -9,6 +9,7 @@ import { faceFromNode } from './card-faces.js';
 import { CARD_HEIGHT, CARD_WIDTH, createCardField, createCollideForce } from './card-nodes.js';
 import { galleryLayout, slotToWorld, yawToward } from './layout-gallery.js';
 import { OUTCOME_CATEGORY, computeHubWeights, hubScale } from './hub-weights.js';
+import { lodFactor } from './lod.js';
 
 window.AetherSpatial = {
   tokens: readDocumentTokens(),
@@ -32,6 +33,7 @@ window.AetherSpatial = {
   yawToward,
   computeHubWeights,
   hubScale,
-  OUTCOME_CATEGORY
+  OUTCOME_CATEGORY,
+  lodFactor
 };
 window.dispatchEvent(new Event('aether-spatial-ready'));

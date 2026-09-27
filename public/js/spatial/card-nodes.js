@@ -6,6 +6,7 @@ import { FACE_HEIGHT, FACE_WIDTH, drawDistantFace, drawFace, faceKey } from './c
 import { galleryLayout, slotToWorld } from './layout-gallery.js';
 import { smoothDamp } from './camera-rig.js';
 import { HUB_MAX_SCALE, OUTCOME_CATEGORY, OUTCOME_GOLD, glowOpacity, hubScale } from './hub-weights.js';
+import { lodGoal } from './lod.js';
 
 export const CARD_WIDTH = 12;
 export const CARD_HEIGHT = 7.5;
@@ -267,7 +268,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     const card = {
       id, node, root, face, faceMaterial, bodyMaterial, edgeMaterial,
       texture: null, canvas: null, drawnKey: null, tier: 'plain',
-      heat: 0, heatGoal: 0, dim: 0, dimGoal: 0, weight: 0, weightGoal: 0,
+      heat: 0, heatGoal: 0, dim: 0, dimGoal: 0, weight: 0, weightGoal: 0, lod: 0, hidden: false,
       lean: { x: ((seed % 100) / 100 - 0.5) * 0.25, y: (((seed >> 7) % 100) / 100 - 0.5) * 0.35 },
       gallery: { goal: 0, weight: 0, velocity: 0, delay: 0, position: null, rotationY: 0 },
       oriented: false
@@ -317,7 +318,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     const ranked = [...cards.values()].map(card => {
       const p = card.root.position;
       const distance = Math.hypot(p.x - viewer.x, p.y - viewer.y, p.z - viewer.z);
-      const boost = (card.gallery.goal ? 1e6 : 0) + (card.heatGoal ? 2e6 : 0);
+      const boost = (card.gallery.goal ? 1e6 : 0) + (card.heatGoal ? 2e6 : 0) + (proxyTops.has(card.id) ? 5e5 : 0) - (card.lod > 0.98 ? 1e5 : 0);
       return { card, score: boost - distance };
     }).sort((a, b) => b.score - a.score);
     ranked.forEach(({ card }, index) => {
@@ -367,6 +368,153 @@ export function createCardField({ THREE, reducedMotion = false }) {
     return card && card.gallery.goal && card.gallery.position ? { ...card.gallery.position } : null;
   }
 
+  // ---- Group proxies and level of detail (sections 2.4-2.5) ----
+  // The page reports its clusters (centre, radius, members, label, colour, newest member). Each frame every cluster
+  // gets a damped LOD value: 0 shows its cards, 1 its proxy, a stack of three cards fronted by the newest member's
+  // face with a caption of name and count. Cards fully collapsed into a proxy move to a hidden layer, so they are
+  // neither drawn nor hit by clicks, and taps reach the proxy.
+  const HIDDEN_LAYER = 5;
+  const proxyRoot = new THREE.Group();
+  proxyRoot.name = 'aether-group-proxies';
+  const proxies = new Map();
+  const lodState = new Map();
+  const proxyTops = new Set();
+  let clusters = new Map();
+  let clusterOfCard = new Map();
+  let lodMode = 'auto';
+
+  const setCardHidden = (card, hidden) => {
+    if (card.hidden === hidden) return;
+    card.hidden = hidden;
+    card.root.visible = !hidden;
+    card.root.traverse(child => child.layers.set(hidden ? HIDDEN_LAYER : 0));
+  };
+
+  const captionCanvas = (label, count, color) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+    ctx.font = '700 34px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color || '#dffdf7';
+    let name = String(label || '').toUpperCase();
+    while (ctx.measureText(name).width > 330 && name.length > 1) name = name.slice(0, -2) + '…';
+    ctx.fillText(name, 12, 48);
+    ctx.font = '500 28px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+    ctx.fillStyle = '#8a93a6';
+    ctx.textAlign = 'right';
+    ctx.fillText(count + (count === 1 ? ' card' : ' cards'), 500, 50);
+    return canvas;
+  };
+
+  const buildProxy = cluster => {
+    const group = new THREE.Group();
+    const backMaterial = () => new THREE.MeshBasicMaterial({ color: 0x111a28, transparent: true, opacity: 0, depthWrite: false });
+    const backs = [backMaterial(), backMaterial()];
+    const back2 = new THREE.Mesh(faceGeometry, backs[0]);
+    back2.position.set(1.4, 1.1, -0.8);
+    const back1 = new THREE.Mesh(faceGeometry, backs[1]);
+    back1.position.set(0.7, 0.55, -0.4);
+    const frontMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+    const front = new THREE.Mesh(faceGeometry, frontMaterial);
+    front.userData.cluster = cluster.key;
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: WHITE, transparent: true, opacity: 0, depthWrite: false });
+    const edge = new THREE.LineLoop(edgeGeometry, edgeMaterial);
+    edge.position.z = 0.05;
+    const captionMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+    const caption = new THREE.Mesh(new THREE.PlaneGeometry(CARD_WIDTH * 1.5, CARD_WIDTH * 1.5 * 96 / 512), captionMaterial);
+    caption.position.set(0, -CARD_HEIGHT / 2 - 2, 0);
+    caption.userData.cluster = cluster.key;
+    group.add(back2, back1, front, edge, caption);
+    proxyRoot.add(group);
+    return { group, backs, frontMaterial, edgeMaterial, captionMaterial, captionKey: null, front, caption };
+  };
+
+  const disposeProxy = proxy => {
+    proxyRoot.remove(proxy.group);
+    proxy.backs.forEach(material => material.dispose());
+    proxy.frontMaterial.dispose();
+    proxy.edgeMaterial.dispose();
+    if (proxy.captionMaterial.map) proxy.captionMaterial.map.dispose();
+    proxy.captionMaterial.dispose();
+    proxy.caption.geometry.dispose();
+  };
+
+  // list: [{ key, center, radius, ids, label, color, count, topId }]
+  function setClusters(list) {
+    clusters = new Map(list.map(cluster => [cluster.key, cluster]));
+    clusterOfCard = new Map();
+    proxyTops.clear();
+    clusters.forEach(cluster => {
+      cluster.ids.forEach(id => clusterOfCard.set(String(id), cluster.key));
+      if (cluster.topId) proxyTops.add(String(cluster.topId));
+    });
+    proxies.forEach((proxy, key) => {
+      if (clusters.has(key)) return;
+      disposeProxy(proxy);
+      proxies.delete(key);
+      lodState.delete(key);
+    });
+  }
+
+  // 'cards', 'auto' or 'groups' (lod.js); the page sets it from the time scope.
+  function setLodMode(mode) {
+    lodMode = mode;
+  }
+
+  const updateLod = (viewer, step) => {
+    const lambda = reducedMotion ? 40 : 6;
+    clusters.forEach((cluster, key) => {
+      const distance = Math.hypot(cluster.center.x - viewer.x, cluster.center.y - viewer.y, cluster.center.z - viewer.z);
+      const active = [...cluster.ids].some(id => {
+        const card = cards.get(String(id));
+        return card && (card.heatGoal > 0 || card.gallery.goal > 0);
+      });
+      const goal = lodGoal({ distance, radius: cluster.radius, mode: lodMode, active });
+      const value = damp(lodState.get(key) ?? goal, goal, lambda, step);
+      lodState.set(key, value);
+      let proxy = proxies.get(key);
+      if (value < 0.01) {
+        if (proxy) proxy.group.visible = false;
+        return;
+      }
+      if (!proxy) {
+        proxy = buildProxy(cluster);
+        proxies.set(key, proxy);
+      }
+      const captionKey = cluster.label + '|' + cluster.count + '|' + cluster.color;
+      if (proxy.captionKey !== captionKey) {
+        if (proxy.captionMaterial.map) proxy.captionMaterial.map.dispose();
+        proxy.captionMaterial.map = makeTexture(captionCanvas(cluster.label, cluster.count, cluster.color));
+        proxy.captionMaterial.needsUpdate = true;
+        proxy.captionKey = captionKey;
+      }
+      const top = cards.get(String(cluster.topId));
+      if (top && proxy.frontMaterial.map !== top.faceMaterial.map) {
+        proxy.frontMaterial.map = top.faceMaterial.map;
+        proxy.frontMaterial.needsUpdate = true;
+      }
+      proxy.group.visible = true;
+      // Legible from afar: grows with viewing distance (roughly constant on screen), never smaller than two cards.
+      const size = Math.min(6, Math.max(2.2, distance / 150));
+      proxy.group.scale.setScalar(size);
+      proxy.group.position.set(cluster.center.x, cluster.center.y, cluster.center.z);
+      temp.matrix.lookAt(viewer, proxy.group.position, temp.up);
+      proxy.group.quaternion.setFromRotationMatrix(temp.matrix);
+      proxy.backs[0].opacity = 0.7 * value;
+      proxy.backs[1].opacity = 0.85 * value;
+      proxy.frontMaterial.opacity = value;
+      proxy.edgeMaterial.color.set(cluster.color || WHITE);
+      proxy.edgeMaterial.opacity = 0.5 * value;
+      proxy.captionMaterial.opacity = value;
+    });
+  };
+
+  // Proxy meshes a click can land on (front card and caption), for the page's raycast.
+  const proxyTargets = () => [...proxies.values()].filter(proxy => proxy.group.visible && (lodState.get(proxy.front.userData.cluster) || 0) >= 0.5)
+    .flatMap(proxy => [proxy.front, proxy.caption]);
+
   // ---- Per-frame animation ----
   const temp = {
     matrix: new THREE.Matrix4(),
@@ -394,9 +542,15 @@ export function createCardField({ THREE, reducedMotion = false }) {
     const dimLambda = reducedMotion ? 40 : 4;
     const turnRate = reducedMotion ? 30 : 2.2;
 
+    updateLod(viewer, step);
+
     cards.forEach(card => {
       const node = card.node;
       if (!Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+      const cluster = clusterOfCard.get(card.id);
+      card.lod = cluster ? lodState.get(cluster) || 0 : 0;
+      setCardHidden(card, card.lod > 0.98);
+      if (card.hidden) return;
       card.heat = damp(card.heat, card.heatGoal, heatLambda, step);
       card.dim = damp(card.dim, card.dimGoal, dimLambda, step);
       card.weight = damp(card.weight, card.weightGoal, dimLambda, step);
@@ -452,18 +606,19 @@ export function createCardField({ THREE, reducedMotion = false }) {
       const hub = 1 + (hubScale(card.weight) - 1) * (1 - w);
       card.root.scale.setScalar(hub * (1 + card.heat * grow * 2));
       const shade = 1 - card.dim * 0.6;
+      const present = 1 - card.lod;
       card.faceMaterial.color.setScalar(shade);
-      card.faceMaterial.opacity = 1 - card.dim * 0.55;
-      card.bodyMaterial.opacity = 1 - card.dim * 0.55;
+      card.faceMaterial.opacity = (1 - card.dim * 0.55) * present;
+      card.bodyMaterial.opacity = (1 - card.dim * 0.55) * present;
       card.bodyMaterial.emissiveIntensity = card.heat * 0.3;
       card.edgeMaterial.color.copy(temp.color.copy(white).lerp(teal, Math.min(1, card.heat * 1.5)));
-      card.edgeMaterial.opacity = (0.14 + card.heat * 0.8) * (1 - card.dim * 0.7);
+      card.edgeMaterial.opacity = (0.14 + card.heat * 0.8) * (1 - card.dim * 0.7) * present;
 
       // Glow: hubs in their category colour, Outcome Nodes in Outcome Gold with a slow breathing pulse. It fades out
       // with dimming, and the card's own scale carries it (the sprite is a child of the card).
       const outcome = String(node.category || '').toLowerCase() === OUTCOME_CATEGORY;
       const pulse = reducedMotion ? 0.85 : 0.75 + 0.25 * Math.sin((clock * Math.PI * 2) / 4);
-      const glow = (outcome ? 0.7 * pulse : glowOpacity(card.weight)) * (1 - card.dim);
+      const glow = (outcome ? 0.7 * pulse : glowOpacity(card.weight)) * (1 - card.dim) * present;
       if (glow > 0.005 || card.glow) {
         const sprite = ensureGlow(card);
         sprite.visible = glow > 0.005;
@@ -494,6 +649,11 @@ export function createCardField({ THREE, reducedMotion = false }) {
     getGallery: () => gallery,
     setGallerySlide: units => { gallerySlide = Number.isFinite(units) ? Math.max(0, units) : null; },
     size: () => cards.size,
+    proxyRoot,
+    setClusters,
+    setLodMode,
+    proxyTargets,
+    clusterLod: key => lodState.get(key) || 0,
     has: id => cards.has(String(id)),
     stats: () => {
       const tiers = { near: 0, far: 0, plain: 0 };
