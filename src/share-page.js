@@ -1,6 +1,6 @@
-// The /share page opened by the PWA share sheet: a preview of the shared link, a model tier, action presets, a
-// command input and an optional notes field with quick-insert chips, then one tap to save. The HTML is a template literal, so the client script below avoids
-// backslashes and template placeholders; the shared values reach it as escaped JSON.
+// The /share page opened by the PWA share sheet: a card for the shared link, one textarea for the note and
+// commands, a row of quick-insert command chips, then one tap to save. The HTML is a template literal, so the
+// client script below avoids backslashes and template placeholders; the shared values reach it as escaped JSON.
 
 // Android usually puts the link inside "text"; pull the first http(s) URL out and keep the rest as a note.
 export function normalizeSharedInput({ url = "", title = "", text = "" }) {
@@ -36,25 +36,24 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
   <meta charset="utf-8">
   <title>Save to Aether</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#08090A">
   <link rel="manifest" href="/manifest.json">
   <style>
-    /* DESIGN.md: system type on the Dynamic Type scale, an 8pt grid, one accent reserved for the primary action,
-       44pt targets that press down to scale(0.98) on pointer-down and settle back with a critically damped ease. */
+    /* Aether dark sheet: a flat #0E0F11 sheet, #1A1C1E surfaces, hairline borders, 6-8px radii, no accent colour
+       and no shadows. Every control keeps a 44pt hit area and presses down to scale(0.98) on pointer-down. */
     :root {
       color-scheme: dark;
-      --bg-primary: #000000;
-      --bg-elevated: rgba(28, 28, 30, 0.82);
-      --fill-secondary: rgba(120, 120, 128, 0.24);
-      --fill-tertiary: rgba(118, 118, 128, 0.18);
-      --text-primary: #ffffff;
-      --text-secondary: rgba(235, 235, 245, 0.6);
-      --text-tertiary: rgba(235, 235, 245, 0.3);
-      --separator: rgba(255, 255, 255, 0.08);
-      --accent: #0a84ff;
-      --on-accent: #ffffff;
-      --destructive: #ff453a;
-      --success: #30d158;
+      --bg-page: #08090A;
+      --bg-base: #0E0F11;
+      --bg-surface: #1A1C1E;
+      --hairline: 1px solid rgba(255, 255, 255, 0.08);
+      --hairline-strong: rgba(255, 255, 255, 0.24);
+      --text-primary: rgba(255, 255, 255, 0.9);
+      --text-secondary: rgba(255, 255, 255, 0.5);
+      --text-tertiary: rgba(255, 255, 255, 0.3);
+      --danger: #E5484D;
+      --radius-s: 6px;
+      --radius-m: 8px;
       --ease-settle: cubic-bezier(0.25, 1, 0.5, 1);
     }
     * { box-sizing: border-box; }
@@ -66,10 +65,10 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       justify-content: center;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-      font-size: 17px;
-      line-height: 1.29;
+      font-size: 15px;
+      line-height: 1.4;
       color: var(--text-primary);
-      background: var(--bg-primary);
+      background: var(--bg-page);
       -webkit-font-smoothing: antialiased;
       -webkit-tap-highlight-color: transparent;
     }
@@ -78,70 +77,58 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       max-width: 440px;
       display: flex;
       flex-direction: column;
-      gap: 24px;
-      padding: 16px 16px 24px;
-      border-radius: 16px;
-      border: 1px solid var(--separator);
-      background: var(--bg-elevated);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      gap: 16px;
+      padding: 16px;
+      border: var(--hairline);
+      border-radius: var(--radius-m);
+      background: var(--bg-base);
     }
     @media (max-width: 520px) {
       body { align-items: flex-end; padding: 0; }
-      .sheet { max-width: none; border-radius: 16px 16px 0 0; border-width: 1px 0 0; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+      .sheet { max-width: none; border-width: 1px 0 0; border-radius: var(--radius-m) var(--radius-m) 0 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
     }
-    button, .button { font: inherit; color: inherit; cursor: pointer; transition: transform 300ms var(--ease-settle), background-color 300ms var(--ease-settle); }
+    button, .button { font: inherit; color: inherit; cursor: pointer; transition: transform 300ms var(--ease-settle), color 300ms var(--ease-settle); }
     button:active:not(:disabled), .button:active { transform: scale(0.98); transition-duration: 0s; }
-    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px -8px -4px 0; }
-    .sheet-head h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; }
-    .close { width: 44px; height: 44px; flex: none; display: grid; place-items: center; padding: 0; border: none; background: none; }
-    .close::before { content: "×"; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--fill-secondary); color: var(--text-secondary); font-size: 20px; line-height: 1; }
-    .preview { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--separator); }
-    .preview-domain { font-size: 13px; color: var(--text-secondary); }
-    .preview-title { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
-    .preview-url { font-size: 13px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .section-label { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
-    .segments { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill-tertiary); }
-    .segments button { min-width: 0; min-height: 44px; padding: 4px; border: none; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; line-height: 1.2; }
-    .segments button span { display: block; font-size: 11px; color: var(--text-tertiary); }
-    .segments button[aria-pressed="true"] { background: var(--fill-secondary); color: var(--text-primary); box-shadow: 0 1px 4px rgba(0,0,0,0.24); }
-    .segments button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chips button { min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid var(--separator); background: var(--fill-tertiary); color: var(--text-primary); font-size: 15px; }
-    .chips button[aria-pressed="true"] { background: var(--text-primary); border-color: var(--text-primary); color: var(--bg-primary); }
-    .palette { position: relative; }
-    .palette input { width: 100%; min-height: 44px; padding: 12px 16px; border-radius: 10px; border: 1px solid transparent; background: var(--fill-tertiary); color: var(--text-primary); font: inherit; font-size: 17px; outline: none; }
-    .palette input::placeholder { color: var(--text-tertiary); }
-    .palette input:focus { border-color: var(--separator); background: var(--fill-secondary); }
-    .suggestions { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: flex; flex-direction: column; padding: 4px; border-radius: 12px; border: 1px solid var(--separator); background: var(--bg-elevated); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 2; }
+    :focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; margin: -8px -12px -8px 0; }
+    .sheet-head h1 { margin: 0; font-size: 15px; font-weight: 600; }
+    .close { width: 44px; height: 44px; flex: none; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 20px; line-height: 1; }
+    .link { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 12px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-surface); }
+    .link[hidden] { display: none; }
+    .link-domain, .link-url { font-size: 12px; color: var(--text-secondary); }
+    .link-title { font-size: 15px; overflow-wrap: anywhere; }
+    .link-url { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .compose { position: relative; }
+    .input { display: block; width: 100%; min-height: 72px; max-height: 40vh; padding: 0; border: 0; background: transparent; color: var(--text-primary); caret-color: #ffffff; font: inherit; font-size: 17px; line-height: 1.35; resize: none; outline: none; }
+    .input::placeholder { color: var(--text-tertiary); }
+    .suggestions { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: flex; flex-direction: column; padding: 4px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-surface); z-index: 2; }
     .suggestions[hidden] { display: none; }
-    .suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border: none; border-radius: 8px; background: transparent; font-size: 15px; text-align: left; }
-    .suggestions button:hover, .suggestions button.active { background: var(--fill-tertiary); }
-    .suggestions button span { color: var(--text-secondary); }
-    .notes-label { display: flex; justify-content: space-between; }
-    .notes-label span { color: var(--text-tertiary); }
-    .notes { display: block; width: 100%; min-height: 88px; padding: 12px 16px; border-radius: 10px; border: 1px solid transparent; background: var(--fill-tertiary); color: var(--text-primary); font: inherit; font-size: 17px; line-height: 1.29; resize: vertical; outline: none; }
-    .notes::placeholder { color: var(--text-tertiary); }
-    .notes:focus { border-color: var(--separator); background: var(--fill-secondary); }
-    /* One row that scrolls sideways under the notes; it runs to the sheet edges so chips slide out of view cleanly. */
-    .quick { display: flex; gap: 8px; margin: 8px -16px 0; padding: 0 16px; overflow-x: auto; scroll-padding-inline: 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-    .quick::-webkit-scrollbar { display: none; }
-    .quick button { flex: none; min-width: 44px; min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid var(--separator); background: var(--fill-tertiary); color: var(--text-secondary); font-size: 15px; white-space: nowrap; }
-    .hint { margin: 8px 4px 0; font-size: 12px; color: var(--text-secondary); }
-    .primary { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; padding: 0 16px; border: none; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 600; text-decoration: none; }
-    .primary:disabled { opacity: 0.5; cursor: progress; }
-    .status { min-height: 16px; margin: -16px 0 0; font-size: 13px; text-align: center; color: var(--text-secondary); }
-    .status.error { color: var(--destructive); }
-    .done { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 8px; text-align: center; }
+    .suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; font-size: 15px; text-align: left; }
+    .suggestions button:hover, .suggestions button.active { background: rgba(255, 255, 255, 0.06); }
+    .suggestions button span { color: var(--text-secondary); font-size: 13px; }
+    /* One row that scrolls sideways and runs to the sheet edges, with no visible scrollbar. Each chip is a 44px
+       hit area; the visible 32px chip is drawn by ::before so the row stays compact. */
+    .ribbon { display: flex; gap: 8px; margin: -8px -16px; padding: 0 16px; overflow-x: auto; overscroll-behavior-x: contain; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none; }
+    .ribbon::-webkit-scrollbar { display: none; }
+    .ribbon button { position: relative; z-index: 0; flex: none; height: 44px; padding: 0 10px; border: 0; background: none; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
+    .ribbon button::before { content: ""; position: absolute; inset: 6px 0; z-index: -1; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-surface); }
+    .ribbon button:active:not(:disabled), .ribbon button[aria-pressed="true"] { color: var(--text-primary); }
+    .ribbon button[aria-pressed="true"]::before { border-color: var(--hairline-strong); }
+    .ribbon button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .primary { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-m); background: #ffffff; color: #000000; font-size: 15px; font-weight: 600; text-decoration: none; }
+    .primary:disabled { opacity: 0.4; cursor: progress; }
+    .status { min-height: 16px; margin: -8px 0 0; font-size: 13px; text-align: center; color: var(--text-secondary); }
+    .status.error { color: var(--danger); }
+    .done { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px; text-align: center; }
     .done[hidden] { display: none; }
-    .done-mark { width: 56px; height: 56px; color: var(--success); }
-    .done-title { margin: 8px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-    .done-text { margin: 0 0 16px; font-size: 15px; color: var(--text-secondary); }
-    .secondary { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; color: var(--text-secondary); font-size: 15px; text-decoration: none; }
+    .done-mark { width: 40px; height: 40px; color: var(--text-primary); }
+    .done-title { margin: 8px 0 0; font-size: 17px; font-weight: 600; }
+    .done-text { margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
+    .secondary { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; color: var(--text-secondary); font-size: 13px; text-decoration: none; }
     @media (prefers-reduced-motion: reduce) {
       button, .button { transition: none; }
       button:active:not(:disabled), .button:active { transform: none; }
+      .ribbon { scroll-behavior: auto; }
     }
   </style>
 </head>
@@ -149,52 +136,34 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
   <main class="sheet" aria-labelledby="sheet-title">
     <div class="sheet-head">
       <h1 id="sheet-title">Save to Aether</h1>
-      <button type="button" class="close" id="close" aria-label="Close"></button>
+      <button type="button" class="close" id="close" aria-label="Close">×</button>
     </div>
     <div id="form-area" style="display: contents">
-      <div class="preview">
-        <span class="preview-domain" id="preview-domain"></span>
-        <span class="preview-title" id="preview-title"></span>
-        <span class="preview-url" id="preview-url"></span>
+      <div class="link" id="link">
+        <span class="link-domain" id="link-domain"></span>
+        <span class="link-title" id="link-title"></span>
+        <span class="link-url" id="link-url"></span>
       </div>
-      <div>
-        <p class="section-label">Model</p>
-        <div class="segments" id="tiers" role="group" aria-label="Model tier">
-          <button type="button" data-tier="flash" aria-pressed="true">⚡ Gemini Flash<span>Free</span></button>
-          <button type="button" data-tier="pro" aria-pressed="false">🧠 Gemini Pro<span>Sovereign</span></button>
-          <button type="button" data-tier="claude" aria-pressed="false">🎭 Claude Sonnet<span id="claude-sub">Anthropic</span></button>
-        </div>
-      </div>
-      <div>
-        <p class="section-label">Action</p>
-        <div class="chips" id="presets" role="group" aria-label="Action preset">
-          <button type="button" data-preset="summarize" aria-pressed="false">📝 Summarize</button>
-          <button type="button" data-preset="event" aria-pressed="false">📅 Event</button>
-          <button type="button" data-preset="branch" aria-pressed="false">🌳 Branch</button>
-          <button type="button" data-preset="task" aria-pressed="false">📌 Action Task</button>
-        </div>
-      </div>
-      <div class="palette">
+      <div class="compose">
         <div class="suggestions" id="suggestions" role="listbox" hidden></div>
-        <input id="command" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Link, note and commands" placeholder="Paste a link, add a note, or type / for commands">
-        <p class="hint">Type <b>/</b> for commands: /pro, /claude, /summary, /event, /branch, /task. Other words are saved as a note.</p>
+        <textarea class="input" id="input" rows="3" aria-label="Note and commands" placeholder="Add a note, or type / for commands"></textarea>
       </div>
-      <div>
-        <label class="section-label notes-label" for="notes">Notes<span>Optional</span></label>
-        <textarea class="notes" id="notes" rows="3" placeholder="Why you saved this, or what to do with it"></textarea>
-        <div class="quick" id="quick" role="group" aria-label="Insert into notes">
-          <button type="button" data-insert="/research">/research</button>
-          <button type="button" data-insert="/learn">/learn</button>
-          <button type="button" data-insert="/ask">/ask</button>
-          <button type="button" data-insert="#task">#task</button>
-          <button type="button" data-insert="#done">#done</button>
-        </div>
+      <div class="ribbon" id="ribbon" role="group" aria-label="Insert command">
+        <button type="button" data-insert="/research">/research</button>
+        <button type="button" data-insert="/learn">/learn</button>
+        <button type="button" data-insert="/ask">/ask</button>
+        <button type="button" data-insert="#task">#task</button>
+        <button type="button" data-insert="#done">#done</button>
+        <button type="button" data-insert="/summary">/summary</button>
+        <button type="button" data-insert="/event">/event</button>
+        <button type="button" data-insert="/pro">/pro</button>
+        <button type="button" data-insert="/claude">/claude</button>
       </div>
-      <button type="button" class="primary" id="ingest">Ingest to Aether</button>
+      <button type="button" class="primary" id="ingest">Ingest</button>
       <p class="status" id="status" role="status"></p>
     </div>
     <div class="done" id="done" hidden>
-      <svg class="done-mark" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="26" fill="none" stroke="currentColor" stroke-width="3"/><path d="M17 29l7.5 7.5L39 21" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg class="done-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 20.5l5 5L28 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <h2 class="done-title">Saved</h2>
       <p class="done-text" id="done-text">It's in your Aether inbox.</p>
       <a class="primary button" id="view-node" href="/">View Node</a>
@@ -204,13 +173,12 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
   <script type="application/json" id="share-data">${escapeJson(data)}</script>
   <script>
     const data = JSON.parse(document.getElementById('share-data').textContent);
-    const tiers = document.getElementById('tiers');
-    const presets = document.getElementById('presets');
-    const input = document.getElementById('command');
-    const notes = document.getElementById('notes');
+    const input = document.getElementById('input');
+    const ribbon = document.getElementById('ribbon');
     const suggestions = document.getElementById('suggestions');
     const ingest = document.getElementById('ingest');
     const statusLine = document.getElementById('status');
+    const NEWLINE = String.fromCharCode(10);
     const state = { tier: 'flash', preset: null };
 
     const COMMANDS = [
@@ -224,80 +192,83 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       { name: '/branch', label: 'Branch', preset: 'branch' },
       { name: '/task', label: 'Action Task', preset: 'task' }
     ];
+    const PRESET_RESULTS = { summarize: 'The summary', event: 'The event details', branch: 'Ideas to explore', task: 'The action task' };
     const findCommand = token => COMMANDS.find(command => command.name === token.toLowerCase());
     const isLink = token => token.toLowerCase().startsWith('http://') || token.toLowerCase().startsWith('https://');
+    const lineTokens = line => line.split(' ').filter(Boolean);
 
-    document.getElementById('preview-domain').textContent = data.domain || 'Note';
-    document.getElementById('preview-title').textContent = data.title || data.domain || 'Untitled';
-    document.getElementById('preview-url').textContent = data.url || 'No link shared';
-    input.value = data.url;
-    notes.value = data.note;
-
-    const claudeButton = tiers.querySelector('[data-tier="claude"]');
-    if (!data.claudeAvailable) {
-      claudeButton.disabled = true;
-      claudeButton.title = 'Add an ANTHROPIC_API_KEY secret to enable Claude';
-      document.getElementById('claude-sub').textContent = 'Not set up';
-    }
-
-    const render = () => {
-      tiers.querySelectorAll('[data-tier]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tier === state.tier)));
-      presets.querySelectorAll('[data-preset]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.preset === state.preset)));
-    };
     const setStatus = (text, isError) => {
       statusLine.textContent = text || '';
       statusLine.classList.toggle('error', Boolean(isError));
     };
-    const setTier = tier => {
-      if (tier === 'claude' && !data.claudeAvailable) {
-        setStatus('Claude Sonnet is not set up yet.', true);
-        return;
-      }
-      state.tier = tier;
-      render();
-    };
 
-    tiers.addEventListener('click', event => {
-      const button = event.target.closest('[data-tier]');
-      if (button && !button.disabled) setTier(button.dataset.tier);
-    });
-    presets.addEventListener('click', event => {
-      const button = event.target.closest('[data-preset]');
-      if (!button) return;
-      state.preset = state.preset === button.dataset.preset ? null : button.dataset.preset;
-      render();
-    });
-
-    // Link, note and commands all live in one input; complete commands take effect as they are typed.
+    // One textarea holds the note, commands and an optional replacement link. Model and action follow the last
+    // matching command in the text, so deleting a command undoes it.
     const parseInput = () => {
-      const tokens = input.value.split(' ').filter(Boolean);
       let url = '';
-      const noteWords = [];
-      tokens.forEach(token => {
-        const command = findCommand(token);
-        if (command) return;
-        if (!url && isLink(token)) url = token;
-        else noteWords.push(token);
-      });
-      return { url, note: noteWords.join(' ') };
+      const lines = input.value.split(NEWLINE).map(line => lineTokens(line).filter(token => {
+        if (findCommand(token)) return false;
+        if (!url && isLink(token)) {
+          url = token;
+          return false;
+        }
+        return true;
+      }).join(' '));
+      return { url, note: lines.filter(Boolean).join(NEWLINE) };
     };
     const applyCommands = () => {
-      input.value.split(' ').filter(Boolean).forEach(token => {
+      state.tier = 'flash';
+      state.preset = null;
+      let claudeBlocked = false;
+      input.value.split(NEWLINE).forEach(line => lineTokens(line).forEach(token => {
         const command = findCommand(token);
         if (!command) return;
-        if (command.tier) setTier(command.tier);
+        if (command.tier === 'claude' && !data.claudeAvailable) claudeBlocked = true;
+        else if (command.tier) state.tier = command.tier;
         if (command.preset) state.preset = command.preset;
+      }));
+      setStatus(claudeBlocked ? 'Claude Sonnet is not set up yet, so this will use Gemini.' : '', claudeBlocked);
+      ribbon.querySelectorAll('[data-insert]').forEach(button => {
+        const command = findCommand(button.dataset.insert);
+        const on = Boolean(command && ((command.tier && command.tier === state.tier && state.tier !== 'flash') || (command.preset && command.preset === state.preset)));
+        button.setAttribute('aria-pressed', String(on));
       });
-      render();
     };
 
+    const renderLink = () => {
+      const url = parseInput().url || data.url;
+      let domain = '';
+      try { domain = url ? new URL(url).hostname.replace(/^www[.]/, '') : ''; } catch (err) { domain = ''; }
+      document.getElementById('link').hidden = !domain;
+      document.getElementById('link-domain').textContent = domain;
+      document.getElementById('link-title').textContent = (url === data.url && data.title) || domain;
+      document.getElementById('link-url').textContent = url;
+    };
+    const grow = () => {
+      input.style.height = 'auto';
+      input.style.height = input.scrollHeight + 'px';
+    };
+    const refresh = () => {
+      applyCommands();
+      renderLink();
+      grow();
+    };
+
+    const claudeChip = ribbon.querySelector('[data-insert="/claude"]');
+    if (!data.claudeAvailable) {
+      claudeChip.disabled = true;
+      claudeChip.title = 'Add an ANTHROPIC_API_KEY secret to enable Claude';
+    }
+
+    // Suggestions complete the word just before the caret.
     let activeSuggestion = 0;
-    const currentToken = () => {
-      const words = input.value.split(' ');
-      return words[words.length - 1] || '';
+    const wordBeforeCaret = () => {
+      const before = input.value.slice(0, input.selectionStart);
+      const start = Math.max(before.lastIndexOf(' '), before.lastIndexOf(NEWLINE)) + 1;
+      return { start, word: before.slice(start) };
     };
     const renderSuggestions = () => {
-      const token = currentToken().toLowerCase();
+      const token = wordBeforeCaret().word.toLowerCase();
       const matches = token.startsWith('/') ? COMMANDS.filter(command => command.name.startsWith(token) && command.name !== token) : [];
       suggestions.hidden = !matches.length;
       activeSuggestion = Math.min(activeSuggestion, Math.max(matches.length - 1, 0));
@@ -320,17 +291,31 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       return matches;
     };
     const completeCommand = name => {
-      const words = input.value.split(' ');
-      words[words.length - 1] = name;
-      input.value = words.join(' ') + ' ';
-      applyCommands();
+      const { start } = wordBeforeCaret();
+      const end = input.selectionStart;
+      input.value = input.value.slice(0, start) + name + ' ' + input.value.slice(end);
+      const caret = start + name.length + 1;
+      input.setSelectionRange(caret, caret);
+      refresh();
       renderSuggestions();
       input.focus();
     };
 
+    // A chip appends its text, space-separated, and leaves the caret at the end.
+    ribbon.addEventListener('click', event => {
+      const button = event.target.closest('[data-insert]');
+      if (!button || button.disabled) return;
+      const current = input.value;
+      const gap = current && current.trimEnd() === current ? ' ' : '';
+      input.value = current + gap + button.dataset.insert + ' ';
+      refresh();
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+
     input.addEventListener('input', () => {
       activeSuggestion = 0;
-      applyCommands();
+      refresh();
       renderSuggestions();
     });
     input.addEventListener('keydown', event => {
@@ -346,46 +331,29 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         completeCommand(matches[activeSuggestion].name);
         return;
       }
-      if (event.key === 'Enter') {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         submit();
       }
     });
     input.addEventListener('blur', () => { suggestions.hidden = true; });
 
-    // A quick chip appends its text to the notes, space-separated, and leaves the caret after it.
-    document.getElementById('quick').addEventListener('click', event => {
-      const button = event.target.closest('[data-insert]');
-      if (!button) return;
-      const current = notes.value;
-      const gap = current && current.trimEnd() === current ? ' ' : '';
-      notes.value = current + gap + button.dataset.insert + ' ';
-      notes.focus();
-      notes.setSelectionRange(notes.value.length, notes.value.length);
-    });
-    notes.addEventListener('keydown', event => {
-      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        submit();
-      }
-    });
-
     // /api/share answers with the new node's id; View Node deep-links to its card at /node/<id>.
     const finish = id => {
       document.getElementById('form-area').style.display = 'none';
       document.getElementById('done').hidden = false;
-      const label = state.preset ? presets.querySelector('[data-preset="' + state.preset + '"]').textContent : '';
-      document.getElementById('done-text').textContent = label ? label + ' will appear on the card shortly.' : "It's in your Aether inbox.";
+      const result = state.preset ? PRESET_RESULTS[state.preset] : '';
+      document.getElementById('done-text').textContent = result ? result + ' will appear on the card shortly.' : "It's in your Aether inbox.";
       const viewNode = document.getElementById('view-node');
       if (id) viewNode.href = '/node/' + encodeURIComponent(id);
       viewNode.focus();
     };
 
     async function submit() {
+      applyCommands();
       const parsed = parseInput();
       const url = parsed.url || data.url;
-      const note = [parsed.note, notes.value.trim()].filter(Boolean).join(String.fromCharCode(10));
-      if (!url && !note) {
+      if (!url && !parsed.note) {
         setStatus('Add a link or a note first.', true);
         input.focus();
         return;
@@ -397,7 +365,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         const res = await fetch('/api/share', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, title: url === data.url ? data.title : '', note, tier: state.tier, preset: state.preset })
+          body: JSON.stringify({ url, title: url === data.url ? data.title : '', note: parsed.note, tier: state.tier, preset: state.preset })
         });
         if (res.status === 401) {
           window.location.href = '/?next=' + encodeURIComponent(window.location.pathname + window.location.search);
@@ -409,7 +377,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       } catch (err) {
         setStatus(err.message || 'Saving failed.', true);
         ingest.disabled = false;
-        ingest.textContent = 'Ingest to Aether';
+        ingest.textContent = 'Ingest';
       }
     }
 
@@ -420,7 +388,8 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     });
     // iOS Safari only applies :active while a touch listener exists; this makes presses show on touch-start.
     document.addEventListener('touchstart', () => {}, { passive: true });
-    render();
+    input.value = data.note;
+    refresh();
   </script>
 </body>
 </html>`;

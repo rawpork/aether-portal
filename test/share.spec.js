@@ -56,7 +56,7 @@ describe("renderSharePage", () => {
 		expect(html).not.toContain("</script><script>alert(1)");
 		const json = /<script type="application\/json" id="share-data">([\s\S]*?)<\/script>/.exec(html)[1];
 		expect(JSON.parse(json)).toMatchObject({ url: "https://x.test/a", title: "</script><script>alert(1)</script>", claudeAvailable: false });
-		for (const id of ["tiers", "presets", "command", "notes", "quick", "ingest"]) expect(html, id).toContain(`id="${id}"`);
+		for (const id of ["link", "input", "ribbon", "ingest"]) expect(html, id).toContain(`id="${id}"`);
 		const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 		expect(scripts.length).toBe(1);
 		expect(() => new Function(scripts[0])).not.toThrow();
@@ -69,8 +69,8 @@ describe("renderSharePage", () => {
 		expect(html).not.toMatch(/setTimeout[(]finish/);
 	});
 
-	it("offers quick-insert chips for the notes field", () => {
+	it("offers one row of quick-insert command chips", () => {
 		const html = renderSharePage({ url: "https://x.test/a" });
-		for (const chip of ["/research", "/learn", "/ask", "#task", "#done"]) expect(html, chip).toContain(`data-insert="${chip}"`);
+		for (const chip of ["/research", "/learn", "/ask", "#task", "#done", "/summary", "/event", "/pro", "/claude"]) expect(html, chip).toContain(`data-insert="${chip}"`);
 	});
 });
