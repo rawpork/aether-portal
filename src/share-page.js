@@ -1,5 +1,5 @@
-// The /share page opened by the PWA share sheet: a preview of the shared link, a model tier, action presets and a
-// command input, then one tap to save. The HTML is a template literal, so the client script below avoids
+// The /share page opened by the PWA share sheet: a preview of the shared link, a model tier, action presets, a
+// command input and an optional notes field with quick-insert chips, then one tap to save. The HTML is a template literal, so the client script below avoids
 // backslashes and template placeholders; the shared values reach it as escaped JSON.
 
 // Android usually puts the link inside "text"; pull the first http(s) URL out and keep the rest as a note.
@@ -119,6 +119,15 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     .suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border: none; border-radius: 8px; background: transparent; font-size: 15px; text-align: left; }
     .suggestions button:hover, .suggestions button.active { background: var(--fill-tertiary); }
     .suggestions button span { color: var(--text-secondary); }
+    .notes-label { display: flex; justify-content: space-between; }
+    .notes-label span { color: var(--text-tertiary); }
+    .notes { display: block; width: 100%; min-height: 88px; padding: 12px 16px; border-radius: 10px; border: 1px solid transparent; background: var(--fill-tertiary); color: var(--text-primary); font: inherit; font-size: 17px; line-height: 1.29; resize: vertical; outline: none; }
+    .notes::placeholder { color: var(--text-tertiary); }
+    .notes:focus { border-color: var(--separator); background: var(--fill-secondary); }
+    /* One row that scrolls sideways under the notes; it runs to the sheet edges so chips slide out of view cleanly. */
+    .quick { display: flex; gap: 8px; margin: 8px -16px 0; padding: 0 16px; overflow-x: auto; scroll-padding-inline: 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .quick::-webkit-scrollbar { display: none; }
+    .quick button { flex: none; min-width: 44px; min-height: 44px; padding: 0 16px; border-radius: 22px; border: 1px solid var(--separator); background: var(--fill-tertiary); color: var(--text-secondary); font-size: 15px; white-space: nowrap; }
     .hint { margin: 8px 4px 0; font-size: 12px; color: var(--text-secondary); }
     .primary { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 50px; padding: 0 16px; border: none; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-size: 17px; font-weight: 600; text-decoration: none; }
     .primary:disabled { opacity: 0.5; cursor: progress; }
@@ -170,6 +179,17 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         <input id="command" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Link, note and commands" placeholder="Paste a link, add a note, or type / for commands">
         <p class="hint">Type <b>/</b> for commands: /pro, /claude, /summary, /event, /branch, /task. Other words are saved as a note.</p>
       </div>
+      <div>
+        <label class="section-label notes-label" for="notes">Notes<span>Optional</span></label>
+        <textarea class="notes" id="notes" rows="3" placeholder="Why you saved this, or what to do with it"></textarea>
+        <div class="quick" id="quick" role="group" aria-label="Insert into notes">
+          <button type="button" data-insert="/research">/research</button>
+          <button type="button" data-insert="/learn">/learn</button>
+          <button type="button" data-insert="/ask">/ask</button>
+          <button type="button" data-insert="#task">#task</button>
+          <button type="button" data-insert="#done">#done</button>
+        </div>
+      </div>
       <button type="button" class="primary" id="ingest">Ingest to Aether</button>
       <p class="status" id="status" role="status"></p>
     </div>
@@ -187,6 +207,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     const tiers = document.getElementById('tiers');
     const presets = document.getElementById('presets');
     const input = document.getElementById('command');
+    const notes = document.getElementById('notes');
     const suggestions = document.getElementById('suggestions');
     const ingest = document.getElementById('ingest');
     const statusLine = document.getElementById('status');
@@ -209,7 +230,8 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     document.getElementById('preview-domain').textContent = data.domain || 'Note';
     document.getElementById('preview-title').textContent = data.title || data.domain || 'Untitled';
     document.getElementById('preview-url').textContent = data.url || 'No link shared';
-    input.value = [data.url, data.note].filter(Boolean).join(' ');
+    input.value = data.url;
+    notes.value = data.note;
 
     const claudeButton = tiers.querySelector('[data-tier="claude"]');
     if (!data.claudeAvailable) {
@@ -331,6 +353,23 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     });
     input.addEventListener('blur', () => { suggestions.hidden = true; });
 
+    // A quick chip appends its text to the notes, space-separated, and leaves the caret after it.
+    document.getElementById('quick').addEventListener('click', event => {
+      const button = event.target.closest('[data-insert]');
+      if (!button) return;
+      const current = notes.value;
+      const gap = current && current.trimEnd() === current ? ' ' : '';
+      notes.value = current + gap + button.dataset.insert + ' ';
+      notes.focus();
+      notes.setSelectionRange(notes.value.length, notes.value.length);
+    });
+    notes.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        submit();
+      }
+    });
+
     // /api/share answers with the new node's id; View Node deep-links to its card at /node/<id>.
     const finish = id => {
       document.getElementById('form-area').style.display = 'none';
@@ -345,7 +384,8 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     async function submit() {
       const parsed = parseInput();
       const url = parsed.url || data.url;
-      if (!url && !parsed.note) {
+      const note = [parsed.note, notes.value.trim()].filter(Boolean).join(String.fromCharCode(10));
+      if (!url && !note) {
         setStatus('Add a link or a note first.', true);
         input.focus();
         return;
@@ -357,7 +397,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         const res = await fetch('/api/share', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, title: url === data.url ? data.title : '', note: parsed.note, tier: state.tier, preset: state.preset })
+          body: JSON.stringify({ url, title: url === data.url ? data.title : '', note, tier: state.tier, preset: state.preset })
         });
         if (res.status === 401) {
           window.location.href = '/?next=' + encodeURIComponent(window.location.pathname + window.location.search);
