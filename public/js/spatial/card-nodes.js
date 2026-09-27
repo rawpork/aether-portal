@@ -20,7 +20,16 @@ const GALLERY_FOCUS_SCALE = 0.075;
 const GALLERY_SLIDE = 0.25;
 const GALLERY_TIME = 0.45;
 const STAGGER_SECONDS = 0.02;
-// Faces are re-ranked every this many frames; at most this many new detailed faces are drawn per frame.
+// Face textures come in two resolutions of the same drawing: 'near' (512 x 320) for the closest and focused cards,
+// 'far' (256 x 160) for the next ones, and only past both budgets the shared plain face. Moving between near and far
+// shows the same content, so re-ranking as the camera moves is invisible; a margin on each budget stops cards at a
+// cutoff from flipping back and forth. About 32 x 0.65 MB + 192 x 0.16 MB = 52 MB of GPU memory at most.
+const NEAR_BUDGET = 32;
+const FAR_BUDGET = 192;
+const NEAR_MARGIN = 8;
+const FAR_MARGIN = 24;
+const TIER_SCALE = { near: 1, far: 0.5 };
+// Faces are re-ranked every this many frames; at most this many faces are drawn per frame.
 const RANK_EVERY = 20;
 const DRAWS_PER_FRAME = 3;
 
@@ -86,7 +95,7 @@ export function createCollideForce(radius, strength = 0.7) {
   return force;
 }
 
-export function createCardField({ THREE, maxTextures = 64, reducedMotion = false }) {
+export function createCardField({ THREE, reducedMotion = false }) {
   const shape = roundedRectShape(THREE, CARD_WIDTH, CARD_HEIGHT, CARD_RADIUS);
   const bodyGeometry = new THREE.ExtrudeGeometry(shape, { depth: CARD_DEPTH, bevelEnabled: false, curveSegments: 6 });
   bodyGeometry.translate(0, 0, -CARD_DEPTH / 2);
@@ -105,6 +114,8 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
   const distantTextures = new Map();
   const images = new Map();
   const drawQueue = [];
+  // Counters for debugging texture churn: faces drawn, and cards that went to or came back from the plain face.
+  const stats = { draws: 0, toPlain: 0, fromPlain: 0 };
   let frameCount = 0;
   let gallery = null;
   // World units a focused gallery card slides forward; the page lowers it when open panels leave little room.
@@ -140,7 +151,7 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
       entry.image.decoding = 'async';
       entry.image.onload = () => {
         entry.state = 'ready';
-        cards.forEach(card => { if (card.face.thumbUrl === url && card.detailed) queueDraw(card); });
+        cards.forEach(card => { if (card.face.thumbUrl === url && card.tier !== 'plain') queueDraw(card); });
       };
       entry.image.onerror = () => { entry.state = 'failed'; };
       entry.image.src = url;
@@ -152,31 +163,52 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     if (!drawQueue.includes(card)) drawQueue.push(card);
   };
 
+  // Draws the card's face at its tier's resolution. A tier change gets a new canvas and texture, and the old texture
+  // stays on the card until the new one is ready, so the face never blanks in between.
   const drawDetailed = card => {
+    if (card.tier === 'plain') return;
+    const scale = TIER_SCALE[card.tier];
     const image = imageFor(card.face.thumbUrl);
-    const key = faceKey(card.face, Boolean(image));
+    const key = card.tier + '|' + faceKey(card.face, Boolean(image));
     if (card.texture && card.drawnKey === key) return;
-    if (!card.canvas) {
+    const width = Math.round(FACE_WIDTH * scale);
+    const height = Math.round(FACE_HEIGHT * scale);
+    let previous = null;
+    if (!card.canvas || card.canvas.width !== width) {
+      previous = card.texture;
       card.canvas = document.createElement('canvas');
-      card.canvas.width = FACE_WIDTH;
-      card.canvas.height = FACE_HEIGHT;
+      card.canvas.width = width;
+      card.canvas.height = height;
+      card.texture = null;
     }
-    drawFace(card.canvas.getContext('2d'), card.face, image);
+    const ctx = card.canvas.getContext('2d');
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    drawFace(ctx, card.face, image);
+    stats.draws++;
     if (!card.texture) card.texture = makeTexture(card.canvas);
     else card.texture.needsUpdate = true;
     card.drawnKey = key;
     card.faceMaterial.map = card.texture;
     card.faceMaterial.needsUpdate = true;
+    if (previous) previous.dispose();
   };
 
-  const dropDetail = card => {
-    if (card.texture) card.texture.dispose();
-    card.texture = null;
-    card.canvas = null;
-    card.drawnKey = null;
-    card.detailed = false;
-    card.faceMaterial.map = distantTexture(card.face);
-    card.faceMaterial.needsUpdate = true;
+  const setTier = (card, tier) => {
+    if (card.tier === tier) return;
+    const wasPlain = card.tier === 'plain';
+    card.tier = tier;
+    if (tier === 'plain') {
+      if (card.texture) card.texture.dispose();
+      card.texture = null;
+      card.canvas = null;
+      card.drawnKey = null;
+      card.faceMaterial.map = distantTexture(card.face);
+      card.faceMaterial.needsUpdate = true;
+      stats.toPlain++;
+      return;
+    }
+    if (wasPlain) stats.fromPlain++;
+    queueDraw(card);
   };
 
   function build(node, face) {
@@ -184,8 +216,11 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     const previous = cards.get(id);
     if (previous) dispose(previous);
     const root = new THREE.Group();
-    const faceMaterial = new THREE.MeshBasicMaterial({ map: distantTexture(face), transparent: true });
-    const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x0b1320, emissive: TEAL, emissiveIntensity: 0, transparent: true });
+    // The face, outline and body are only fractions of a unit apart, far below what the depth buffer can separate at
+    // a distance (the graph camera's far plane is 125000). Polygon offsets push the face and, further, the body back
+    // by fixed depth steps, so outline over face over body holds at any distance instead of flickering.
+    const faceMaterial = new THREE.MeshBasicMaterial({ map: distantTexture(face), transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 4 });
+    const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x0b1320, emissive: TEAL, emissiveIntensity: 0, transparent: true, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 8 });
     const edgeMaterial = new THREE.LineBasicMaterial({ color: WHITE, transparent: true, opacity: 0.14, depthWrite: false });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     const faceMesh = new THREE.Mesh(faceGeometry, faceMaterial);
@@ -196,7 +231,7 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     const seed = [...id].reduce((sum, ch) => (sum * 31 + ch.charCodeAt(0)) >>> 0, 7);
     const card = {
       id, node, root, face, faceMaterial, bodyMaterial, edgeMaterial,
-      texture: null, canvas: null, drawnKey: null, detailed: false,
+      texture: null, canvas: null, drawnKey: null, tier: 'plain',
       heat: 0, heatGoal: 0, dim: 0, dimGoal: 0,
       lean: { x: ((seed % 100) / 100 - 0.5) * 0.25, y: (((seed >> 7) % 100) / 100 - 0.5) * 0.35 },
       gallery: { goal: 0, weight: 0, velocity: 0, delay: 0, position: null, rotationY: 0 },
@@ -224,7 +259,7 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     if (!card) return;
     const changedLook = card.face.type !== face.type || card.face.color !== face.color;
     card.face = face;
-    if (card.detailed) queueDraw(card);
+    if (card.tier !== 'plain') queueDraw(card);
     else if (changedLook) {
       card.faceMaterial.map = distantTexture(face);
       card.faceMaterial.needsUpdate = true;
@@ -239,7 +274,8 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     card.dimGoal = dim;
   }
 
-  // Detailed faces go to gallery cards, the hot card and then the nearest cards, up to the texture budget.
+  // Near faces go to the hot card, gallery cards and then the nearest cards; far faces to the next ones. Each card
+  // keeps its tier until it is clearly past the cutoff.
   function rankTextures(viewer) {
     const ranked = [...cards.values()].map(card => {
       const p = card.root.position;
@@ -248,13 +284,10 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
       return { card, score: boost - distance };
     }).sort((a, b) => b.score - a.score);
     ranked.forEach(({ card }, index) => {
-      const wanted = index < maxTextures;
-      if (wanted && !card.detailed) {
-        card.detailed = true;
-        queueDraw(card);
-      } else if (!wanted && card.detailed) {
-        dropDetail(card);
-      }
+      let tier = index < NEAR_BUDGET ? 'near' : index < NEAR_BUDGET + FAR_BUDGET ? 'far' : 'plain';
+      if (card.tier === 'near' && tier !== 'near' && index < NEAR_BUDGET + NEAR_MARGIN) tier = 'near';
+      if (card.tier === 'far' && tier === 'plain' && index < NEAR_BUDGET + FAR_BUDGET + FAR_MARGIN) tier = 'far';
+      setTier(card, tier);
     });
   }
 
@@ -309,7 +342,7 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     if (frameCount++ % RANK_EVERY === 0) rankTextures(viewer);
     for (let i = 0; i < DRAWS_PER_FRAME && drawQueue.length; i++) {
       const card = drawQueue.shift();
-      if (cards.has(card.id) && card.detailed) drawDetailed(card);
+      if (cards.has(card.id)) drawDetailed(card);
     }
     const heatLambda = reducedMotion ? 40 : 7;
     const dimLambda = reducedMotion ? 40 : 4;
@@ -390,6 +423,11 @@ export function createCardField({ THREE, maxTextures = 64, reducedMotion = false
     galleryPosition,
     getGallery: () => gallery,
     setGallerySlide: units => { gallerySlide = Number.isFinite(units) ? Math.max(0, units) : null; },
-    size: () => cards.size
+    size: () => cards.size,
+    stats: () => {
+      const tiers = { near: 0, far: 0, plain: 0 };
+      cards.forEach(card => { tiers[card.tier]++; });
+      return { ...stats, cards: cards.size, ...tiers };
+    }
   };
 }

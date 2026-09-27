@@ -438,7 +438,7 @@ Target: 60 fps on a mid-range phone with 500 visible nodes, and 120 fps on deskt
 | Area | Rule |
 | --- | --- |
 | Per-frame work | Only springs, LOD factors and dirty node transforms. Grouping and grid layout run on data, filter or group changes only. |
-| Card textures | 512×320 canvases (about 0.65 MB of GPU memory each). At most 64 live textures in an LRU cache, about 42 MB. Other cards use a shared low-detail face (type colour, title bar and icon) from one 2048×2048 atlas. |
+| Card textures | Two resolutions of the same face: the 32 nearest or focused cards at 512×320 (about 0.65 MB each) and the next 192 at 256×160 (about 0.16 MB), about 52 MB at most. Only cards past both budgets use the shared plain face. Each budget has a margin (8 and 24 places) so cards at a cutoff do not flip back and forth as the camera moves (hotfix 2026-09-27: the original single 64-texture budget made cards past it swap between full and plain faces during auto-rotate). |
 | Draw calls | Far cards use one `InstancedMesh` per type with per-instance colour. Only near or focused cards are individual meshes with their own texture. Target under 150 draw calls. |
 | Materials | `MeshBasicMaterial` for faces and `MeshStandardMaterial` for card bodies. No `MeshPhysicalMaterial` transmission. |
 | Pixel ratio | `min(devicePixelRatio, 2)`, dropping to 1.5 if a rolling 2 s average frame time exceeds 20 ms. |
@@ -548,6 +548,8 @@ A screen's horizontal field of view (about 70°-100°) cannot show the full 180�
 - **Focus:** a focused gallery card grows 1.15× and slides up to 0.25 R toward the standpoint, less when open panels leave too little free width for it to fit. The camera turns (never moves the pivot) so the card sits in the middle of the free part of the screen.
 - **Thumbnails:** loaded with CORS. Hosts without CORS headers get the generated placeholder art, so a WebGL canvas is never tainted.
 - **Faces:** use the category colour (the legend's) for the badge, and teal only for focus (DESIGN.md); the group chip sits in the top-right corner.
+- **Depth:** the graph camera's far plane is 125000, so the face (0.02 in front of the body) and the outline could not be separated by the depth buffer at a distance and flickered. The face and body use polygon offsets (face 1/4, body 2/8) so outline over face over body holds at any distance.
+- **Dragging:** the library's node dragging is off. It grabbed any press on a card and switched the orbit controls off, which froze gallery swipes; cards are placed by the card field every frame anyway. Board view's own drag is unaffected.
 
 ## 7. Still open
 

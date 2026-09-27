@@ -3685,7 +3685,12 @@ export default {
       if (cardField || !THREE || !window.AetherSpatial) return;
       const spatial = window.AetherSpatial;
       cardField = spatial.createCardField({ THREE, reducedMotion: reducedMotion.matches });
+      // The library's node dragging grabs any press that lands on a card and switches the orbit controls off for it,
+      // which froze swipes in the gallery (where cards fill the view). Cards are placed by the card field every
+      // frame, so dragging them in 3D is off; Board view keeps its own drag. Set before nodeThreeObject, whose
+      // update rebuilds the library's drag controls.
       Graph
+        .enableNodeDrag(false)
         .nodeThreeObject(node => {
           const card = cardField.build(node, getCardFace(node));
           cardField.setTargets(node.id, getCardTargets(node));
