@@ -2242,8 +2242,7 @@ export default {
     const BASE_LINK_OPACITY = 0.2;
     const focus = { node: null, nodeIds: new Set() };
 
-    // Hover is a lighter layer on top of focus: it only enlarges one node and brightens its links.
-    const HOVER_SCALE = 1.6;
+    // Hover is a lighter layer on top of focus: it only lifts one card and brightens its links.
     const hover = { id: null, source: null };
     const hoverCapable = window.matchMedia('(hover: hover)');
 
@@ -2276,69 +2275,31 @@ export default {
 
     // three.js is loaded separately (the graph bundle keeps its own copy private); until then nodes stay default spheres.
     let THREE = null;
-    const HARDWARE_PATTERN = /3d.?print|printer|filament|hardware|arduino|raspberry|esp32|thingiverse|printables|makerworld|cnc|solder|pcb/i;
-    const CONE_CATEGORIES = ['video', 'marketing'];
-    const CYLINDER_CATEGORIES = ['note', 'general', 'dev_task', 'route_plan'];
 
-    const getNodeShape = node => {
-      if (HARDWARE_PATTERN.test(String(node.title || '') + ' ' + String(node.url || ''))) return 'box';
-      const category = getNodeCategory(node);
-      if (CONE_CATEGORIES.includes(category)) return 'cone';
-      if (CYLINDER_CATEGORIES.includes(category)) return 'cylinder';
-      return 'sphere';
+    // Preview cards (SPATIAL_ARCHITECTURE.md 4.3, D5): every node is a canvas-faced card from
+    // public/js/spatial/card-nodes.js, created once three.js and the spatial modules have both loaded (the graph shows
+    // its default spheres for that first moment). The page sets each card's targets; the card field animates them.
+    let cardField = null;
+    // The open 180-degree gallery ({ key, origin, yaw, radius, ids }), or null; see enterGallery below.
+    let gallery = null;
+    const getCardFace = node => window.AetherSpatial.faceFromNode(node, {
+      categoryColor: getBaseNodeColor(node),
+      categoryLabel: getNodeCategory(node),
+      group: getNodeGroup(node)
+    });
+    // heat: 1 focused, 0.5 hovered; dim: outside the focused neighbourhood, or filtered out by the legend or platform bar.
+    const getCardTargets = node => ({
+      heat: focus.node && focus.node.id === node.id ? 1 : hover.id === node.id ? 0.5 : 0,
+      dim: focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1)
+    });
+    const syncCards = () => {
+      if (!cardField) return;
+      Graph.graphData().nodes.forEach(node => {
+        cardField.setTargets(node.id, getCardTargets(node));
+        cardField.setFace(node.id, getCardFace(node));
+      });
     };
-
-    const geometryCache = new Map();
-    const getShapeGeometry = shape => {
-      if (!geometryCache.has(shape)) {
-        const geometry = shape === 'box' ? new THREE.BoxGeometry(6.5, 6.5, 6.5)
-          : shape === 'cone' ? new THREE.ConeGeometry(5, 8, 4)
-          : shape === 'cylinder' ? new THREE.CylinderGeometry(3.5, 3.5, 7, 16)
-          : new THREE.SphereGeometry(4, 16, 12);
-        geometryCache.set(shape, geometry);
-      }
-      return geometryCache.get(shape);
-    };
-
-    // Splits rgba()/hsla() into an opaque color plus its alpha; three.js materials take opacity separately.
-    const splitColor = color => {
-      const match = color.match(/^(rgb|hsl)a[(](.*),([^,]*)[)]$/);
-      if (!match) return { rgb: color, alpha: 1 };
-      return { rgb: match[1] + '(' + match[2] + ')', alpha: parseFloat(match[3]) };
-    };
-
-    const materialCache = new Map();
-    const getNodeMaterial = (node, hovered = false) => {
-      const { rgb, alpha } = splitColor(getNodeColor(node));
-      if (hovered) {
-        const key = rgb + '|hover';
-        if (!materialCache.has(key)) {
-          materialCache.set(key, new THREE.MeshLambertMaterial({ color: rgb, emissive: rgb, emissiveIntensity: 0.7, transparent: true, opacity: 1 }));
-        }
-        return materialCache.get(key);
-      }
-      const opacity = Math.round(alpha * (focus.node ? 1 : BASE_NODE_OPACITY) * 100) / 100;
-      const key = rgb + '|' + opacity;
-      if (!materialCache.has(key)) {
-        materialCache.set(key, new THREE.MeshLambertMaterial({ color: rgb, transparent: true, opacity }));
-      }
-      return materialCache.get(key);
-    };
-
-    const buildNodeMesh = node => {
-      const hovered = node.id === hover.id;
-      const mesh = new THREE.Mesh(getShapeGeometry(getNodeShape(node)), getNodeMaterial(node, hovered));
-      if (hovered) mesh.scale.setScalar(HOVER_SCALE);
-      return mesh;
-    };
-
-    // Patches just the one mesh so hovering never rebuilds the whole graph.
-    const applyNodeHover = (node, on) => {
-      const obj = node && node.__threeObj;
-      if (!obj) return;
-      obj.scale.setScalar(on ? HOVER_SCALE : 1);
-      if (THREE && obj.isMesh) obj.material = getNodeMaterial(node, on);
-    };
+    const applyNodeHover = () => syncCards();
 
     // Link ends are ids until the graph has processed the link, then node objects.
     const isNodeObject = end => Boolean(end && typeof end === 'object');
@@ -2765,21 +2726,23 @@ export default {
     const refreshLinkStyles = () => {
       Graph
         .linkColor(link => getLinkColor(link))
-        .linkWidth(link => isHoverLink(link) ? 2 : isFocusLink(link) ? 1.5 : (link.type === 'ai' ? 1.2 : 0))
+        // Hairline links (width 0 draws a 1px line) so they never turn into bars in front of a close-up card.
+        .linkWidth(0)
         .linkDirectionalParticles(link => isActiveLink(link) ? 4 : 0)
-        .linkDirectionalParticleWidth(link => isActiveLink(link) ? 2.5 : 0);
+        .linkDirectionalParticleWidth(link => isActiveLink(link) ? 0.6 : 0);
     };
 
     const refreshGraphStyles = () => {
       Graph.nodeColor(node => getNodeColor(node));
       refreshLinkStyles();
-      // Custom meshes ignore nodeColor/nodeOpacity, so they are rebuilt with the current colors.
-      if (THREE) Graph.nodeThreeObject(node => buildNodeMesh(node));
-      if (territories.group) territories.group.visible = !focus.node;
+      // Cards ignore nodeColor/nodeOpacity; their targets and faces update in place.
+      syncCards();
+      if (territories.group) territories.group.visible = !focus.node && !gallery;
       syncTerritoryEmphasis();
     };
 
-    // Each visible cluster gets a faint wireframe shell and a floating label; AI-suggested groups are marked with a spark.
+    // Each visible cluster gets a floating label (AI-suggested groups are marked with a spark). The wireframe shells are
+    // gone (D5); group proxies replace them in Phase 4b.
     const territories = { group: null, entries: new Map(), visibleNodes: [] };
 
     const makeLabelSprite = (text, color) => {
@@ -2799,8 +2762,7 @@ export default {
     };
 
     const disposeTerritory = entry => {
-      territories.group.remove(entry.shell, entry.label);
-      entry.shell.material.dispose();
+      territories.group.remove(entry.label);
       entry.label.material.map.dispose();
       entry.label.material.dispose();
     };
@@ -2821,11 +2783,10 @@ export default {
         // A renamed or recoloured cluster gets a fresh label.
         if (existing && existing.text === text && existing.color === color) return;
         if (existing) disposeTerritory(existing);
-        const shell = new THREE.Mesh(territories.shellGeometry, new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.07, depthWrite: false }));
         const label = makeLabelSprite(text, color);
         label.userData.cluster = key;
-        territories.group.add(shell, label);
-        territories.entries.set(key, { shell, label, text, color });
+        territories.group.add(label);
+        territories.entries.set(key, { label, text, color });
       });
       updateTerritories();
       syncTerritoryEmphasis();
@@ -2833,7 +2794,6 @@ export default {
 
     // While the legend highlight or platform bar is dimming, a category's shell and label fade unless it
     // still holds an emphasized node, so the lit nodes stand out instead of every cluster glowing.
-    const SHELL_OPACITY = 0.07;
     const LABEL_OPACITY = 0.75;
     const syncTerritoryEmphasis = () => {
       if (!territories.group) return;
@@ -2841,7 +2801,6 @@ export default {
       const lit = new Set(dimming ? territories.visibleNodes.filter(isHighlighted).map(getClusterKey) : []);
       territories.entries.forEach((entry, key) => {
         const on = !dimming || lit.has(key);
-        entry.shell.material.opacity = on ? SHELL_OPACITY : 0.015;
         entry.label.material.opacity = on ? LABEL_OPACITY : 0.15;
       });
     };
@@ -2857,7 +2816,7 @@ export default {
       });
       territories.entries.forEach((entry, key) => {
         const nodes = groups.get(key) || [];
-        entry.shell.visible = entry.label.visible = nodes.length > 0;
+        entry.label.visible = nodes.length > 0;
         if (!nodes.length) return;
         const center = { x: 0, y: 0, z: 0 };
         nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z || 0; });
@@ -2866,8 +2825,6 @@ export default {
         center.z /= nodes.length;
         const spread = Math.max(...nodes.map(node => Math.hypot(node.x - center.x, node.y - center.y, (node.z || 0) - center.z)));
         const radius = Math.max(spread + 12, 18);
-        entry.shell.position.set(center.x, center.y, center.z);
-        entry.shell.scale.setScalar(radius);
         entry.label.position.set(center.x, center.y + radius + 8, center.z);
         entry.center = center;
         entry.radius = radius;
@@ -2905,6 +2862,10 @@ export default {
     };
 
     const flyToCluster = key => {
+      if (gallery && gallery.key === key) {
+        cameraGoTo({ ...galleryPose(gallery.yaw, (1 + GALLERY_STANDOFF) * gallery.radius), state: 'group', detail: key });
+        return;
+      }
       const entry = territories.entries.get(key);
       if (entry && entry.center) flyToBounds(entry.center, entry.radius, key);
     };
@@ -2995,15 +2956,40 @@ export default {
       if (activeItem && filterState.view !== 'graph' && filterState.view !== 'carousel') activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
 
-    // Node state: close framing on one node, shifted so it sits in the part of the view the card does not cover.
+    // Node state: close framing on one card, shifted so it sits in the part of the view the node card does not cover.
+    // In the gallery the camera stays at the standpoint and turns to face the card, which slides forward to meet it.
     const flyToNode = node => {
       if (![node.x, node.y, node.z].every(Number.isFinite)) return;
+      const cover = getCardCover();
+      if (gallery && gallery.ids.has(node.id)) {
+        const slot = cardField.galleryPosition(node.id);
+        if (slot) {
+          // The focused card grows 1.15 and slides up to 0.25 R toward the standpoint, but no closer than where it
+          // still fits the part of the screen the panels leave free.
+          const spatial = window.AetherSpatial;
+          const yaw = spatial.yawToward(gallery.origin, slot);
+          const vFov = cameraFov();
+          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
+          const freeWidth = cover && cover.side === 'right' ? 1 - Math.min(cover.fraction, 0.9) : 1;
+          const freeHeight = cover && cover.side === 'bottom' ? 1 - Math.min(cover.fraction, 0.9) : 1;
+          const fits = Math.max(
+            (spatial.CARD_WIDTH * 1.15) / (0.8 * freeWidth * 2 * Math.tan(hFov / 2)),
+            (spatial.CARD_HEIGHT * 1.15) / (0.8 * freeHeight * 2 * Math.tan(vFov / 2))
+          );
+          const far = (1 + GALLERY_STANDOFF) * gallery.radius;
+          const slide = Math.max(0, Math.min(0.25 * gallery.radius, far - fits));
+          cardField.setGallerySlide(slide);
+          cameraGoTo({ ...galleryPose(yaw, far - slide), state: 'node', detail: node.id });
+          return;
+        }
+      }
       const orbit = filterState.flat ? FLAT_ORBIT : getOrbit();
+      const distance = getNodeDistance(cover);
       const point = { x: node.x, y: node.y, z: node.z };
       const target = window.AetherSpatial
-        ? window.AetherSpatial.uncoveredTarget(point, { ...orbit, distance: NODE_DISTANCE, vFov: cameraFov(), aspect: Graph.camera().aspect }, getCardCover())
+        ? window.AetherSpatial.uncoveredTarget(point, { ...orbit, distance, vFov: cameraFov(), aspect: Graph.camera().aspect }, cover)
         : point;
-      cameraGoTo({ target, distance: NODE_DISTANCE, ...(filterState.flat ? FLAT_ORBIT : {}), state: 'node', detail: node.id });
+      cameraGoTo({ target, distance, ...(filterState.flat ? FLAT_ORBIT : {}), state: 'node', detail: node.id });
     };
 
     // Visible nodes only, so the drawer agrees with the current filters.
@@ -3033,6 +3019,10 @@ export default {
       clusterDrawer.classList.add('open');
       document.body.classList.add('drawer-open');
       legend.style.display = 'none';
+      if (!gallery || gallery.key !== key) {
+        if (gallery) exitGallery();
+        enterGallery(key);
+      }
     };
 
     const closeClusterDrawer = () => {
@@ -3043,6 +3033,7 @@ export default {
       if (hover.source === 'drawer') setHover(null);
       drawerCluster = null;
       if (nodeCard.style.display !== 'block') legend.style.display = 'block';
+      exitGallery();
     };
 
     // Empty canvas resets everything: drawer, card, highlight, and the idle orbit restarts right away.
@@ -3211,7 +3202,7 @@ export default {
     let idleTimer = null;
     const resumeAutoRotate = () => {
       const controls = Graph.controls();
-      controls.autoRotate = !focus.node && !filterState.flat && !reducedMotion.matches;
+      controls.autoRotate = !focus.node && !filterState.flat && !gallery && !reducedMotion.matches;
     };
     const scheduleResume = () => {
       clearTimeout(idleTimer);
@@ -3402,6 +3393,8 @@ export default {
       updateClusterSpacing(currentVisibleNodes);
       syncTerritories(currentVisibleNodes);
       renderClusterDrawer();
+      syncCards();
+      refreshGallery();
       if (focus.node && nodeCard.style.display === 'block') {
         renderCardGroup(focus.node);
         buildCarousel(focus.node);
@@ -3482,9 +3475,9 @@ export default {
       })
       .nodeOpacity(BASE_NODE_OPACITY)
       .linkOpacity(BASE_LINK_OPACITY)
-      .linkWidth(link => link.type === 'ai' ? 1.2 : 0)
+      .linkWidth(0)
       .linkDirectionalParticleSpeed(0.008)
-      .linkDirectionalParticleWidth(2.5)
+      .linkDirectionalParticleWidth(0.6)
       .linkDirectionalParticleColor(() => particleColor)
       .onNodeClick(node => {
         lastBackgroundTap = null;
@@ -3574,7 +3567,20 @@ export default {
     // and a WebXR-ready viewer applies them (the camera sits in a dolly group). Grabbing the canvas mid-flight hands
     // the camera straight back to the orbit controls. Until the spatial modules load, moves use the library's tween.
     const NODE_DISTANCE = 90;
-    const GROUP_MIN_DISTANCE = 110;
+    const GROUP_MIN_DISTANCE = 60;
+    // Focused card size on screen: about 36% of the uncovered height, and at most 80% of the uncovered width.
+    const getNodeDistance = cover => {
+      if (!cardField) return NODE_DISTANCE;
+      const spatial = window.AetherSpatial;
+      const vFov = cameraFov();
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
+      const freeHeight = cover && cover.side === 'bottom' ? 1 - cover.fraction : 1;
+      const freeWidth = cover && cover.side === 'right' ? 1 - cover.fraction : 1;
+      const grown = 1.3;
+      const byHeight = (spatial.CARD_HEIGHT * grown) / (2 * Math.tan(vFov / 2) * 0.36 * Math.max(freeHeight, 0.2));
+      const byWidth = (spatial.CARD_WIDTH * grown) / (2 * Math.tan(hFov / 2) * 0.8 * Math.max(freeWidth, 0.2));
+      return Math.max(byHeight, byWidth);
+    };
     const FLAT_ORBIT = { theta: 0, phi: Math.PI / 2 };
     let cameraRig = null;
     let viewer = null;
@@ -3593,15 +3599,17 @@ export default {
       const radius = Math.hypot(offset.x, offset.y, offset.z) || 1;
       return { theta: Math.atan2(offset.x, offset.z), phi: Math.acos(Math.min(1, Math.max(-1, offset.y / radius))) };
     };
-    // Share of the canvas the open node card covers: a right-hand panel on wide screens, a bottom sheet on phones.
+    // Share of the canvas the open panels (node card, cluster drawer) cover: from the right on wide screens, from the
+    // bottom on phones where both are sheets.
     const getCardCover = () => {
-      if (nodeCard.style.display !== 'block') return null;
-      const card = nodeCard.getBoundingClientRect();
       const canvas = Graph.renderer().domElement.getBoundingClientRect();
       if (!canvas.width || !canvas.height) return null;
+      const panels = [nodeCard.style.display === 'block' ? nodeCard : null, clusterDrawer.classList.contains('open') ? clusterDrawer : null]
+        .filter(Boolean).map(panel => panel.getBoundingClientRect()).filter(rect => rect.width && rect.height);
+      if (!panels.length) return null;
       return compactLayout.matches
-        ? { side: 'bottom', fraction: Math.max(0, canvas.bottom - card.top) / canvas.height }
-        : { side: 'right', fraction: Math.max(0, canvas.right - card.left) / canvas.width };
+        ? { side: 'bottom', fraction: Math.max(0, canvas.bottom - Math.min(...panels.map(rect => rect.top))) / canvas.height }
+        : { side: 'right', fraction: Math.max(0, canvas.right - Math.min(...panels.map(rect => rect.left))) / canvas.width };
     };
 
     const finishFlight = () => {
@@ -3663,6 +3671,114 @@ export default {
     if (window.AetherSpatial) initCameraRig();
     else window.addEventListener('aether-spatial-ready', initCameraRig, { once: true });
 
+    // Card field: built once three.js and the spatial modules are both in. The field places every card each frame from
+    // the simulated node positions (plus gallery and focus offsets), so the graph's own position writes are skipped.
+    let cardFrame = 0;
+    let cardLastTime = 0;
+    const cardLoop = time => {
+      const dt = cardLastTime ? (time - cardLastTime) / 1000 : 1 / 60;
+      cardLastTime = time;
+      if (filterState.view === 'graph') cardField.frame(dt, Graph.camera());
+      cardFrame = requestAnimationFrame(cardLoop);
+    };
+    const initCards = () => {
+      if (cardField || !THREE || !window.AetherSpatial) return;
+      const spatial = window.AetherSpatial;
+      cardField = spatial.createCardField({ THREE, reducedMotion: reducedMotion.matches });
+      Graph
+        .nodeThreeObject(node => {
+          const card = cardField.build(node, getCardFace(node));
+          cardField.setTargets(node.id, getCardTargets(node));
+          return card;
+        })
+        .nodePositionUpdate(() => true);
+      // Cards are wider than the old points: keep them from overlapping (radius = half the card's diagonal).
+      Graph.d3Force('collide', spatial.createCollideForce(Math.hypot(spatial.CARD_WIDTH, spatial.CARD_HEIGHT) / 2));
+      Graph.d3ReheatSimulation();
+      if (!cardFrame) cardFrame = requestAnimationFrame(cardLoop);
+    };
+    window.addEventListener('aether-spatial-ready', initCards, { once: true });
+
+    // ---- 180-degree gallery (SPATIAL_ARCHITECTURE.md 6): opening a group in 3D lays its cards on a half cylinder around
+    // a standpoint at the cluster's centre. On screens the camera stands 0.35 R behind that point and dragging turns
+    // the view along the wall (polar angle locked to the horizon, no pan or zoom). ----
+    let savedControls = null;
+    const GALLERY_STANDOFF = 0.35;
+    const lockGalleryControls = on => {
+      const controls = Graph.controls();
+      if (on && !savedControls) {
+        savedControls = { min: controls.minPolarAngle, max: controls.maxPolarAngle, zoom: controls.enableZoom, pan: controls.enablePan };
+        controls.minPolarAngle = Math.PI / 2;
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.enableZoom = false;
+        controls.enablePan = false;
+      } else if (!on && savedControls) {
+        controls.minPolarAngle = savedControls.min;
+        controls.maxPolarAngle = savedControls.max;
+        controls.enableZoom = savedControls.zoom;
+        controls.enablePan = savedControls.pan;
+        savedControls = null;
+      }
+    };
+    // Camera pose in the gallery: at the standpoint, level, facing yaw. Open panels are cleared without moving the
+    // pivot the drag turns around: a right-hand panel turns the view so what it faces sits mid-way across the free
+    // part of the screen; bottom sheets lower the eye so it sits mid-way up the free part. lookDistance is how far
+    // away the thing being looked at is.
+    const galleryPose = (yaw, lookDistance) => {
+      const cover = getCardCover();
+      const fraction = cover ? Math.min(cover.fraction, 0.9) : 0;
+      const vFov = cameraFov();
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
+      const turn = cover && cover.side === 'right' ? Math.atan(fraction * Math.tan(hFov / 2)) : 0;
+      const drop = cover && cover.side === 'bottom' ? fraction * lookDistance * Math.tan(vFov / 2) : 0;
+      return {
+        target: { x: gallery.origin.x, y: gallery.origin.y - drop, z: gallery.origin.z },
+        distance: GALLERY_STANDOFF * gallery.radius,
+        theta: -(yaw + turn),
+        phi: Math.PI / 2
+      };
+    };
+    const galleryIds = key => getClusterNodes(key).filter(node => Number.isFinite(node.x)).map(node => node.id);
+    const enterGallery = key => {
+      if (!cardField || filterState.flat || filterState.view !== 'graph') return;
+      const entry = territories.entries.get(key);
+      const ids = galleryIds(key);
+      if (!entry || !entry.center || !ids.length) return;
+      const origin = { ...entry.center };
+      const camera = Graph.camera().position;
+      const yaw = window.AetherSpatial.yawToward(camera, origin);
+      const placed = cardField.enterGallery(ids, { origin, yaw });
+      gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids };
+      Graph.linkVisibility(link => !gallery || !(gallery.ids.has(linkEndId(link.source)) || gallery.ids.has(linkEndId(link.target))));
+      if (territories.group) territories.group.visible = false;
+      pauseAutoRotate();
+      lockGalleryControls(true);
+      // Camera 0.35 R behind the standpoint, level, looking along the gallery's facing.
+      cameraGoTo({ ...galleryPose(yaw, (1 + GALLERY_STANDOFF) * placed.radius), state: 'group', detail: key });
+    };
+    // Filters or group changes while the gallery is open re-slot its cards without moving the camera.
+    const refreshGallery = () => {
+      if (!gallery) return;
+      const ids = galleryIds(gallery.key);
+      if (!ids.length) {
+        exitGallery();
+        return;
+      }
+      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw });
+      gallery.ids = placed.ids;
+      gallery.radius = placed.radius;
+    };
+    const exitGallery = () => {
+      if (!gallery) return;
+      const key = gallery.key;
+      gallery = null;
+      cardField.exitGallery();
+      Graph.linkVisibility(true);
+      lockGalleryControls(false);
+      if (territories.group) territories.group.visible = !focus.node;
+      if (filterState.view === 'graph') flyToCluster(key);
+    };
+
     // Closing the card steps back out from Node to the node's cluster (Group state).
     const closeNodeCard = () => {
       const node = focus.node;
@@ -3681,10 +3797,10 @@ export default {
         THREE = module;
         if (viewer) viewer.attachDolly(THREE, Graph.scene());
         territories.group = new THREE.Group();
-        territories.shellGeometry = new THREE.SphereGeometry(1, 20, 14);
         Graph.scene().add(territories.group);
         refreshGraphStyles();
         syncTerritories(territories.visibleNodes);
+        initCards();
       })
       .catch(err => console.error('three.js failed to load; keeping default node spheres', err));
 
@@ -3831,6 +3947,8 @@ export default {
       syncTerritories(filteredNodes);
       renderClusterDrawer();
       currentVisibleNodes = filteredNodes;
+      if (cardField) cardField.retain(visibleIds);
+      refreshGallery();
       renderActiveView();
     };
 
@@ -3893,6 +4011,7 @@ export default {
 
     const viewToggle = document.getElementById('view-toggle');
     viewToggle.addEventListener('click', () => {
+      if (gallery) closeClusterDrawer();
       filterState.flat = !filterState.flat;
       viewToggle.querySelector('.bar-label').textContent = filterState.flat ? '3D Graph' : '2D Canvas';
       viewToggle.dataset.short = filterState.flat ? '3D' : '2D';

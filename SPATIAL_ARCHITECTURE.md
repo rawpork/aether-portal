@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phases 1-3 shipped. Phase 4 in progress.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-3 and 4a shipped. Phase 4b next.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -13,6 +13,7 @@ Status: **approved 2026-09-27. Phases 1-3 shipped. Phase 4 in progress.** This s
 | D5 | **Preview cards are the production look.** Frosted glass and abstract shapes (cones, cylinders, boxes, spheres, wireframe shells) are dropped. The reference is `mockups/mockup-cards-3d.html`. | 4.3 |
 | D6 | **The portal opens in the Macro view:** a wide shot of the whole cloud, framed to fit. From there, smooth zooms go into filtered views (the Day time filter, or a chosen group). | 2.1, 2.7 |
 | D7 | **WebXR-ready from Phase 3.** Aether's end goal is VR. The camera lives inside a viewer dolly, and the rig outputs viewer poses rather than writing the camera, so headset tracking and the damped animations never fight. | 5 |
+| D9 | **Hubs stand out.** Highly connected cards scale up (1.0× standard, up to 1.35× for the biggest hubs) and carry a soft shadow aura that deepens with connectivity. There is no coloured glow, per DESIGN.md. Phase 4b. | 2.9 |
 | D8 | **180° spatial gallery** for a focused group (Phase 4): the group's cards leave the cloud and form a curved wall around the viewer. Geometry in section 6, confirmed 2026-09-27. | 6 |
 
 ## 0. Where we are today
@@ -289,6 +290,30 @@ A proxy is a small stack of three offset preview cards, using the face of the gr
 
 *As built (Phase 3):* gestures are unchanged from today. A single tap on empty canvas still clears the selection without moving the camera, and a double tap frames Macro. Filter changes (time, type, search) reframe the visible set after 400 ms, entering Group state when only one cluster is left. `Graph.cameraPosition` remains only as a fallback for the moment before the spatial modules have loaded.
 
+### 2.9 Hub weighting (D9, Phase 4b)
+
+Highly connected cards read as more important at a glance, through size and a shadow aura. There is no coloured glow: DESIGN.md bans glows and halos, and teal stays reserved for focus.
+
+**Weight.** Computed from the visible links whenever the filters or links change (`applyGraphFilters`), never per frame:
+
+```
+degree(n) = Σ over visible links touching n of:  ai (mined or manual) 1.0 · concept 0.6 · semantic 0.5
+            category chain links count 0 (every node has them, so they carry no signal)
+weight(n) = log(1 + degree(n)) / log(1 + max visible degree)          // 0..1, relative to what is on screen
+```
+
+The log keeps one giant hub from flattening everyone else. Because the weight is relative to the visible set, filtering to Day or to one group re-ranks the hubs within it.
+
+**Hero scaling.** `scale = 1 + 0.35 · smoothstep(0.15, 1, weight)`: standard cards stay at 1.0×, and the top hub reaches 1.35×. It multiplies with the hover and focus scale and animates on the same damped channel, so re-ranking after a filter change eases rather than pops. The collision radius grows with the scale, so big hubs push their neighbours back rather than overlapping them.
+
+**Aura (shadow, not glow).** Cards with a weight above 0.35 get:
+- **A soft under-shadow:** a blurred, dark (`#000`, normally blended, never additive) plate behind the card, offset slightly down and back. Its size is 1.15-1.35× the card and its opacity 0.25-0.6, both rising with weight. It lifts the card off the canvas the way a raised object would.
+- **A second hairline:** the top 10% by weight get an outer hairline 0.6 units outside the card edge, white at 0.12-0.2 opacity, like a mount around a print. Teal still only appears on focus.
+
+**Where it applies.** Macro and Group views, 2D mode, and group proxies (a proxy's aura comes from its group's summed degree). In the 180° gallery, cards keep uniform size, so the arc spacing stays exact, but keep their aura, so hubs are still visible on the wall. Dimmed cards fade their aura along with the card.
+
+**Performance.** One shared shadow texture and plane geometry; aura planes exist only for cards above the threshold, typically under 20% of the visible nodes.
+
 ## 3. The 2D / 3D mode switcher
 
 ### 3.1 Approach: a morph, not a rebuild
@@ -431,7 +456,8 @@ Each phase ships on its own and keeps the app working.
 | **1. Foundations** (shipped) | Self-host and pin three and 3d-force-graph under `public/vendor/`; `public/js/spatial/` with `tokens.js`, `grouping.js` (`category` and `platform` keys) and `index.js`; the page loads the module and takes its link-particle accent from the tokens; a Node vitest project with tests. | The graph looks and behaves the same; no unpkg requests remain; `npm test` covers grouping and tokens. |
 | **2. Groups, tags and semantic mining** (in progress) | Migration 0013; group and tag API; `#hashtag` parsing; miner prompt and parser extended; `/api/remine` backfill; `GroupPicker` on the node card and collection cards; hybrid `group` key as the default layout; live re-cluster; `concept` links. | Reassign a node from a card and watch it glide to its new island; create a group from the picker; the miner fills tags and suggested groups; user choices survive re-mining. |
 | **3. Camera rig and Macro startup** (shipped) | `camera-rig.js`; viewer dolly and pose adapter (D7); Macro, Group and Node states; card-aware offset; startup ease-in to Macro; filtered zooms (Day and group). | The portal opens on the wide cloud; Day and group filters glide the camera; interrupting a flight never jumps; the card never covers the focused node; the camera is parented to the dolly. |
-| **4. Preview cards, semantic zoom and 180° gallery** | `card-faces.js`, atlas, instancing, group proxies, LOD blend, 3D picker overlay; `layout-gallery.js` and the gallery transition (section 6); remove shapes and territory shells. | 500 nodes at 60 fps on a mid-range phone; zooming out collapses groups into proxies; focusing a group forms the 180° gallery and leaving it returns the cards to the cloud. |
+| **4a. Preview cards and 180° gallery** (shipped) | `card-faces.js`, `card-nodes.js` (card meshes, 64-texture budget with shared low-detail faces, damped hover/focus/dim, lazy turn to the viewer, collision spacing), `layout-gallery.js` and the gallery transition (section 6); shapes and territory shells removed. | Every node is a preview card; opening a group forms the 180° gallery and closing it returns the cards to the cloud; focused cards land clear of open panels. |
+| **4b. Semantic zoom, hub weighting and batching** | Hub weighting (section 2.9); group proxies and the LOD blend (sections 2.4-2.5); the 3D-card group picker overlay; `InstancedMesh` for distant cards; a 2048² face atlas. | Hubs are recognisable at a glance in Macro and Group views; 500 nodes at 60 fps on a mid-range phone; zooming out collapses groups into proxies. |
 | **5. 2D morph** | `layout-2d.js`, 12° dolly-zoom morph, Bézier links, pinned simulation, drag-to-column reassignment. | The toggle morphs both ways in about 0.5 s with no layout pop; switching back restores 3D positions. |
 | **6. WebXR** | "Enter VR" button, XR render loop, dolly-driven poses with comfort rules, controller and hand ray picking, world scale (section 5). | On a Quest-class headset: enter VR, look around the gallery, point at a card and select it, leave VR back to the same view. |
 
@@ -468,7 +494,7 @@ The dolly pose is `dolly.position = pose.position − (head position within the 
 
 ### 5.3 Frame loop
 
-WebXR frames must be rendered from `renderer.setAnimationLoop()` (the XR session's frame callback), while 3d-force-graph renders from its own `requestAnimationFrame` loop. Phase 6 starts with a spike to check whether it is enough to pause the library's loop (`Graph.pauseAnimation()`) and render the scene from our own `setAnimationLoop` callback, stepping the force engine and controls ourselves. If the library cannot be driven that way, Phase 6 replaces its renderer with our own (the "own renderer plus `d3-force-3d`" option in section 4.2). The Phase 3 rig already runs from its own `requestAnimationFrame` step, which moves into the XR loop unchanged.
+WebXR frames must be rendered from `renderer.setAnimationLoop()` (the XR session's frame callback), while 3d-force-graph renders from its own `requestAnimationFrame` loop. Phase 6 starts with a spike to check whether it is enough to pause the library's loop (`Graph.pauseAnimation()`) and render the scene from our own `setAnimationLoop` callback, stepping the force engine and controls ourselves. If the library cannot be driven that way, Phase 6 replaces its renderer with our own (the "own renderer plus `d3-force-3d`" option in section 4.2). The Phase 3 rig already runs from its own `requestAnimationFrame` step, which moves into the XR loop unchanged. *Found in Phase 4:* the pinned 3d-force-graph build exposes `tickFrame()` and `pauseAnimation()`, so driving the library from an XR loop is likely to work without replacing it.
 
 ### 5.4 Input, scale and legibility
 
@@ -513,6 +539,15 @@ A screen's horizontal field of view (about 70°-100°) cannot show the full 180�
 - **Leave the gallery:** cards spring back to their live force-layout positions; the simulation keeps running underneath, so there is no pop.
 - **Paging:** past `3 × maxPerRow` cards, the gallery rotates by one page width, a yaw of the card ring around `V`, never a rotation of the viewer (XR comfort rule, section 5.2).
 - **Reduced motion:** cards cross-fade into their slots instead of flying.
+
+### 6.4 As built (Phase 4a)
+
+- **Card size:** 12 × 7.5 world units, 0.3 thick, corner radius 0.66. The collision force uses half the card's diagonal as the radius, so cards in a cluster never overlap.
+- **Entry and exit:** the gallery opens with the cluster drawer (tapping a cluster label or a drawer entry point) and closes with it. It also closes when leaving the graph view or switching to 2D. `minRadius` is 18.
+- **Links:** while the gallery is open, links touching its cards are hidden, because the cards have left their simulated positions. All links are now hairlines rather than world-sized tubes, so they never turn into bars in front of a close-up card.
+- **Focus:** a focused gallery card grows 1.15× and slides up to 0.25 R toward the standpoint, less when open panels leave too little free width for it to fit. The camera turns (never moves the pivot) so the card sits in the middle of the free part of the screen.
+- **Thumbnails:** loaded with CORS. Hosts without CORS headers get the generated placeholder art, so a WebGL canvas is never tainted.
+- **Faces:** use the category colour (the legend's) for the badge, and teal only for focus (DESIGN.md); the group chip sits in the top-right corner.
 
 ## 7. Still open
 
