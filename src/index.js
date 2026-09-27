@@ -2892,24 +2892,21 @@ export default {
     };
 
     // Frames a bounding sphere from the current viewing direction (straight on in 2D).
-    const flyToBounds = (center, radius) => {
-      const distance = radius * 2.5 + 60;
-      let position;
-      if (filterState.flat) {
-        position = { x: center.x, y: center.y, z: distance };
-      } else {
-        const cam = Graph.camera().position;
-        const dir = { x: cam.x - center.x, y: cam.y - center.y, z: cam.z - center.z };
-        const length = Math.hypot(dir.x, dir.y, dir.z) || 1;
-        position = { x: center.x + dir.x / length * distance, y: center.y + dir.y / length * distance, z: center.z + dir.z / length * distance };
-      }
-      pauseAutoRotate();
-      Graph.cameraPosition(position, { x: center.x, y: center.y, z: center.z }, 1200);
+    // Group state (SPATIAL_ARCHITECTURE.md 2.1): frames a cluster's bounding sphere from the current direction
+    // (straight on in 2D), never closer than the node framing.
+    const flyToBounds = (center, radius, cluster = null) => {
+      cameraGoTo({
+        target: { x: center.x, y: center.y, z: center.z },
+        distance: Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, 1.25)),
+        ...(filterState.flat ? FLAT_ORBIT : {}),
+        state: 'group',
+        detail: cluster
+      });
     };
 
     const flyToCluster = key => {
       const entry = territories.entries.get(key);
-      if (entry && entry.center) flyToBounds(entry.center, entry.radius);
+      if (entry && entry.center) flyToBounds(entry.center, entry.radius, key);
     };
 
     const flyToCategory = category => {
@@ -2921,7 +2918,7 @@ export default {
       center.y /= nodes.length;
       center.z /= nodes.length;
       const spread = Math.max(...nodes.map(node => Math.hypot(node.x - center.x, node.y - center.y, node.z - center.z)));
-      flyToBounds(center, Math.max(spread + 12, 18));
+      flyToBounds(center, Math.max(spread + 12, 18), 'category:' + category);
     };
 
     const formatCategory = category => category.replace(/_/g, ' ');
@@ -2998,19 +2995,15 @@ export default {
       if (activeItem && filterState.view !== 'graph' && filterState.view !== 'carousel') activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     };
 
+    // Node state: close framing on one node, shifted so it sits in the part of the view the card does not cover.
     const flyToNode = node => {
       if (![node.x, node.y, node.z].every(Number.isFinite)) return;
-      const distance = 90;
-      let position;
-      if (filterState.flat) {
-        position = { x: node.x, y: node.y, z: distance };
-      } else {
-        const cam = Graph.camera().position;
-        const dir = { x: cam.x - node.x, y: cam.y - node.y, z: cam.z - node.z };
-        const length = Math.hypot(dir.x, dir.y, dir.z) || 1;
-        position = { x: node.x + dir.x / length * distance, y: node.y + dir.y / length * distance, z: node.z + dir.z / length * distance };
-      }
-      Graph.cameraPosition(position, { x: node.x, y: node.y, z: node.z }, 1000);
+      const orbit = filterState.flat ? FLAT_ORBIT : getOrbit();
+      const point = { x: node.x, y: node.y, z: node.z };
+      const target = window.AetherSpatial
+        ? window.AetherSpatial.uncoveredTarget(point, { ...orbit, distance: NODE_DISTANCE, vFov: cameraFov(), aspect: Graph.camera().aspect }, getCardCover())
+        : point;
+      cameraGoTo({ target, distance: NODE_DISTANCE, ...(filterState.flat ? FLAT_ORBIT : {}), state: 'node', detail: node.id });
     };
 
     // Visible nodes only, so the drawer agrees with the current filters.
@@ -3083,9 +3076,16 @@ export default {
           : Math.hypot(halfW, halfH, halfD) / Math.sin(Math.min(vFov, hFov) / 2);
         distance = Math.max(fit * 1.1 + 20, 120);
       }
-      camera.up.set(0, 1, 0);
-      pauseAutoRotate();
-      Graph.cameraPosition({ x: center.x, y: center.y, z: center.z + distance }, center, 900);
+      // Macro state, or Group when every visible node is in one cluster (a filter such as Day narrowed it).
+      const clusters = new Set(Graph.graphData().nodes.map(getClusterKey));
+      const single = clusters.size === 1 ? [...clusters][0] : null;
+      cameraGoTo({
+        target: center,
+        distance,
+        ...(filterState.flat ? FLAT_ORBIT : {}),
+        state: single ? 'group' : 'macro',
+        detail: single
+      });
     };
 
     // Layout health. Categories settle around anchors spread away from the origin; a layout that never ran leaves
@@ -3496,7 +3496,7 @@ export default {
       .onEngineStop(updateTerritories)
       .onNodeDragEnd(updateTerritories);
 
-    document.getElementById('card-close').addEventListener('click', hideNodeCard);
+    document.getElementById('card-close').addEventListener('click', () => closeNodeCard());
     document.getElementById('card-prev').addEventListener('click', () => stepCarousel(-1));
     document.getElementById('card-next').addEventListener('click', () => stepCarousel(1));
 
@@ -3544,7 +3544,7 @@ export default {
       swipe = null;
       nodeCard.classList.remove('dragging');
       if (fromHandle && dy > SWIPE_DISMISS_PX && dy > Math.abs(dx)) {
-        hideNodeCard();
+        closeNodeCard();
         return;
       }
       // Anything short of a dismiss springs back.
@@ -3569,9 +3569,117 @@ export default {
     });
     resumeAutoRotate();
 
+    // ---- Camera rig (SPATIAL_ARCHITECTURE.md 2 and 5) ----
+    // Every camera move is a goal for the damped rig in public/js/spatial/camera-rig.js. The rig outputs viewer poses
+    // and a WebXR-ready viewer applies them (the camera sits in a dolly group). Grabbing the canvas mid-flight hands
+    // the camera straight back to the orbit controls. Until the spatial modules load, moves use the library's tween.
+    const NODE_DISTANCE = 90;
+    const GROUP_MIN_DISTANCE = 110;
+    const FLAT_ORBIT = { theta: 0, phi: Math.PI / 2 };
+    let cameraRig = null;
+    let viewer = null;
+    let rigFrame = 0;
+    let rigLastTime = 0;
+    const cameraFov = () => Graph.camera().fov * Math.PI / 180;
+    const fitSphere = (radius, margin) => window.AetherSpatial
+      ? window.AetherSpatial.fitSphereDistance(radius, cameraFov(), Graph.camera().aspect, margin)
+      : radius * 2.5 + 60;
+    // Viewing direction (theta, phi) around the look-at point: the rig's while it flies, else the camera's own.
+    const getOrbit = () => {
+      if (cameraRig && cameraRig.active) return { theta: cameraRig.current.theta, phi: cameraRig.current.phi };
+      const camera = Graph.camera().position;
+      const target = Graph.controls().target;
+      const offset = { x: camera.x - target.x, y: camera.y - target.y, z: camera.z - target.z };
+      const radius = Math.hypot(offset.x, offset.y, offset.z) || 1;
+      return { theta: Math.atan2(offset.x, offset.z), phi: Math.acos(Math.min(1, Math.max(-1, offset.y / radius))) };
+    };
+    // Share of the canvas the open node card covers: a right-hand panel on wide screens, a bottom sheet on phones.
+    const getCardCover = () => {
+      if (nodeCard.style.display !== 'block') return null;
+      const card = nodeCard.getBoundingClientRect();
+      const canvas = Graph.renderer().domElement.getBoundingClientRect();
+      if (!canvas.width || !canvas.height) return null;
+      return compactLayout.matches
+        ? { side: 'bottom', fraction: Math.max(0, canvas.bottom - card.top) / canvas.height }
+        : { side: 'right', fraction: Math.max(0, canvas.right - card.left) / canvas.width };
+    };
+
+    const finishFlight = () => {
+      cancelAnimationFrame(rigFrame);
+      rigFrame = 0;
+      rigLastTime = 0;
+      const controls = Graph.controls();
+      controls.enabled = true;
+      controls.update();
+    };
+    const stepRig = time => {
+      const dt = rigLastTime ? (time - rigLastTime) / 1000 : 1 / 60;
+      rigLastTime = time;
+      const pose = cameraRig.update(dt);
+      if (pose) viewer.applyPose(pose);
+      if (cameraRig.active) rigFrame = requestAnimationFrame(stepRig);
+      else finishFlight();
+    };
+    // goal: { target, distance, theta?, phi?, state, detail?, instant? }; theta/phi default to the current direction.
+    const cameraGoTo = goal => {
+      pauseAutoRotate();
+      if (!cameraRig) {
+        const camera = Graph.camera().position;
+        const t = goal.target;
+        let dir = { x: camera.x - t.x, y: camera.y - t.y, z: camera.z - t.z };
+        if (goal.theta !== undefined || goal.phi !== undefined) {
+          const theta = goal.theta ?? 0;
+          const phi = goal.phi ?? Math.PI / 2;
+          dir = { x: Math.sin(phi) * Math.sin(theta), y: Math.cos(phi), z: Math.sin(phi) * Math.cos(theta) };
+        }
+        const length = Math.hypot(dir.x, dir.y, dir.z) || 1;
+        const k = goal.distance / length;
+        Graph.cameraPosition({ x: t.x + dir.x * k, y: t.y + dir.y * k, z: t.z + dir.z * k }, t, goal.instant ? 0 : 1000);
+        return;
+      }
+      const pose = cameraRig.goTo(goal, viewer.currentPose());
+      if (pose) {
+        viewer.applyPose(pose);
+        return;
+      }
+      Graph.controls().enabled = false;
+      if (!rigFrame) rigFrame = requestAnimationFrame(stepRig);
+    };
+    const cancelCameraFlight = () => {
+      if (!cameraRig || !cameraRig.active) return;
+      cameraRig.cancel();
+      finishFlight();
+    };
+    // Capture phase: runs before the orbit controls see the press, so they take over in the same gesture.
+    graphElement.addEventListener('pointerdown', cancelCameraFlight, { capture: true, passive: true });
+    graphElement.addEventListener('wheel', cancelCameraFlight, { capture: true, passive: true });
+
+    const initCameraRig = () => {
+      if (cameraRig || !window.AetherSpatial) return;
+      cameraRig = new window.AetherSpatial.CameraRig({ reducedMotion: reducedMotion.matches });
+      viewer = window.AetherSpatial.createViewer({ camera: Graph.camera(), controls: Graph.controls() });
+      if (THREE) viewer.attachDolly(THREE, Graph.scene());
+    };
+    if (window.AetherSpatial) initCameraRig();
+    else window.addEventListener('aether-spatial-ready', initCameraRig, { once: true });
+
+    // Closing the card steps back out from Node to the node's cluster (Group state).
+    const closeNodeCard = () => {
+      const node = focus.node;
+      const wasFocused = Boolean(cameraRig && cameraRig.state === 'node');
+      hideNodeCard();
+      if (node && wasFocused && filterState.view === 'graph') flyToCluster(getClusterKey(node));
+    };
+
+    // A filter change reframes what is left once it has had a moment to settle (typing debounces through scheduleFit).
+    const reframeAfterFilter = () => {
+      if (filterState.view === 'graph' && !focus.node) scheduleFit(400);
+    };
+
     import('/vendor/three-0.180.0/three.module.js')
       .then(module => {
         THREE = module;
+        if (viewer) viewer.attachDolly(THREE, Graph.scene());
         territories.group = new THREE.Group();
         territories.shellGeometry = new THREE.SphereGeometry(1, 20, 14);
         Graph.scene().add(territories.group);
@@ -3812,18 +3920,21 @@ export default {
     typeFilter.addEventListener('change', () => {
       filterState.type = typeFilter.value || 'all';
       applyGraphFilters();
+      reframeAfterFilter();
     });
 
     const searchInput = document.getElementById('search-input');
     searchInput.addEventListener('input', () => {
       filterState.query = searchInput.value.trim().toLowerCase();
       applyGraphFilters();
+      reframeAfterFilter();
     });
 
     const timeFilter = document.getElementById('time-filter');
     timeFilter.addEventListener('change', () => {
       filterState.horizon = timeFilter.value || 'all';
       applyGraphFilters();
+      reframeAfterFilter();
     });
 
     const clusterToggle = document.getElementById('cluster-toggle');

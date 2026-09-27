@@ -4,6 +4,7 @@
 import { readDocumentTokens } from './tokens.js';
 import { GROUP_KEYS, buildHierarchy, groupColor } from './grouping.js';
 import { closeGroupPicker, createGroupPicker } from './group-picker.js';
+import { CameraRig, createViewer, fitRectDistance, fitSphereDistance, uncoveredTarget } from './camera-rig.js';
 
 window.AetherSpatial = {
   tokens: readDocumentTokens(),
@@ -11,6 +12,11 @@ window.AetherSpatial = {
   buildHierarchy,
   groupColor,
   createGroupPicker,
-  closeGroupPicker
+  closeGroupPicker,
+  CameraRig,
+  createViewer,
+  fitSphereDistance,
+  fitRectDistance,
+  uncoveredTarget
 };
 window.dispatchEvent(new Event('aether-spatial-ready'));

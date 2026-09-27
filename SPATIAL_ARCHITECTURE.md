@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phase 1 shipped (8e8f341); migration 0013 applied to D1; Phase 2 in progress.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-3 shipped. Phase 4 in progress.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -12,6 +12,8 @@ Status: **approved 2026-09-27. Phase 1 shipped (8e8f341); migration 0013 applied
 | D4 | **Keep 3d-force-graph.** 2D mode uses a narrow 12° FOV dolly zoom (near-orthographic), not a true orthographic camera. | 3.2 |
 | D5 | **Preview cards are the production look.** Frosted glass and abstract shapes (cones, cylinders, boxes, spheres, wireframe shells) are dropped. The reference is `mockups/mockup-cards-3d.html`. | 4.3 |
 | D6 | **The portal opens in the Macro view:** a wide shot of the whole cloud, framed to fit. From there, smooth zooms go into filtered views (the Day time filter, or a chosen group). | 2.1, 2.7 |
+| D7 | **WebXR-ready from Phase 3.** Aether's end goal is VR. The camera lives inside a viewer dolly, and the rig outputs viewer poses rather than writing the camera, so headset tracking and the damped animations never fight. | 5 |
+| D8 | **180° spatial gallery** for a focused group (Phase 4): the group's cards leave the cloud and form a curved wall around the viewer. Geometry in section 6, confirmed 2026-09-27. | 6 |
 
 ## 0. Where we are today
 
@@ -183,8 +185,8 @@ stateDiagram-v2
   Group --> Node: tap node
   Macro --> Node: tap node (when nodes are shown) / search result / deep link /node/id
   Node --> Node: tap another node / carousel prev-next
-  Node --> Group: close card / back / Esc
-  Group --> Macro: back / Esc / pinch out past macro threshold / tap empty space
+  Node --> Group: close card (× or swipe down)
+  Group --> Macro: double-tap empty space / pinch out past macro threshold
   Node --> Macro: Reset view
   Macro --> Macro: filter change (Day, platform, search): reframe the filtered set
 ```
@@ -270,7 +272,7 @@ A proxy is a small stack of three offset preview cards, using the face of the gr
 
 ### 2.7 Startup and filtered zooms (D6)
 
-- **On load:** the rig starts at 1.6× the Macro framing distance and eases in to the Macro framing over about 1.2 s once the first layout settles (`onEngineStop`), with idle auto-rotate after that. A deep link (`/node/<id>`) skips Macro and goes straight to Node.
+- **On load:** once the first layout has spread (about 2.2 s), the rig glides in to the Macro framing, then idle auto-rotate takes over. A deep link (`/node/<id>`) skips Macro and goes straight to Node. *As built (Phase 3):* there is no separate 1.6× pre-position, because jumping there before the layout spreads showed as a visible pop; the first glide is the ease-in.
 - **Time filter "Day" (or any filter that shrinks the set):** the rig reframes onto the bounding sphere of the visible nodes. If they all belong to one group, it enters Group state for that group.
 - **Choosing a group** (legend, drawer, or a picker's "Show group" action): Group state for it.
 - **Clearing filters:** back to Macro.
@@ -283,6 +285,9 @@ A proxy is a small stack of three offset preview cards, using the face of the gr
 2. **Arrival** (every channel within 0.5% of its goal and speed below a threshold): copy the rig state into `controls.target`, call `controls.update()`, then `controls.enabled = true`.
 3. **User input during a transition** (`pointerdown` or `wheel` on the canvas): cancel the rig immediately, keeping the current pose, and re-enable controls in the same event.
 4. **Replacements:** `Graph.cameraPosition(...)` calls in `flyToCategory`, `flyToNode` and `resetCameraView` become `rig.goTo({ target, theta?, phi?, distance })`, and `scheduleFit()` becomes a Macro framing goal.
+5. **Poses, not camera writes (D7):** the rig produces `{ position, target }` poses and the viewer adapter (`createViewer` in `camera-rig.js`) applies them. On screens it sets the camera and `controls.target`; the camera's parent dolly stays at the origin, so orbit controls are unaffected. See section 5.
+
+*As built (Phase 3):* gestures are unchanged from today. A single tap on empty canvas still clears the selection without moving the camera, and a double tap frames Macro. Filter changes (time, type, search) reframe the visible set after 400 ms, entering Group state when only one cluster is left. `Graph.cameraPosition` remains only as a fallback for the moment before the spatial modules have loaded.
 
 ## 3. The 2D / 3D mode switcher
 
@@ -362,9 +367,10 @@ public/js/spatial/
   grouping.js     buildHierarchy (pure)                              (Phase 1; hybrid key in Phase 2)
   index.js        entry: exposes window.AetherSpatial                (Phase 1)
   group-picker.js GroupPicker DOM component                          (Phase 2)
-  camera-rig.js   springs, framing maths, state machine              (Phase 3)
+  camera-rig.js   springs, framing maths, rig and WebXR-ready viewer (Phase 3)
   card-faces.js   canvas card drawing and texture atlas              (Phase 4)
   lod.js          semantic zoom and proxies                          (Phase 4)
+  layout-gallery.js  180-degree gallery slots (pure)                 (Phase 4)
   layout-2d.js    grid slots and headers (pure)                      (Phase 5)
 ```
 
@@ -424,11 +430,91 @@ Each phase ships on its own and keeps the app working.
 | --- | --- | --- |
 | **1. Foundations** (shipped) | Self-host and pin three and 3d-force-graph under `public/vendor/`; `public/js/spatial/` with `tokens.js`, `grouping.js` (`category` and `platform` keys) and `index.js`; the page loads the module and takes its link-particle accent from the tokens; a Node vitest project with tests. | The graph looks and behaves the same; no unpkg requests remain; `npm test` covers grouping and tokens. |
 | **2. Groups, tags and semantic mining** (in progress) | Migration 0013; group and tag API; `#hashtag` parsing; miner prompt and parser extended; `/api/remine` backfill; `GroupPicker` on the node card and collection cards; hybrid `group` key as the default layout; live re-cluster; `concept` links. | Reassign a node from a card and watch it glide to its new island; create a group from the picker; the miner fills tags and suggested groups; user choices survive re-mining. |
-| **3. Camera rig and Macro startup** | `camera-rig.js`; Macro, Group and Node states; card-aware offset; startup ease-in to Macro; filtered zooms (Day and group). | The portal opens on the wide cloud; Day and group filters glide the camera; interrupting a flight never jumps; the card never covers the focused node. |
-| **4. Preview cards and semantic zoom** | `card-faces.js`, atlas, instancing, group proxies, LOD blend, 3D picker overlay; remove shapes and territory shells. | 500 nodes at 60 fps on a mid-range phone; zooming out collapses groups into proxies. |
+| **3. Camera rig and Macro startup** (shipped) | `camera-rig.js`; viewer dolly and pose adapter (D7); Macro, Group and Node states; card-aware offset; startup ease-in to Macro; filtered zooms (Day and group). | The portal opens on the wide cloud; Day and group filters glide the camera; interrupting a flight never jumps; the card never covers the focused node; the camera is parented to the dolly. |
+| **4. Preview cards, semantic zoom and 180° gallery** | `card-faces.js`, atlas, instancing, group proxies, LOD blend, 3D picker overlay; `layout-gallery.js` and the gallery transition (section 6); remove shapes and territory shells. | 500 nodes at 60 fps on a mid-range phone; zooming out collapses groups into proxies; focusing a group forms the 180° gallery and leaving it returns the cards to the cloud. |
 | **5. 2D morph** | `layout-2d.js`, 12° dolly-zoom morph, Bézier links, pinned simulation, drag-to-column reassignment. | The toggle morphs both ways in about 0.5 s with no layout pop; switching back restores 3D positions. |
+| **6. WebXR** | "Enter VR" button, XR render loop, dolly-driven poses with comfort rules, controller and hand ray picking, world scale (section 5). | On a Quest-class headset: enter VR, look around the gallery, point at a card and select it, leave VR back to the same view. |
 
-## 5. Still open
+## 5. WebXR readiness (D7)
+
+The goal is that entering VR later changes how poses are applied and how the frame loop runs, and nothing else.
+
+### 5.1 The viewer rig (built in Phase 3)
+
+```
+scene
+ └─ aether-viewer-dolly (Group)      ← the rig moves this in XR
+     └─ camera (PerspectiveCamera)   ← on screens: the rig and orbit controls move this
+                                       in XR: the headset owns this (local transform = head pose)
+```
+
+- **Poses, not camera writes.** `CameraRig` only ever produces `{ position, target }` poses. The viewer adapter decides where they go:
+  - **Screens** (`isPresenting() === false`): the camera takes the pose and the dolly stays at the identity transform. The camera's local transform equals its world transform, so 3d-force-graph's orbit controls, picking and `getGraphBbox` framing all work unchanged.
+  - **XR** (`isPresenting() === true`, Phase 6): `applyPose` refuses camera writes; Phase 6 adds the dolly path below. This is the property that stops headset tracking and the damped animations from fighting: they write different objects.
+- **One source of truth for "where the viewer is"**: the rig's pose. Gallery layout (section 6) and picking read the viewer position from it, never from `camera.position` directly, so both work unchanged when the head moves inside the dolly.
+
+### 5.2 Applying poses in XR (Phase 6)
+
+In XR the rig drives the dolly so that the *head* ends up at the pose. Viewer comfort rules take priority over matching the screen animations exactly:
+
+| Rule | How |
+| --- | --- |
+| Never rotate the view without the user | Only yaw is applied to the dolly, and only as snap turns (30°) or instantly behind a short fade. No pitch or roll ever. |
+| No smooth forced translation | Rig goals that move the viewer more than about 0.5 m become a teleport: 150 ms fade to black, jump, fade in. Small moves (under 0.5 m) may glide slowly (at most 1 m/s, no acceleration spikes). |
+| Content comes to the user | In XR, focusing a group or node moves the *cards* (gallery arc, card slide-forward) instead of flying the viewer. The rig's Node and Group states map to gallery states, not viewer flights. |
+| Stable floor | `local-floor` reference space; the dolly's y stays 0 so the floor is where the user's real floor is. |
+
+The dolly pose is `dolly.position = pose.position − (head position within the dolly, horizontal part)`, with yaw from the pose's viewing direction, so the head lands where the pose says without overriding the user's own head movement.
+
+### 5.3 Frame loop
+
+WebXR frames must be rendered from `renderer.setAnimationLoop()` (the XR session's frame callback), while 3d-force-graph renders from its own `requestAnimationFrame` loop. Phase 6 starts with a spike to check whether it is enough to pause the library's loop (`Graph.pauseAnimation()`) and render the scene from our own `setAnimationLoop` callback, stepping the force engine and controls ourselves. If the library cannot be driven that way, Phase 6 replaces its renderer with our own (the "own renderer plus `d3-force-3d`" option in section 4.2). The Phase 3 rig already runs from its own `requestAnimationFrame` step, which moves into the XR loop unchanged.
+
+### 5.4 Input, scale and legibility
+
+- **Picking:** controller rays and hand-tracking pinch rays go through the same raycast path as the mouse. Select = trigger or pinch; hover = ray over a card for 150 ms.
+- **Group picker in VR:** the DOM picker cannot render in XR, so Phase 6 draws the same list as a 3D panel beside the focused card (same data and `onChoose` callbacks).
+- **World scale:** graph units are arbitrary (clusters are hundreds of units apart). In XR, one scale factor on the scene content maps a focused card to about 0.6 m wide at a 2 m radius. The rig's distances are defined per mode, so screen framing is unaffected.
+- **Legibility:** the focused card's face is re-rendered at 1024×640 in XR; cards in the gallery use 512×320.
+- **Entering VR:** show "Enter VR" only when `navigator.xr.isSessionSupported('immersive-vr')` resolves true. The portal stays fully usable without it.
+
+## 6. The 180° spatial gallery (D8, Phase 4)
+
+**Status: confirmed 2026-09-27** (half cylinder, up to 3 rows, drag-to-pan on screens, spring-in and spring-out).
+
+When a group is focused in 3D (Group state, and Node state inside it), its cards leave the force cloud and form a curved gallery wall: a half cylinder centred on the viewer, at eye level, every card facing the viewer. Macro keeps the cloud; 2D mode keeps the grid (section 3.3). The same geometry works on screens and in VR, because it is defined around the viewer pose (section 5.1).
+
+### 6.1 Geometry (`layout-gallery.js`, pure)
+
+Given the viewer position `V`, the horizontal forward vector `f`, right vector `r` and world up `u` (all from the rig pose), and `n` cards of size `w × h`:
+
+```
+perRow   = min(n, maxPerRow)                      maxPerRow = 9 on screens, 11 in XR
+rows     = min(ceil(n / perRow), 3)               more cards page sideways (6.3)
+R        = clamp(perRow · (w + gapX) / π, R_min, R_max)
+α_i      = −π/2 + (i + 0.5) · π / perRow          i = column in the row, spanning −90°..+90°
+y_k      = (k − (rows − 1) / 2) · (h + gapY)       k = row, centred on eye level
+P_ik     = V + R · (cos α_i · f + sin α_i · r) + y_k · u
+yaw_ik   = card faces V: look-at from P_ik to (V.x, P_ik.y, V.z)
+```
+
+- The arc length per slot, `πR / perRow`, is at least `w + gapX`, so cards never overlap. `R` grows with the row count until `R_max`; past that, extra cards page.
+- Order: most recent first from the left (`α = −90°`), or the board order when the gallery opens from Board view.
+- In VR: `R_min` = 1.6 m and `R_max` = 3.0 m (a comfortable reading distance), and eye level comes from the head height.
+
+### 6.2 Viewing it on screens
+
+A screen's horizontal field of view (about 70°-100°) cannot show the full 180° at once. On screens the camera stands at `V`, pulled back by `0.35 R` along `−f` so the front third of the arc fills the view. Dragging horizontally yaws the view around `V` (orbit controls with `target = V` and polar angle locked to the horizon), which looks along the wall. In VR the user simply turns their head.
+
+### 6.3 Transitions
+
+- **Enter gallery (Group focus):** each card springs from its cloud position to its arc slot. It uses the same critically damped spring as the camera (smoothTime 0.45 s), staggered by 20 ms from the centre outwards. At the same time the rest of the cloud dims and recedes (it is not hidden, so context stays visible).
+- **Focus a card (Node state):** the card slides toward the viewer by `0.25 R` and scales 1.15, as in the cards mockup. The node card panel (screens) or 3D panel (XR) opens beside it.
+- **Leave the gallery:** cards spring back to their live force-layout positions; the simulation keeps running underneath, so there is no pop.
+- **Paging:** past `3 × maxPerRow` cards, the gallery rotates by one page width, a yaw of the card ring around `V`, never a rotation of the viewer (XR comfort rule, section 5.2).
+- **Reduced motion:** cards cross-fade into their slots instead of flying.
+
+## 7. Still open
 
 - **Group colours:** groups hash into the existing category palette. If users want to pick colours, add `color` to `node_groups` in Phase 2.
 - **Group limit:** when the miner proposes more than about 30 AI groups for a user, merge the smallest ones into their nearest neighbour by shared tags, or leave them? Decide after seeing real Phase 2 output.
