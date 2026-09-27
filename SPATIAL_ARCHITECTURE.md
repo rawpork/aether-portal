@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phases 1-3 and 4a shipped. Phase 4b next.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-3 and 4a shipped, plus hotfixes. Phase 4b in progress; Phase 7 (Agentic Synthesis) specified.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -13,7 +13,8 @@ Status: **approved 2026-09-27. Phases 1-3 and 4a shipped. Phase 4b next.** This 
 | D5 | **Preview cards are the production look.** Frosted glass and abstract shapes (cones, cylinders, boxes, spheres, wireframe shells) are dropped. The reference is `mockups/mockup-cards-3d.html`. | 4.3 |
 | D6 | **The portal opens in the Macro view:** a wide shot of the whole cloud, framed to fit. From there, smooth zooms go into filtered views (the Day time filter, or a chosen group). | 2.1, 2.7 |
 | D7 | **WebXR-ready from Phase 3.** Aether's end goal is VR. The camera lives inside a viewer dolly, and the rig outputs viewer poses rather than writing the camera, so headset tracking and the damped animations never fight. | 5 |
-| D9 | **Hubs stand out.** Highly connected cards scale up (1.0× standard, up to 1.35× for the biggest hubs) and carry a soft shadow aura that deepens with connectivity. There is no coloured glow, per DESIGN.md. Phase 4b. | 2.9 |
+| D9 | **Hubs stand out.** Highly connected cards scale up (1.0× standard, up to 1.35× for the biggest hubs) and radiate a subtle glow in their category colour that grows with connectivity (DESIGN.md glow exception, approved 2026-09-27). Phase 4b. | 2.9 |
+| D10 | **Aether is an Agentic Synthesis Engine, not only a visualiser.** A subconscious synthesis layer in the background miner detects high-value patterns across the user's saves and spawns **Outcome Nodes**: AI-generated, executable workflows or action plans (Input A + Input B → Outcome C). Outcomes are the ultimate hero hubs (gold glow) and the pre-packaged blueprints the user can push to Finish Line. Proposals only: nothing runs or leaves Aether without the user. | 8 |
 | D8 | **180° spatial gallery** for a focused group (Phase 4): the group's cards leave the cloud and form a curved wall around the viewer. Geometry in section 6, confirmed 2026-09-27. | 6 |
 
 ## 0. Where we are today
@@ -109,6 +110,7 @@ The existing single batched Gemini call in `buildMinerPrompt()` is extended, not
   ```
 - **`parseMinerResponse()` adds** validation for tags (lowercase, trimmed, 2-40 characters, deduplicated, at most 5) and group names (1-40 characters). A new group name that appears for fewer than 2 nodes is dropped.
 - **Writes:** miner tags replace the node's previous miner tags (user tags untouched). The group is applied only where `group_source` is NULL or `'ai'`.
+- **Synthesis pass (D10, section 8):** after the batch is written, the same cron run looks for high-value cross-group patterns and may spawn up to 2 Outcome Nodes per user per day. It is a second, separate Gemini call that only runs when candidate patterns pass the local scoring in section 8.2.
 - **Backfill:** nodes analysed before this change have `ai_processed_at` set, so the cron skips them. A one-off admin endpoint, `POST /api/remine?cursor=N`, pages through them in miner-sized batches, using the same paging pattern as `/api/recluster`.
 
 Edges keep their current rules. Tags add a second source of links: two nodes sharing a miner tag with weight at least 0.6 get a `concept` link, capped at 3 per node, drawn like `semantic` links.
@@ -295,7 +297,7 @@ A proxy is a small stack of three offset preview cards, using the face of the gr
 
 ### 2.9 Hub weighting (D9, Phase 4b)
 
-Highly connected cards read as more important at a glance, through size and a shadow aura. There is no coloured glow: DESIGN.md bans glows and halos, and teal stays reserved for focus.
+Highly connected cards read as more important at a glance, through size and a glow in their category colour (DESIGN.md glow exception). Teal stays reserved for focus.
 
 **Weight.** Computed from the visible links whenever the filters or links change (`applyGraphFilters`), never per frame:
 
@@ -309,9 +311,7 @@ The log keeps one giant hub from flattening everyone else. Because the weight is
 
 **Hero scaling.** `scale = 1 + 0.35 · smoothstep(0.15, 1, weight)`: standard cards stay at 1.0×, and the top hub reaches 1.35×. It multiplies with the hover and focus scale and animates on the same damped channel, so re-ranking after a filter change eases rather than pops. The collision radius grows with the scale, so big hubs push their neighbours back rather than overlapping them.
 
-**Aura (shadow, not glow).** Cards with a weight above 0.35 get:
-- **A soft under-shadow:** a blurred, dark (`#000`, normally blended, never additive) plate behind the card, offset slightly down and back. Its size is 1.15-1.35× the card and its opacity 0.25-0.6, both rising with weight. It lifts the card off the canvas the way a raised object would.
-- **A second hairline:** the top 10% by weight get an outer hairline 0.6 units outside the card edge, white at 0.12-0.2 opacity, like a mount around a print. Teal still only appears on focus.
+**Hub glow.** Cards with a weight above 0.35 get a soft halo behind the card in their category colour (the legend colour; rainbow mode uses the card's hue). The halo is one additive sprite with a radial falloff, 1.4-1.9× the card's size, at opacity 0.12-0.45 rising with weight. It never uses teal, fades out with dimming, and sits behind the card so text contrast is unaffected. Outcome Nodes (section 8) use Outcome Gold at up to 0.7 opacity with a slow 4 s breathing pulse, and always take the maximum hero scale.
 
 **Where it applies.** Macro and Group views, 2D mode, and group proxies (a proxy's aura comes from its group's summed degree). In the 180° gallery, cards keep uniform size, so the arc spacing stays exact, but keep their aura, so hubs are still visible on the wall. Dimmed cards fade their aura along with the card.
 
@@ -462,6 +462,7 @@ Each phase ships on its own and keeps the app working.
 | **4a. Preview cards and 180° gallery** (shipped) | `card-faces.js`, `card-nodes.js` (card meshes, 64-texture budget with shared low-detail faces, damped hover/focus/dim, lazy turn to the viewer, collision spacing), `layout-gallery.js` and the gallery transition (section 6); shapes and territory shells removed. | Every node is a preview card; opening a group forms the 180° gallery and closing it returns the cards to the cloud; focused cards land clear of open panels. |
 | **4b. Semantic zoom, hub weighting and batching** | Hub weighting (section 2.9); group proxies and the LOD blend (sections 2.4-2.5); the 3D-card group picker overlay; `InstancedMesh` for distant cards; a 2048² face atlas. | Hubs are recognisable at a glance in Macro and Group views; 500 nodes at 60 fps on a mid-range phone; zooming out collapses groups into proxies. |
 | **5. 2D morph** | `layout-2d.js`, 12° dolly-zoom morph, Bézier links, pinned simulation, drag-to-column reassignment. | The toggle morphs both ways in about 0.5 s with no layout pop; switching back restores 3D positions. |
+| **7. Agentic synthesis** (after 4b; can be scheduled before 5 and 6) | Migration 0014 (outcomes); candidate pattern scoring; the synthesis Gemini call and validator; Outcome Node creation with synthesis links; Outcome card face and node-card plan view; Accept / Dismiss / Regenerate; Finish Line export (section 8). | The daily run turns a real cross-group pattern into a cited, step-by-step plan the user can accept, dismiss or push to Finish Line; dismissed patterns do not come back; no Outcome is created without passing validation. |
 | **6. WebXR** | "Enter VR" button, XR render loop, dolly-driven poses with comfort rules, controller and hand ray picking, world scale (section 5). | On a Quest-class headset: enter VR, look around the gallery, point at a card and select it, leave VR back to the same view. |
 
 ## 5. WebXR readiness (D7)
@@ -554,7 +555,80 @@ A screen's horizontal field of view (about 70°-100°) cannot show the full 180�
 - **Depth:** the graph camera's far plane is 125000, so the face (0.02 in front of the body) and the outline could not be separated by the depth buffer at a distance and flickered. The face and body use polygon offsets (face 1/4, body 2/8) so outline over face over body holds at any distance.
 - **Dragging:** the library's node dragging is off. It grabbed any press on a card and switched the orbit controls off, which froze gallery swipes; cards are placed by the card field every frame anyway. Board view's own drag is unaffected.
 
-## 7. Still open
+## 8. Agentic Synthesis Engine (D10)
+
+Aether's core value is not the map; it is what the map lets an AI notice. The background miner acts as a subconscious "big brain". It keeps reading everything the user saves, and when saves from different areas add up to something actionable, it writes that action down as an **Outcome Node**.
+
+> Example: saves about **AI video tools**, **SEO for YouTube** and **lead-gen landing pages** become the Outcome *"Launch an AI-video lead magnet funnel"*: a 7-step plan that cites the saves it came from.
+
+### 8.1 Principles
+
+- **Synthesis, not similarity.** Clustering finds what is alike; synthesis finds what *combines*. The strongest candidates join 2-4 different groups or tag families that the user has been saving into recently.
+- **Proposals only.** An Outcome is a suggestion. Nothing is executed, sent or shared until the user acts: Accept, Dismiss, Regenerate or Send to Finish Line.
+- **Every claim is cited.** Each step of a plan names the input saves it relies on. A plan that cannot be traced back to the user's own saves is rejected by the validator.
+- **Scarce and high-value.** At most 2 new Outcomes per user per day, and none when nothing scores high enough. Dismissed patterns are remembered and not proposed again.
+
+### 8.2 Pattern detection (local, no AI)
+
+Runs after the daily miner has written tags, groups and edges (section 1.5), over the user's last 60 days of saves:
+
+1. **Candidate bundles:** connected sets of 3-12 nodes (over `ai`, `concept` and `semantic` links) that span **at least 2 groups or tag families**.
+2. **Score** = diversity (distinct groups spanned, capped at 4) × strength (mean link weight inside the bundle) × recency (half-life 14 days on `created_at`) × novelty (1 unless the bundle overlaps an existing or dismissed Outcome's inputs by more than 60%, then 0).
+3. The top 8 bundles by score, above a minimum score, go to the synthesis call. If none qualify, there is no Gemini call.
+
+### 8.3 The synthesis call (Gemini)
+
+One structured call per user per run. It is given the candidate bundles (titles, snippets, tags, group names) and the Blueprint template types from `TODO.md` (Project Setup, SOP, Content Creation, Ad Creation, Website Creation). It returns at most 2 Outcomes:
+
+```json
+{"outcomes":[{
+  "bundle": 3,
+  "template": "content_creation",
+  "title": "Launch an AI-video lead magnet funnel",
+  "why": "You have been saving AI video tools, YouTube SEO and landing-page lead capture in the same fortnight.",
+  "goal": "One short-form AI video series that drives sign-ups to a lead magnet.",
+  "steps": [{"title": "Pick the lead magnet", "detail": "...", "inputs": [0, 4]}],
+  "effort": "about 2 weekends"
+}]}
+```
+
+**The validator** (pure, unit-tested, like `parseMinerResponse`) enforces:
+- the `bundle` index must exist;
+- the template must be one of the known types;
+- title 1-120 characters, and 3-10 steps;
+- every step cites at least one input index from its bundle;
+- lengths are clamped.
+
+Any failure drops that Outcome. Partial results are allowed.
+
+### 8.4 Data model (migration 0014, Phase 7)
+
+- **Outcome Nodes are ordinary `saved_nodes` rows** with `category = 'outcome'`. They inherit the graph, search, filters, cards, groups, gallery and Board for free. The `url` column holds a stable `aether:outcome/<id>` reference, the `description` the "why", and `content` the plan as JSON (goal, steps with cited inputs, effort, template).
+- **New columns on `saved_nodes`:** `outcome_status` (`proposed` | `accepted` | `dismissed` | `sent`) and `outcome_fingerprint` (a hash of the sorted input ids, used for novelty and dismiss memory).
+- **Provenance:** the new table `outcome_inputs (outcome_id, node_id, user_id)` holds the inputs. `/api/graph` draws them as **synthesis** links (gold hairlines, weight 1.0 in hub weighting).
+- **User control:** Accept sets `accepted` (the miner never rewrites an accepted Outcome). Dismiss sets `dismissed`, hides it, and keeps the fingerprint so the pattern is not re-proposed. Regenerate asks for a new plan for the same bundle.
+
+### 8.5 How Outcomes look and behave
+
+- **Hero hub by definition:** always the maximum hero scale (1.35×), with the Outcome Gold glow and breathing pulse (DESIGN.md glow exception).
+- **Placement:** an Outcome's layout anchor is the centroid of its inputs' cluster anchors, so it sits *between* the islands it bridges, with gold synthesis links reaching into each.
+- **Card face:** a distinct Outcome template with a gold border, an "OUTCOME ✦" badge, the goal line, the step count and effort, and chips for the input groups.
+- **Node card:** shows the plan as a numbered checklist. Each step's cited inputs are tappable, and tapping one flies to that save. Actions: Accept, Dismiss, Regenerate, Send to Finish Line.
+- **Startup scope and semantic zoom:** new `proposed` Outcomes always appear, even outside the current time span, so the user never misses a fresh synthesis.
+
+### 8.6 The bridge to Finish Line
+
+Outcomes are the pre-packaged blueprints the user manifests in the Finish Line app. "Send to Finish Line" exports a versioned blueprint:
+
+```json
+{"schema": "aether.blueprint/1", "template": "content_creation", "title": "...", "goal": "...",
+ "steps": [{"title": "...", "detail": "...", "sources": [{"title": "...", "url": "..."}]}],
+ "created": "2026-09-27T00:00:00Z", "outcome_id": "node_..."}
+```
+
+The transport (API endpoint, share link or file) is decided with the Finish Line hand-off work already in `TODO.md`. Sending sets `outcome_status = 'sent'`. Aether never pushes anything on its own.
+
+## 9. Still open
 
 - **Group colours:** groups hash into the existing category palette. If users want to pick colours, add `color` to `node_groups` in Phase 2.
 - **Group limit:** when the miner proposes more than about 30 AI groups for a user, merge the smallest ones into their nearest neighbour by shared tags, or leave them? Decide after seeing real Phase 2 output.

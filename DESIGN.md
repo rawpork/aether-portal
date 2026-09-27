@@ -1,7 +1,7 @@
 # UI/UX ARCHITECTURE & DESIGN DIRECTIVES
 
 ## Persona & Standard
-Act as a Principal UI/UX Designer at Apple. Every component, interface layout, and interaction must adhere strictly to Apple Human Interface Guidelines (HIG). Eliminate "AI aesthetic slop": no rounded floating container-in-container layouts, no glows, no backdrop blur, and no fluff text.
+Act as a Principal UI/UX Designer at Apple. Every component, interface layout, and interaction must adhere strictly to Apple Human Interface Guidelines (HIG). Eliminate "AI aesthetic slop": no rounded floating container-in-container layouts, no decorative glows (the 3D graph's meaning-carrying hub and Outcome glows are the one exception, see "Glow exception"), no backdrop blur, and no fluff text.
 
 Aether has two visual systems that share one structure:
 
@@ -23,7 +23,7 @@ New screens use the main portal system unless they are a quick-capture flow like
 - Corners: Never above 8px. `6px` for controls, chips and inner surfaces; `8px` for panels, sheets and primary buttons; `4px` for small tags, badges and segments inside a segmented control. Only data markers stay round: category dots, timeline dots and drag handles.
 - Borders: 1px hairlines, `rgba(255, 255, 255, 0.08)`.
 - No `backdrop-filter` blur anywhere. Floating panels are solid.
-- No glows (coloured `box-shadow` halos) and no large decorative drop shadows. A small shadow is allowed only for real stacking: a card being dragged, or cards stacked in the carousel.
+- No glows (coloured `box-shadow` halos) and no large decorative drop shadows. A small shadow is allowed only for real stacking: a card being dragged, or cards stacked in the carousel. **One exception:** the main portal's 3D graph glows its hub cards and AI Outcome Nodes (see System 2, "Glow exception").
 - Interactive Targets: Minimum 44x44pt hit area for every clickable or touchable element. When the visible control should be smaller (a 32px chip), keep the 44pt element and draw the visible shape with a `::before` inset, instead of shrinking the hit area.
 - Horizontal rows (chip ribbons, segmented bars): scroll sideways, hide the scrollbar (`scrollbar-width: none` plus `::-webkit-scrollbar { display: none }`), and use `scroll-behavior: smooth`.
 
@@ -74,6 +74,15 @@ Where the teal goes, and nowhere else:
 - Headings of panels and drawers, "Open" links, and focused inputs (`--accent-line` border).
 
 Ordinary buttons, inputs and chips are navy `--bg-raised` with a hairline, not teal outlines. The `--active-fill` gradient is a flat tinted fill: never animate it, never add a glow to it, and never use it on large areas.
+
+### Glow exception (main portal 3D graph only, approved 2026-09-27)
+
+Glow is allowed in exactly two places, both in the 3D graph and both carrying meaning:
+
+- **Hub glow:** cards whose connection weight passes the hub threshold radiate a soft halo in their **category colour**. It is subtle: a radial falloff behind the card, at most 45% opacity, growing with weight. It works alongside hero scaling (up to 1.35×), never replacing it.
+- **Outcome glow:** AI-generated Outcome Nodes glow **Outcome Gold `#ffb627`**, stronger than any hub (up to 70% opacity), with a slow 4-second breathing pulse. The pulse is static under reduced motion. Gold alone cannot be unique next to the dev_task yellow in the category palette, so outcomes are also marked by an OUTCOME badge and a gold card border.
+
+Still banned everywhere else: glows on DOM elements (buttons, panels, chips, focus rings), teal glows (teal remains the flat selection accent), glow on dimmed cards (it fades with them), and bloom or post-processing passes. The halo is a single additive sprite per card, not a screen effect.
 
 Data colours stay as they are and are not accents: category colours on graph nodes, category tags, legend dots and board column tops; the yellow Note and red Transcript sections on the node card; the Google sign-in button stays white in Google's own style.
 
