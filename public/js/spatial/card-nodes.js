@@ -294,9 +294,17 @@ export function createCardField({ THREE, reducedMotion = false }) {
   // ---- 180-degree gallery ----
 
   // ids in display order; origin is the gallery centre (the viewer's standpoint) and yaw its facing (0 = -Z).
-  function enterGallery(ids, { origin, yaw, minRadius = 18 }) {
+  // centerId, when given, takes the slot straight ahead on the middle row (swapping with whoever had it).
+  function enterGallery(ids, { origin, yaw, minRadius = 18, centerId = null }) {
     const members = ids.map(id => cards.get(String(id))).filter(Boolean);
     const layout = galleryLayout(members.length, { cardWidth: CARD_WIDTH, cardHeight: CARD_HEIGHT, minRadius });
+    const centerIndex = centerId === null ? -1 : members.findIndex(card => card.id === String(centerId));
+    if (centerIndex >= 0) {
+      const front = layout.slots
+        .filter(slot => slot.page === 0)
+        .reduce((best, slot) => (Math.abs(slot.angle) + Math.abs(slot.local.y) * 0.01 < Math.abs(best.angle) + Math.abs(best.local.y) * 0.01 ? slot : best));
+      [members[centerIndex], members[front.index]] = [members[front.index], members[centerIndex]];
+    }
     const order = layout.slots.map((slot, index) => ({ index, spread: Math.abs(slot.angle) })).sort((a, b) => a.spread - b.spread);
     const rank = new Map(order.map((item, position) => [item.index, position]));
     cards.forEach(card => { card.gallery.goal = 0; });
@@ -424,6 +432,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     getGallery: () => gallery,
     setGallerySlide: units => { gallerySlide = Number.isFinite(units) ? Math.max(0, units) : null; },
     size: () => cards.size,
+    has: id => cards.has(String(id)),
     stats: () => {
       const tiers = { near: 0, far: 0, plain: 0 };
       cards.forEach(card => { tiers[card.tier]++; });

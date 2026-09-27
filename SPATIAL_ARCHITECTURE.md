@@ -273,6 +273,7 @@ A proxy is a small stack of three offset preview cards, using the face of the gr
 
 ### 2.7 Startup and filtered zooms (D6)
 
+- **After adding a card** (Add Node, or the share sheet's View Node link): skip Macro. The portal switches to the graph if needed and opens the new card's group straight into the 180° gallery, with the new card in the centre slot of the middle row, focused and with its node card open. In 2D mode, or before the cards have loaded, it falls back to the plain Node close-up.
 - **On load:** once the first layout has spread (about 2.2 s), the rig glides in to the Macro framing, then idle auto-rotate takes over. A deep link (`/node/<id>`) skips Macro and goes straight to Node. *As built (Phase 3):* there is no separate 1.6× pre-position, because jumping there before the layout spreads showed as a visible pop; the first glide is the ease-in.
 - **Time filter "Day" (or any filter that shrinks the set):** the rig reframes onto the bounding sphere of the visible nodes. If they all belong to one group, it enters Group state for that group.
 - **Choosing a group** (legend, drawer, or a picker's "Show group" action): Group state for it.

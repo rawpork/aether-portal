@@ -3004,7 +3004,7 @@ export default {
       clusterCards.replaceChildren(...nodes.map(buildMiniCard));
     };
 
-    const openClusterDrawer = key => {
+    const openClusterDrawer = (key, options = {}) => {
       const changed = drawerCluster !== key;
       drawerCluster = key;
       drawerDot.style.background = getClusterColor(key);
@@ -3021,7 +3021,9 @@ export default {
       legend.style.display = 'none';
       if (!gallery || gallery.key !== key) {
         if (gallery) exitGallery();
-        enterGallery(key);
+        enterGallery(key, options.centerId || null);
+      } else if (options.centerId) {
+        refreshGallery(options.centerId);
       }
     };
 
@@ -3744,15 +3746,25 @@ export default {
       };
     };
     const galleryIds = key => getClusterNodes(key).filter(node => Number.isFinite(node.x)).map(node => node.id);
-    const enterGallery = key => {
-      if (!cardField || filterState.flat || filterState.view !== 'graph') return;
+    // Centre of a cluster: the island label's, or the members' own centroid for a cluster that has no label position
+    // yet (a brand-new group).
+    const getClusterCenter = key => {
       const entry = territories.entries.get(key);
+      if (entry && entry.center) return { ...entry.center };
+      const nodes = getClusterNodes(key).filter(node => [node.x, node.y, node.z].every(Number.isFinite));
+      if (!nodes.length) return null;
+      const center = { x: 0, y: 0, z: 0 };
+      nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z; });
+      return { x: center.x / nodes.length, y: center.y / nodes.length, z: center.z / nodes.length };
+    };
+    const enterGallery = (key, centerId = null) => {
+      if (!cardField || filterState.flat || filterState.view !== 'graph') return;
       const ids = galleryIds(key);
-      if (!entry || !entry.center || !ids.length) return;
-      const origin = { ...entry.center };
+      const origin = getClusterCenter(key);
+      if (!origin || !ids.length) return;
       const camera = Graph.camera().position;
       const yaw = window.AetherSpatial.yawToward(camera, origin);
-      const placed = cardField.enterGallery(ids, { origin, yaw });
+      const placed = cardField.enterGallery(ids, { origin, yaw, centerId });
       gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids };
       Graph.linkVisibility(link => !gallery || !(gallery.ids.has(linkEndId(link.source)) || gallery.ids.has(linkEndId(link.target))));
       if (territories.group) territories.group.visible = false;
@@ -3762,14 +3774,14 @@ export default {
       cameraGoTo({ ...galleryPose(yaw, (1 + GALLERY_STANDOFF) * placed.radius), state: 'group', detail: key });
     };
     // Filters or group changes while the gallery is open re-slot its cards without moving the camera.
-    const refreshGallery = () => {
+    const refreshGallery = (centerId = null) => {
       if (!gallery) return;
       const ids = galleryIds(gallery.key);
       if (!ids.length) {
         exitGallery();
         return;
       }
-      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw });
+      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId });
       gallery.ids = placed.ids;
       gallery.radius = placed.radius;
     };
@@ -3782,6 +3794,28 @@ export default {
       lockGalleryControls(false);
       if (territories.group) territories.group.visible = !focus.node;
       if (filterState.view === 'graph') flyToCluster(key);
+    };
+
+    // Post-creation framing: a card that was just added (Add Node, or the share sheet's View Node link) opens straight
+    // into its group's 180-degree gallery, centred on the wall and focused, rather than the whole graph. It waits up to
+    // 2 s for the graph to build the card and give it a position; in 2D, or before the cards load, it falls back to the
+    // plain close-up.
+    const focusNewNode = id => {
+      if (filterState.view !== 'graph') setView('graph');
+      const started = performance.now();
+      const attempt = () => {
+        const node = Graph.graphData().nodes.find(item => String(item.id) === String(id));
+        const placed = node && [node.x, node.y, node.z].every(Number.isFinite);
+        const ready = placed && (!cardField || cardField.has(node.id));
+        if (!ready) {
+          if (performance.now() - started < 2000) requestAnimationFrame(attempt);
+          else if (placed) selectNode(node, { fly: true });
+          return;
+        }
+        if (cardField && !filterState.flat) openClusterDrawer(getClusterKey(node), { centerId: node.id });
+        selectNode(node, { fly: true });
+      };
+      requestAnimationFrame(attempt);
     };
 
     // Closing the card steps back out from Node to the node's cluster (Group state).
@@ -3993,9 +4027,10 @@ export default {
       const node = findShown();
       if (!node) return;
       selectNode(node);
-      // The layout has no positions yet on first load; fly once it has spread, if the card is still open.
+      // The layout has no positions yet on first load; once it has spread, open the node's group gallery around it
+      // (if the card is still open).
       setTimeout(() => {
-        if (focus.node === node && filterState.view === 'graph') flyToNode(node);
+        if (focus.node === node) focusNewNode(node.id);
       }, FIT_SETTLE_MS);
     };
 
@@ -4574,11 +4609,7 @@ export default {
         // Active filters (type, time, search, Hide Unlinked) may hide the new node; clear them so it shows.
         if (!Graph.graphData().nodes.some(item => item.id === node.id)) resetFilters();
         closeAddNodeModal();
-        // Let the simulation settle the node briefly before framing it.
-        setTimeout(() => {
-          const live = Graph.graphData().nodes.find(item => item.id === node.id);
-          if (live) selectNode(live, { fly: true });
-        }, 600);
+        focusNewNode(node.id);
       } catch (err) {
         console.error('Create failed:', err);
         addNodeError.textContent = err.message || 'Create failed.';
