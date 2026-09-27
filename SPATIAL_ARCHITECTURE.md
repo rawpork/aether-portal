@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phases 1-4 shipped (4b: hero scaling, hub glow, group proxies and LOD). Next: Phase 5 (2D morph) or Phase 7 (Agentic Synthesis).** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-4 and 7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 7: Agentic Synthesis and Outcome Nodes). Next: Phase 5 (2D morph).** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -646,6 +646,15 @@ Outcomes are the pre-packaged blueprints the user manifests in the Finish Line a
 ```
 
 The transport (API endpoint, share link or file) is decided with the Finish Line hand-off work already in `TODO.md`. Sending sets `outcome_status = 'sent'`. Aether never pushes anything on its own.
+
+### 8.7 As built (Phase 7)
+
+- **Where it runs:** the daily cron runs synthesis for each user right after that user's miner pass. A failure is logged and never blocks mining. Settings → **✦ Synthesize Outcomes Now** (admin token) runs the same pass on demand through `POST /api/synthesize`, which pages through users like the other admin batches.
+- **Plan storage:** the plan JSON lives in its own `outcome_plan` column (not `content`), so the existing content, search and preview paths never see it. Outcome rows and their `aether:` urls are left out of mining, remining and link previews.
+- **Budget:** "at most 2 per day" counts the Outcomes created in the last 24 hours, so a manual run after the cron can't go over it. Every earlier Outcome (including dismissed ones) feeds the novelty check.
+- **Routes:** `POST /api/outcome/<id>/regenerate` re-prompts with the same input bundle (refused once accepted). `GET /api/outcome/<id>/blueprint` returns the `aether.blueprint/1` JSON. `PATCH /api/node/<id>` with `outcome_status` handles Accept, Dismiss and Sent.
+- **Gallery:** focusing an Outcome opens its own gallery (key `outcome:<id>`): the Outcome plus the saves it cites. Tapping a citation chip flies to that save without leaving the gallery.
+- **Export transport:** for now, "Export blueprint" downloads `aether-blueprint-<id>.json` and also copies it to the clipboard when the browser allows. The status then changes to `sent`. A direct Finish Line endpoint can replace this later without changing the schema.
 
 ## 9. Still open
 

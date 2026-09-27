@@ -1,6 +1,7 @@
 import { cleanLinkUrl, fallbackLinkTitle, fetchLinkMetadata, getYouTubeVideoId } from "./metadata.js";
 import { MINER_BATCH_SIZE, MINER_CONTEXT_SIZE, buildMinerPrompt, parseMinerResponse } from "./miner.js";
 import { GROUP_NAME_MAX, buildConceptLinks, ensureGroup, listGroups, loadNodeTags, normalizeGroupName, saveUserTags } from "./groups.js";
+import { MAX_OUTCOMES_PER_DAY, OUTCOME_CATEGORY, OUTCOME_STATUSES, buildSynthesisPrompt, findCandidateBundles, parseSynthesisResponse, readPlan, toBlueprint, topicFamily } from "./synthesis.js";
 import { buildTranscriptSynopsisPrompt, buildVideoSynopsisPrompt, fetchYouTubeTranscript } from "./transcript.js";
 import { WebFetchError, fetchWebContent } from "./webfetch.js";
 import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
@@ -100,8 +101,14 @@ export default {
       if (auth.error) return auth.error;
       try {
         const { results } = await env.DB.prepare(
-          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript, content IS NOT NULL AS has_content, group_id, group_source FROM saved_nodes WHERE user_id = ?"
+          "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript, content IS NOT NULL AS has_content, group_id, group_source, outcome_status, outcome_plan FROM saved_nodes WHERE user_id = ? AND NOT (category = 'outcome' AND outcome_status = 'dismissed')"
         ).bind(auth.user.id).all();
+        let outcomeInputs = new Map();
+        try {
+          outcomeInputs = await loadOutcomeInputs(env, auth.user.id);
+        } catch (err) {
+          console.error("Outcome input lookup failed:", err);
+        }
         let groups = [];
         let tagsByNode = new Map();
         try {
@@ -136,12 +143,18 @@ export default {
             has_content: Boolean(node.has_content),
             group_id: node.group_id || null,
             group_source: node.group_source || null,
-            tags: tagsByNode.get(node.id) || []
+            tags: tagsByNode.get(node.id) || [],
+            ...(category === OUTCOME_CATEGORY ? {
+              outcome_status: node.outcome_status || "proposed",
+              outcome_plan: readPlan(node.outcome_plan),
+              outcome_inputs: outcomeInputs.get(node.id) || []
+            } : {})
           };
         });
 
         const links = buildGraphLinks(nodes);
         links.push(...buildConceptLinks(nodes.map(node => node.id), tagsByNode, links));
+        links.push(...buildSynthesisLinks(nodes));
         mergeMinedEdges(links, nodes, await loadMinedEdges(env, auth.user.id));
         return jsonResponse({ nodes, links, groups });
       } catch (e) {
@@ -260,7 +273,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, user_id, title, url, category, user_note, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id IS NOT NULL AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, user_id, title, url, category, user_note, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id IS NOT NULL AND (category IS NULL OR category != 'outcome') AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, REMINE_BATCH_SIZE).all();
         const rows = results || [];
         const byUser = new Map();
@@ -285,6 +298,86 @@ export default {
       } catch (err) {
         console.error("Remine Error:", err);
         return jsonResponse({ error: "Remine failed." }, 500);
+      }
+    }
+
+    // Endpoint 3d: Run the synthesis pass now (it also runs after the daily miner). Admin-only; pages through users with
+    // ?cursor=<offset>, a few per request, each capped at MAX_OUTCOMES_PER_DAY new outcomes per day.
+    if (url.pathname === "/api/synthesize") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      if (!isAuthorizedAdmin(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+      if (!env.GEMINI_API_KEY) {
+        return jsonResponse({ error: "Gemini API key is missing." }, 500);
+      }
+      try {
+        const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
+        const { results } = await env.DB.prepare(
+          "SELECT user_id FROM saved_nodes WHERE user_id IS NOT NULL GROUP BY user_id ORDER BY user_id LIMIT ? OFFSET ?"
+        ).bind(MINER_USERS_PER_RUN, cursor).all();
+        const users = results || [];
+        let created = 0;
+        const report = [];
+        for (const { user_id: userId } of users) {
+          const result = await synthesizeForUser(env, userId);
+          created += result.created;
+          report.push(result);
+        }
+        return jsonResponse({
+          processed: users.length,
+          updated: created,
+          report,
+          nextCursor: cursor + users.length,
+          done: users.length < MINER_USERS_PER_RUN
+        });
+      } catch (err) {
+        console.error("Synthesis Error:", err);
+        return jsonResponse({ error: "Synthesis failed." }, 500);
+      }
+    }
+
+    // Endpoint 3e: One outcome: POST /api/outcome/<id>/regenerate asks for a new plan from the same inputs;
+    // GET /api/outcome/<id>/blueprint exports it as aether.blueprint/1 for Finish Line (SPATIAL_ARCHITECTURE.md 8.6).
+    if (url.pathname.startsWith("/api/outcome/")) {
+      const match = /^\/api\/outcome\/([^/]+)\/(regenerate|blueprint)$/.exec(url.pathname);
+      if (!match) return jsonResponse({ error: "Not found" }, 404);
+      const action = match[2];
+      const method = action === "regenerate" ? "POST" : "GET";
+      if (request.method !== method) {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: method });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      let id = "";
+      try {
+        id = decodeURIComponent(match[1]).trim();
+      } catch (err) {
+        id = "";
+      }
+      try {
+        const outcome = await env.DB.prepare(
+          "SELECT id, title, created_at, outcome_status, outcome_plan, outcome_fingerprint FROM saved_nodes WHERE id = ? AND user_id = ? AND category = 'outcome'"
+        ).bind(id, auth.user.id).first();
+        if (!outcome) return jsonResponse({ error: "Outcome not found." }, 404);
+        if (action === "blueprint") {
+          const inputs = (await loadOutcomeInputs(env, auth.user.id, id)).get(id) || [];
+          const sources = await loadNodeSummaries(env, auth.user.id, inputs);
+          const blueprint = toBlueprint({ ...outcome, created_at: toIsoTimestamp(outcome.created_at) }, readPlan(outcome.outcome_plan), sources);
+          return jsonResponse(blueprint, 200, { "Content-Disposition": `inline; filename="aether-blueprint-${id}.json"` });
+        }
+        if (outcome.outcome_status === "accepted" || outcome.outcome_status === "sent") {
+          return jsonResponse({ error: "This plan is accepted, so Elarion keeps it as it is." }, 409);
+        }
+        if (!env.GEMINI_API_KEY) return jsonResponse({ error: "Gemini is not configured." }, 400);
+        const updated = await regenerateOutcome(env, auth.user.id, outcome);
+        if (!updated) return jsonResponse({ error: "Elarion could not write a better plan from these saves right now. Try again later." }, 502);
+        return jsonResponse(updated);
+      } catch (err) {
+        console.error("Outcome Route Error:", err);
+        return jsonResponse({ error: "Outcome request failed." }, 500);
       }
     }
 
@@ -472,6 +565,23 @@ export default {
 
       if (request.method === "PATCH") {
         const body = await request.json().catch(() => null);
+        // Outcome review: { outcome_status: "accepted" | "dismissed" | "sent" } on an Outcome Node.
+        if (body && Object.hasOwn(body, "outcome_status")) {
+          const status = String(body.outcome_status || "").trim().toLowerCase();
+          if (!OUTCOME_STATUSES.includes(status) || status === "proposed") {
+            return jsonResponse({ error: "outcome_status must be accepted, dismissed or sent." }, 400);
+          }
+          try {
+            const result = await env.DB.prepare(
+              "UPDATE saved_nodes SET outcome_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND category = 'outcome'"
+            ).bind(status, id, userId).run();
+            if (!result?.meta?.changes) return jsonResponse({ error: "Outcome not found." }, 404);
+            return jsonResponse({ id, outcome_status: status });
+          } catch (err) {
+            console.error("Outcome Status Error:", err);
+            return jsonResponse({ error: "Update failed." }, 500);
+          }
+        }
         // Group changes: { group_id: "<id>" }, { new_group: "Name" } (created if new) or { group_id: null } (no group).
         // Any of them marks the choice as the user's, which the miner never overrides.
         if (body && (Object.hasOwn(body, "group_id") || Object.hasOwn(body, "new_group"))) {
@@ -515,9 +625,10 @@ export default {
       }
 
       try {
-        const [, , nodeResult] = await env.DB.batch([
+        const [, , , nodeResult] = await env.DB.batch([
           env.DB.prepare("DELETE FROM node_edges WHERE user_id = ? AND (source_id = ? OR target_id = ?)").bind(userId, id, id),
           env.DB.prepare("DELETE FROM node_tags WHERE user_id = ? AND node_id = ?").bind(userId, id),
+          env.DB.prepare("DELETE FROM outcome_inputs WHERE user_id = ? AND (outcome_id = ? OR node_id = ?)").bind(userId, id, id),
           env.DB.prepare("DELETE FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, userId)
         ]);
         if (!nodeResult?.meta?.changes) return jsonResponse({ error: "Node not found." }, 404);
@@ -958,6 +1069,26 @@ export default {
     #add-node-button { font-size: 18px; line-height: 1; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 700; }
     /* Filter toolbar: a second row under the header (32px tall, ends at about 92px; panels below start at 102px+).
        The origin filters are one segmented control; the Filters popover sits at its right end. */
+    /* Outcome Nodes (SPATIAL_ARCHITECTURE.md section 8): the plan view in the node card, in Outcome Gold. */
+    #node-card.is-outcome h3, #cluster-drawer.is-outcome h3 { color: #ffb627; text-transform: none; }
+    #node-card.is-outcome .card-tag { border-color: rgba(255, 182, 39, 0.7); background: rgba(255, 182, 39, 0.1); color: #ffb627; }
+    #cluster-drawer.is-outcome .mini-card.active { border-color: #ffb627; background: rgba(255, 182, 39, 0.08); }
+    #node-card .card-outcome { margin: 0 0 12px; padding: 10px 12px; border-left: 2px solid #ffb627; border-radius: var(--radius-s); background: rgba(255, 182, 39, 0.07); }
+    #node-card .card-outcome[hidden] { display: none; }
+    .card-outcome-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .card-outcome-badge { padding: 2px 6px; border: 1px solid rgba(255, 182, 39, 0.7); border-radius: 4px; color: #ffb627; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
+    .card-outcome-meta { color: #d9c7a0; font-size: 11px; }
+    #node-card .card-outcome-goal { margin: 0 0 8px; color: #fff; font-size: 13px; }
+    .card-outcome-steps { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; color: #e8dcc0; font-size: 12px; line-height: 1.45; }
+    .card-outcome-steps strong { display: block; color: #fff; font-size: 13px; }
+    .card-outcome-sources { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .card-outcome-sources button { appearance: none; max-width: 180px; padding: 2px 6px; overflow: hidden; border: 1px solid rgba(255, 182, 39, 0.35); border-radius: 4px; background: transparent; color: #d9c7a0; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .card-outcome-sources button:hover, .card-outcome-sources button:focus-visible { border-color: #ffb627; color: #fff; outline: none; }
+    .card-outcome-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .card-outcome-actions button { appearance: none; min-height: 32px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font-size: 12px; cursor: pointer; }
+    .card-outcome-actions #outcome-accept { border-color: #ffb627; background: #ffb627; color: #1a1406; font-weight: 700; }
+    .card-outcome-actions button:disabled { opacity: 0.45; cursor: progress; }
+    .card-outcome-message { display: block; min-height: 1em; margin-top: 6px; color: #d9c7a0; font-size: 11px; }
     /* Time scope stepper (semantic zoom): shorter or longer time span of cards. */
     #scope-stepper { display: inline-flex; flex: none; align-items: center; gap: 2px; height: 32px; padding: 2px; box-sizing: border-box; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-panel); }
     #scope-stepper button { position: relative; appearance: none; width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
@@ -1896,6 +2027,7 @@ export default {
     <div class="settings-menu" id="settings-menu">
       <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
       <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
+      <button class="settings-option" id="synthesize-button">✦ Synthesize Outcomes Now</button>
       <button class="settings-option" id="remine-button">🏷️ Mine Tags &amp; Groups for Old Nodes</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
       <button class="settings-option phone-only" id="telegram-help-menu-option">✈️ Telegram Commands</button>
@@ -1994,6 +2126,21 @@ export default {
         <button type="button" id="card-transcript-read" hidden>⤢ Read Transcript</button>
         <span id="card-transcript-status" class="card-transcript-status" aria-live="polite"></span>
       </div>
+    </div>
+    <div id="card-outcome" class="card-outcome" hidden>
+      <div class="card-outcome-head">
+        <span class="card-outcome-badge">OUTCOME ✦</span>
+        <span id="card-outcome-meta" class="card-outcome-meta"></span>
+      </div>
+      <p id="card-outcome-goal" class="card-outcome-goal"></p>
+      <ol id="card-outcome-steps" class="card-outcome-steps"></ol>
+      <div class="card-outcome-actions">
+        <button type="button" id="outcome-accept">Accept</button>
+        <button type="button" id="outcome-regenerate">Regenerate</button>
+        <button type="button" id="outcome-export">Export blueprint</button>
+        <button type="button" id="outcome-dismiss">Dismiss</button>
+      </div>
+      <span id="card-outcome-message" class="card-outcome-message" aria-live="polite"></span>
     </div>
     <div id="card-web" class="card-web" hidden>
       <div class="card-transcript-actions">
@@ -2231,12 +2378,24 @@ export default {
     let clusterOf = new Map();
     let clusterInfo = new Map();
     const getClusterKey = node => clusterOf.get(node.id) || ('category:' + getNodeCategory(node));
+    const getOutcomeMembers = id => {
+      const shown = Graph.graphData().nodes;
+      const outcome = shown.find(node => node.id === id);
+      if (!outcome) return [];
+      const inputs = new Set(outcome.outcome_inputs || []);
+      return [outcome, ...shown.filter(node => inputs.has(node.id))];
+    };
     const getClusterLabel = key => {
+      if (key.startsWith('outcome:')) {
+        const outcome = graphData.nodes.find(node => node.id === key.slice('outcome:'.length));
+        return 'Outcome: ' + (outcome ? outcome.title : 'plan');
+      }
       const info = clusterInfo.get(key);
       return info ? info.label : key.slice(key.indexOf(':') + 1).replace(/_/g, ' ');
     };
     const isAiCluster = key => Boolean(clusterInfo.get(key) && clusterInfo.get(key).source === 'ai');
     const getClusterColor = key => {
+      if (key.startsWith('outcome:')) return OUTCOME_COLOR;
       const info = clusterInfo.get(key);
       if (info && info.color) return info.color;
       if (key.startsWith('category:')) return getCategoryColor(key.slice('category:'.length));
@@ -2299,10 +2458,22 @@ export default {
     let cardField = null;
     // The open 180-degree gallery ({ key, origin, yaw, radius, ids }), or null; see enterGallery below.
     let gallery = null;
+    const getOutcomeSources = node => {
+      if (getNodeCategory(node) !== 'outcome') return [];
+      const labels = [];
+      (node.outcome_inputs || []).forEach(id => {
+        const input = graphData.nodes.find(item => item.id === id);
+        if (!input) return;
+        const label = getClusterLabel(getClusterKey(input));
+        if (!labels.includes(label)) labels.push(label);
+      });
+      return labels;
+    };
     const getCardFace = node => window.AetherSpatial.faceFromNode(node, {
       categoryColor: getBaseNodeColor(node),
       categoryLabel: getNodeCategory(node),
-      group: getNodeGroup(node)
+      group: getNodeGroup(node),
+      sources: getOutcomeSources(node)
     });
     // Hub weighting (SPATIAL_ARCHITECTURE.md 2.9, D9): how connected each visible card is, relative to what is on
     // screen; recomputed with the filters. node.__hub is the hero scale the collision force reads.
@@ -2339,7 +2510,7 @@ export default {
     const isNodeObject = end => Boolean(end && typeof end === 'object');
 
     const getLinkColor = link => {
-      const base = link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
+      const base = link.type === 'synthesis' ? OUTCOME_COLOR : link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
       if (isActiveLink(link)) return withAlpha(base, 1);
       // Hover and focus lift the global link opacity to 1, so the quiet fade lives in each link's alpha.
       if (hover.id || focus.node) return withAlpha(base, QUIET_LINK_OPACITY);
@@ -2437,16 +2608,30 @@ export default {
 
     const clusterForce = () => {
       let nodes = [];
+      let byId = new Map();
+      // An Outcome Node sits between the islands it bridges: the average anchor of its inputs' clusters.
+      const outcomeAnchor = node => {
+        const anchors = (node.outcome_inputs || []).map(id => byId.get(id)).filter(Boolean).map(input => getClusterAnchor(getClusterKey(input)));
+        if (!anchors.length) return null;
+        return {
+          x: anchors.reduce((sum, a) => sum + a.x, 0) / anchors.length,
+          y: anchors.reduce((sum, a) => sum + a.y, 0) / anchors.length,
+          z: anchors.reduce((sum, a) => sum + a.z, 0) / anchors.length
+        };
+      };
       const force = alpha => {
         const k = CLUSTER_STRENGTH * alpha;
         nodes.forEach(node => {
-          const anchor = getClusterAnchor(getClusterKey(node));
+          const anchor = (getNodeCategory(node) === 'outcome' && outcomeAnchor(node)) || getClusterAnchor(getClusterKey(node));
           node.vx += (anchor.x - node.x) * k;
           node.vy += (anchor.y - node.y) * k;
           node.vz += (anchor.z - (node.z || 0)) * k;
         });
       };
-      force.initialize = initNodes => { nodes = initNodes; };
+      force.initialize = initNodes => {
+        nodes = initNodes;
+        byId = new Map(initNodes.map(node => [node.id, node]));
+      };
       return force;
     };
 
@@ -2681,7 +2866,7 @@ export default {
     // Links show their fetched description; notes store their full text in url, so show that instead. Never clipped.
     const getFullText = (node, isLink) => {
       if (node.description) return String(node.description);
-      if (!isLink && node.url && node.url !== node.title) return String(node.url);
+      if (!isLink && node.url && node.url !== node.title && !String(node.url).startsWith('aether:')) return String(node.url);
       return '';
     };
 
@@ -2720,6 +2905,123 @@ export default {
     cardPreviewImage.addEventListener('error', () => { cardPreviewImage.hidden = true; });
     cardFavicon.addEventListener('error', () => { cardFavicon.hidden = true; });
 
+    // ---- Outcome plan view (SPATIAL_ARCHITECTURE.md 8.5): steps with their cited saves, and the review actions ----
+    const cardOutcome = document.getElementById('card-outcome');
+    const cardOutcomeMeta = document.getElementById('card-outcome-meta');
+    const cardOutcomeGoal = document.getElementById('card-outcome-goal');
+    const cardOutcomeSteps = document.getElementById('card-outcome-steps');
+    const cardOutcomeMessage = document.getElementById('card-outcome-message');
+    const outcomeButtons = ['outcome-accept', 'outcome-regenerate', 'outcome-export', 'outcome-dismiss'].map(id => document.getElementById(id));
+    const OUTCOME_TEMPLATE_LABELS = { project_setup: 'Project setup', sop_creation: 'SOP', content_creation: 'Content creation', ad_creation: 'Ad creation', website_creation: 'Website creation' };
+    const OUTCOME_STATUS_LABELS = { proposed: 'Proposed by Elarion', accepted: 'Accepted', sent: 'Exported to Finish Line' };
+    const renderCardOutcome = node => {
+      const isOutcome = getNodeCategory(node) === 'outcome';
+      cardOutcome.hidden = !isOutcome;
+      nodeCard.classList.toggle('is-outcome', isOutcome);
+      if (!isOutcome) return;
+      const plan = node.outcome_plan || { steps: [] };
+      cardOutcomeMeta.textContent = [OUTCOME_TEMPLATE_LABELS[plan.template], OUTCOME_STATUS_LABELS[node.outcome_status] || '', plan.effort].filter(Boolean).join(' · ');
+      cardOutcomeGoal.textContent = plan.goal || '';
+      cardOutcomeGoal.hidden = !plan.goal;
+      cardOutcomeSteps.replaceChildren(...(plan.steps || []).map(step => {
+        const item = document.createElement('li');
+        const title = document.createElement('strong');
+        title.textContent = step.title;
+        item.append(title);
+        if (step.detail) item.append(document.createTextNode(step.detail));
+        const sources = document.createElement('div');
+        sources.className = 'card-outcome-sources';
+        (step.inputs || []).forEach(id => {
+          const input = graphData.nodes.find(item => item.id === id);
+          if (!input) return;
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.textContent = input.title || 'Saved entry';
+          chip.title = 'Show this save';
+          chip.addEventListener('click', () => focusSavedNode(id));
+          sources.append(chip);
+        });
+        if (sources.childNodes.length) item.append(sources);
+        return item;
+      }));
+      const settled = node.outcome_status === 'accepted' || node.outcome_status === 'sent';
+      outcomeButtons[0].hidden = settled;
+      outcomeButtons[1].hidden = settled;
+      outcomeButtons.forEach(button => { button.disabled = false; });
+      cardOutcomeMessage.textContent = '';
+    };
+    // A cited save may be hidden by the current filters; clear them rather than do nothing.
+    const focusSavedNode = id => {
+      let node = Graph.graphData().nodes.find(item => item.id === id);
+      if (!node && graphData.nodes.some(item => item.id === id)) {
+        resetFilters();
+        node = Graph.graphData().nodes.find(item => item.id === id);
+      }
+      if (node) focusCard(node);
+    };
+    const withOutcomeBusy = async (label, work) => {
+      const node = focus.node;
+      if (!node || getNodeCategory(node) !== 'outcome') return;
+      outcomeButtons.forEach(button => { button.disabled = true; });
+      cardOutcomeMessage.textContent = label;
+      try {
+        await work(node);
+      } catch (err) {
+        console.error('Outcome action failed:', err);
+        cardOutcomeMessage.textContent = err.message || 'That did not work.';
+      } finally {
+        outcomeButtons.forEach(button => { button.disabled = false; });
+      }
+    };
+    const setOutcomeStatus = async (node, status) => {
+      await apiFetch('/api/node/' + encodeURIComponent(node.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome_status: status }) });
+      node.outcome_status = status;
+    };
+    outcomeButtons[0].addEventListener('click', () => withOutcomeBusy('Accepting…', async node => {
+      await setOutcomeStatus(node, 'accepted');
+      renderCardOutcome(node);
+      syncCards();
+      cardOutcomeMessage.textContent = 'Accepted. Elarion will not rewrite this plan.';
+    }));
+    outcomeButtons[1].addEventListener('click', () => withOutcomeBusy('Elarion is rewriting the plan…', async node => {
+      const fresh = await apiFetch('/api/outcome/' + encodeURIComponent(node.id) + '/regenerate', { method: 'POST' });
+      node.title = node.name = fresh.title;
+      node.description = fresh.description;
+      node.outcome_plan = fresh.outcome_plan;
+      showNodeCard(node);
+      syncCards();
+      cardOutcomeMessage.textContent = 'New plan written from the same saves.';
+    }));
+    outcomeButtons[2].addEventListener('click', () => withOutcomeBusy('Preparing the blueprint…', async node => {
+      const blueprint = await apiFetch('/api/outcome/' + encodeURIComponent(node.id) + '/blueprint');
+      const text = JSON.stringify(blueprint, null, 2);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      link.download = 'aether-blueprint-' + node.id + '.json';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+      // The clipboard can wait on a permission prompt forever, so it never holds up the download.
+      let copied = false;
+      try {
+        copied = await Promise.race([
+          navigator.clipboard.writeText(text).then(() => true),
+          new Promise(resolve => setTimeout(() => resolve(false), 1500))
+        ]);
+      } catch (err) {}
+      if (node.outcome_status !== 'sent') await setOutcomeStatus(node, 'sent');
+      renderCardOutcome(node);
+      syncCards();
+      cardOutcomeMessage.textContent = (copied ? 'Blueprint copied and downloaded' : 'Blueprint downloaded') + ' (aether.blueprint/1) for Finish Line.';
+    }));
+    outcomeButtons[3].addEventListener('click', () => withOutcomeBusy('Dismissing…', async node => {
+      await setOutcomeStatus(node, 'dismissed');
+      graphData.nodes = graphData.nodes.filter(item => item.id !== node.id);
+      graphData.links = graphData.links.filter(link => linkEndId(link.source) !== node.id && linkEndId(link.target) !== node.id);
+      closeClusterDrawer();
+      hideNodeCard();
+      applyGraphFilters();
+    }));
+
     const showNodeCard = node => {
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       cardTitle.textContent = node.title || node.name || 'Saved Entry';
@@ -2751,6 +3053,7 @@ export default {
       renderCardStatus(node);
       renderCardTranscript(node);
       renderCardWeb(node);
+      renderCardOutcome(node);
       nodeCard.style.display = 'block';
       document.body.classList.add('card-open');
       // On phones the card is a bottom sheet over the legend, so the legend steps aside while it's open.
@@ -3044,7 +3347,10 @@ export default {
     };
 
     // Visible nodes only, so the drawer agrees with the current filters.
-    const getClusterNodes = key => Graph.graphData().nodes
+    // 'outcome:<id>' is an Outcome Node's own gallery: the outcome first, then the saves it cites.
+    const getClusterNodes = key => key.startsWith('outcome:')
+      ? getOutcomeMembers(key.slice('outcome:'.length))
+      : Graph.graphData().nodes
       .filter(node => getClusterKey(node) === key)
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
 
@@ -3059,6 +3365,7 @@ export default {
       const changed = drawerCluster !== key;
       drawerCluster = key;
       drawerDot.style.background = getClusterColor(key);
+      clusterDrawer.classList.toggle('is-outcome', key.indexOf('outcome:') === 0);
       drawerTitle.textContent = (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key);
       drawerAskInput.placeholder = 'Ask Elarion about ' + getClusterLabel(key);
       if (changed) {
@@ -3393,7 +3700,7 @@ export default {
 
     const selectNode = (node, options = {}) => {
       // Keep the drawer only when the node belongs to the cluster it lists.
-      if (drawerCluster !== getClusterKey(node)) closeClusterDrawer();
+      if (drawerCluster !== getClusterKey(node) && !(gallery && gallery.ids.has(String(node.id)))) closeClusterDrawer();
       showNodeCard(node);
       if (!options.keepCarousel || !carousel.ids.includes(node.id)) buildCarousel(node);
       renderCarousel(node);
@@ -3875,7 +4182,8 @@ export default {
       const { centre = false, ...selectOptions } = options;
       const placed = [node.x, node.y, node.z].every(Number.isFinite);
       if (cardField && placed && !filterState.flat && filterState.view === 'graph') {
-        const key = getClusterKey(node);
+        const onWall = gallery && gallery.ids.has(String(node.id));
+        const key = getNodeCategory(node) === 'outcome' ? 'outcome:' + node.id : onWall && !centre ? gallery.key : getClusterKey(node);
         if (!gallery || gallery.key !== key) openClusterDrawer(key, { centerId: node.id });
         else if (centre) refreshGallery(node.id);
       }
@@ -4075,7 +4383,9 @@ export default {
     };
 
     const applyGraphFilters = () => {
-      let filteredNodes = graphData.nodes.filter(node => matchesTypeFilter(node) && matchesTimeFilter(node) && matchesSearch(node));
+      // Proposed Outcome Nodes always show, whatever the time scope, so a fresh synthesis is never missed.
+      const isFreshOutcome = node => getNodeCategory(node) === 'outcome' && node.outcome_status === 'proposed';
+      let filteredNodes = graphData.nodes.filter(node => matchesTypeFilter(node) && (matchesTimeFilter(node) || isFreshOutcome(node)) && matchesSearch(node));
       let visibleIds = new Set(filteredNodes.map(node => node.id));
       const filteredLinks = graphData.links.filter(link => visibleIds.has(linkEndId(link.source)) && visibleIds.has(linkEndId(link.target)));
 
@@ -4820,6 +5130,16 @@ export default {
       path: '/api/backfill-metadata',
       busyLabel: '🔗 Fetching link titles...',
       summarize: (updated, processed) => 'Fetched titles for ' + updated + ' of ' + processed + ' links.'
+    }));
+
+    const synthesizeButton = document.getElementById('synthesize-button');
+    synthesizeButton.addEventListener('click', () => runAdminBatches({
+      button: synthesizeButton,
+      path: '/api/synthesize',
+      busyLabel: '✦ Elarion is looking for patterns...',
+      summarize: (created, users) => created
+        ? 'Elarion proposed ' + created + (created === 1 ? ' Outcome' : ' Outcomes') + '. Look for the gold cards.'
+        : 'No new Outcome this time: no cross-topic pattern was strong enough, or today’s limit (2) is reached.'
     }));
 
     const remineButton = document.getElementById('remine-button');
@@ -6157,6 +6477,7 @@ function buildGraphLinks(nodes) {
 }
 
 function inferNodeCategory(rawUrl, fallback = "note") {
+  if (String(fallback || "").toLowerCase() === OUTCOME_CATEGORY) return OUTCOME_CATEGORY;
   const value = String(rawUrl || "").toLowerCase();
   if (VIDEO_URL_PATTERN.test(value)) {
     return "video";
@@ -6842,7 +7163,128 @@ async function mineConnections(env) {
   ).bind(MINER_USERS_PER_RUN).all();
   for (const { user_id: userId } of userRows || []) {
     await mineUserConnections(env, userId);
+    // Synthesis layer (section 8): look for cross-topic patterns in what was just mined.
+    try {
+      await synthesizeForUser(env, userId);
+    } catch (err) {
+      console.error("Synthesis pass failed:", err);
+    }
   }
+}
+
+// ---- Agentic Synthesis Engine (SPATIAL_ARCHITECTURE.md section 8) ----
+
+// Outcome id -> input node ids for a user (or one outcome).
+async function loadOutcomeInputs(env, userId, outcomeId = null) {
+  const statement = outcomeId
+    ? env.DB.prepare("SELECT outcome_id, node_id FROM outcome_inputs WHERE user_id = ? AND outcome_id = ?").bind(userId, outcomeId)
+    : env.DB.prepare("SELECT outcome_id, node_id FROM outcome_inputs WHERE user_id = ?").bind(userId);
+  const { results } = await statement.all();
+  const byOutcome = new Map();
+  for (const row of results || []) {
+    if (!byOutcome.has(row.outcome_id)) byOutcome.set(row.outcome_id, []);
+    byOutcome.get(row.outcome_id).push(row.node_id);
+  }
+  return byOutcome;
+}
+
+// Gold synthesis links from each outcome to the inputs it cites that are in the graph.
+function buildSynthesisLinks(nodes) {
+  const present = new Set(nodes.map(node => node.id));
+  const links = [];
+  for (const node of nodes) {
+    for (const inputId of node.outcome_inputs || []) {
+      if (present.has(inputId)) links.push({ source: node.id, target: inputId, value: 1, type: "synthesis" });
+    }
+  }
+  return links;
+}
+
+// id -> { title, url } for blueprint sources.
+async function loadNodeSummaries(env, userId, ids) {
+  const map = new Map();
+  if (!ids.length) return map;
+  const { results } = await env.DB.prepare(
+    `SELECT id, title, url FROM saved_nodes WHERE user_id = ? AND id IN (${ids.map(() => "?").join(", ")})`
+  ).bind(userId, ...ids).all();
+  (results || []).forEach(row => map.set(row.id, { title: row.title, url: row.url }));
+  return map;
+}
+
+// The user's graph as the synthesis pass sees it: nodes with tags and groups, and the same links /api/graph draws.
+async function loadSynthesisGraph(env, userId) {
+  const { results } = await env.DB.prepare(
+    "SELECT id, title, url, category, created_at, group_id, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND NOT (category = 'outcome' AND outcome_status = 'dismissed')"
+  ).bind(userId).all();
+  const [tagsByNode, groups] = await Promise.all([loadNodeTags(env, userId), listGroups(env, userId)]);
+  const nodes = (results || []).map(row => ({
+    ...row,
+    name: row.title || row.url || "",
+    category: String(row.category || "note").toLowerCase(),
+    created_at: toIsoTimestamp(row.created_at),
+    tags: tagsByNode.get(row.id) || []
+  }));
+  const links = buildGraphLinks(nodes);
+  links.push(...buildConceptLinks(nodes.map(node => node.id), tagsByNode, links));
+  mergeMinedEdges(links, nodes, await loadMinedEdges(env, userId));
+  const groupNames = new Map(groups.map(group => [group.id, group.name]));
+  const familyLabel = key => key.startsWith("group:") ? (groupNames.get(key.slice(6)) || "a group")
+    : key.startsWith("tag:") ? "#" + key.slice(4) : key.slice(key.indexOf(":") + 1).replace(/_/g, " ");
+  return { nodes, links, familyLabel };
+}
+
+const planJson = outcome => JSON.stringify({ template: outcome.template, goal: outcome.goal, why: outcome.why, effort: outcome.effort, steps: outcome.steps });
+
+// Finds candidate patterns and, when any qualify, asks Gemini for at most the day's remaining outcomes. Returns
+// { user, candidates, created, reason? }. Nothing is written when Gemini fails or proposes nothing valid.
+async function synthesizeForUser(env, userId) {
+  const { today } = await env.DB.prepare(
+    "SELECT COUNT(*) AS today FROM saved_nodes WHERE user_id = ? AND category = 'outcome' AND created_at >= datetime('now', '-1 day')"
+  ).bind(userId).first();
+  const budget = MAX_OUTCOMES_PER_DAY - Number(today || 0);
+  if (budget <= 0) return { user: userId, candidates: 0, created: 0, reason: "daily limit reached" };
+
+  const { nodes, links, familyLabel } = await loadSynthesisGraph(env, userId);
+  const previous = [...(await loadOutcomeInputs(env, userId)).values()];
+  const bundles = findCandidateBundles(nodes, links, { previous });
+  if (!bundles.length) return { user: userId, candidates: 0, created: 0, reason: "no cross-topic pattern strong enough" };
+
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const parsed = await callGeminiJson(env.GEMINI_API_KEY, buildSynthesisPrompt(bundles, byId, familyLabel), 8192);
+  const outcomes = parseSynthesisResponse(parsed, bundles).slice(0, budget);
+  if (!outcomes.length) return { user: userId, candidates: bundles.length, created: 0, reason: "no outcome passed validation" };
+
+  const statements = [];
+  for (const outcome of outcomes) {
+    const id = "node_" + crypto.randomUUID();
+    statements.push(env.DB.prepare(
+      "INSERT INTO saved_nodes (id, user_id, url, title, description, category, status, outcome_status, outcome_fingerprint, outcome_plan, ai_processed_at) VALUES (?, ?, ?, ?, ?, 'outcome', 'inbox', 'proposed', ?, ?, CURRENT_TIMESTAMP)"
+    ).bind(id, userId, "aether:outcome/" + id, outcome.title, outcome.why || null, outcome.fingerprint, planJson(outcome)));
+    outcome.inputIds.forEach(nodeId => statements.push(env.DB.prepare(
+      "INSERT OR IGNORE INTO outcome_inputs (outcome_id, node_id, user_id) VALUES (?, ?, ?)"
+    ).bind(id, nodeId, userId)));
+  }
+  await env.DB.batch(statements);
+  console.log(`Synthesis: ${bundles.length} candidate patterns, ${outcomes.length} outcomes for ${userId}.`);
+  return { user: userId, candidates: bundles.length, created: outcomes.length, titles: outcomes.map(outcome => outcome.title) };
+}
+
+// A fresh plan for an existing outcome from the same inputs. Returns the updated fields, or null when Gemini did not
+// produce a valid plan (the old one is kept).
+async function regenerateOutcome(env, userId, outcome) {
+  const inputs = (await loadOutcomeInputs(env, userId, outcome.id)).get(outcome.id) || [];
+  const { nodes, familyLabel } = await loadSynthesisGraph(env, userId);
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const ids = inputs.filter(id => byId.has(id));
+  if (ids.length < 2) return null;
+  const bundle = { ids, families: [...new Set(ids.map(id => topicFamily(byId.get(id))))], fingerprint: outcome.outcome_fingerprint };
+  const parsed = await callGeminiJson(env.GEMINI_API_KEY, buildSynthesisPrompt([bundle], byId, familyLabel) + "\nWrite one outcome for Bundle 0, and make it different from: " + JSON.stringify(outcome.title), 8192);
+  const [fresh] = parseSynthesisResponse(parsed, [bundle]);
+  if (!fresh) return null;
+  await env.DB.prepare(
+    "UPDATE saved_nodes SET title = ?, description = ?, outcome_plan = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND category = 'outcome'"
+  ).bind(fresh.title, fresh.why || null, planJson(fresh), outcome.id, userId).run();
+  return { id: outcome.id, title: fresh.title, description: fresh.why || null, outcome_plan: readPlan(planJson(fresh)) };
 }
 
 async function mineUserConnections(env, userId) {
@@ -6859,7 +7301,7 @@ async function mineUserConnections(env, userId) {
 async function mineNodes(env, userId, newNodes, { retag }) {
   const batchIds = new Set(newNodes.map(node => node.id));
   const { results: contextRows } = await env.DB.prepare(
-    "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL ORDER BY ai_processed_at DESC LIMIT ?"
+    "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL AND (category IS NULL OR category != 'outcome') ORDER BY ai_processed_at DESC LIMIT ?"
   ).bind(userId, MINER_CONTEXT_SIZE + newNodes.length).all();
   const contextNodes = (contextRows || []).filter(row => !batchIds.has(row.id)).slice(0, MINER_CONTEXT_SIZE);
   const allNodes = [...newNodes, ...contextNodes];

@@ -382,6 +382,22 @@ describe("Aether Portal worker", () => {
 		expect(response.status).toBe(401);
 	});
 
+	it("only allows admin POSTs on /api/synthesize", async () => {
+		expect((await SELF.fetch("http://example.com/api/synthesize")).status).toBe(405);
+		const response = await SELF.fetch("http://example.com/api/synthesize", { method: "POST", headers: { Authorization: "Bearer wrong" } });
+		expect(response.status).toBe(401);
+	});
+
+	it("routes outcome regenerate and blueprint requests, signed in only", async () => {
+		expect((await SELF.fetch("http://example.com/api/outcome/node_1/unknown")).status).toBe(404);
+		const wrongMethod = await SELF.fetch("http://example.com/api/outcome/node_1/regenerate");
+		expect(wrongMethod.status).toBe(405);
+		expect(wrongMethod.headers.get("Allow")).toBe("POST");
+		expect((await SELF.fetch("http://example.com/api/outcome/node_1/blueprint")).status).toBe(401);
+		const regenerate = await SELF.fetch("http://example.com/api/outcome/node_1/regenerate", { method: "POST", headers: { Origin: "http://example.com" } });
+		expect(regenerate.status).toBe(401);
+	});
+
 	it("only allows POST on /api/ask", async () => {
 		const response = await SELF.fetch("http://example.com/api/ask");
 		expect(response.status).toBe(405);

@@ -629,8 +629,10 @@ export function createCardField({ THREE, reducedMotion = false }) {
       card.faceMaterial.opacity = (1 - card.dim * 0.55) * present;
       card.bodyMaterial.opacity = (1 - card.dim * 0.55) * present;
       card.bodyMaterial.emissiveIntensity = card.heat * 0.3;
-      card.edgeMaterial.color.copy(temp.color.copy(white).lerp(teal, Math.min(1, card.heat * 1.5)));
-      card.edgeMaterial.opacity = (0.14 + card.heat * 0.8) * (1 - card.dim * 0.7) * present;
+      // Outcome Nodes keep a gold outline at rest; focus still turns it teal.
+      const isOutcome = card.face.type === 'outcome';
+      card.edgeMaterial.color.copy(temp.color.set(isOutcome ? OUTCOME_GOLD : WHITE).lerp(teal, Math.min(1, card.heat * 1.5)));
+      card.edgeMaterial.opacity = ((isOutcome ? 0.6 : 0.14) + card.heat * 0.8) * (1 - card.dim * 0.7) * present;
 
       // Glow: hubs in their category colour, Outcome Nodes in Outcome Gold with a slow breathing pulse. It fades out
       // with dimming, and the card's own scale carries it (the sprite is a child of the card).

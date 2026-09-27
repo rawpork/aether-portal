@@ -8,7 +8,10 @@ const PAD = 24;
 const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif';
 
 // Card surfaces from the main portal palette (DESIGN.md, System 2).
-export const SURFACES = { video: '#111a28', image: '#111a28', link: '#15213a', note: '#101722' };
+export const SURFACES = { video: '#111a28', image: '#111a28', link: '#15213a', note: '#101722', outcome: '#15120b' };
+// Outcome Nodes (SPATIAL_ARCHITECTURE.md section 8): Outcome Gold border and badge (DESIGN.md glow exception).
+export const OUTCOME_GOLD = '#ffb627';
+const TEMPLATE_LABELS = { project_setup: 'Project setup', sop_creation: 'SOP', content_creation: 'Content', ad_creation: 'Ad', website_creation: 'Website' };
 const TEXT = 'rgba(255,255,255,0.94)';
 const MUTED = '#8a93a6';
 const BODY = '#aab3c5';
@@ -23,16 +26,20 @@ const hostOf = url => {
 
 // Everything a face shows, from a portal node. categoryColor and categoryLabel come from the portal (legend colours);
 // group is { name, color, source } or null.
-export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', group = null } = {}) {
+// sources (outcomes only) are readable names of the topics the outcome's inputs come from.
+export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', group = null, sources = [] } = {}) {
   const category = String(node.category || 'note').toLowerCase();
   const url = String(node.url || '');
   const isLink = /^https?:/i.test(url);
-  const type = category === 'video' ? 'video' : category === 'image' ? 'image' : isLink ? 'link' : 'note';
+  const type = category === 'outcome' ? 'outcome' : category === 'video' ? 'video' : category === 'image' ? 'image' : isLink ? 'link' : 'note';
+  const plan = type === 'outcome' && node.outcome_plan && typeof node.outcome_plan === 'object' ? node.outcome_plan : null;
   const title = String(node.title || node.name || (isLink ? hostOf(url) : url) || 'Saved entry').replace(/\s+/g, ' ').trim();
   // Notes keep their text in url; links show the description, then the user's note.
-  const text = type === 'note'
-    ? [url !== title ? url : '', node.user_note].filter(Boolean).join(' · ')
-    : [node.description, node.user_note].filter(Boolean).join(' · ');
+  const text = type === 'outcome'
+    ? String((plan && plan.goal) || node.description || '')
+    : type === 'note'
+      ? [url !== title ? url : '', node.user_note].filter(Boolean).join(' · ')
+      : [node.description, node.user_note].filter(Boolean).join(' · ');
   const created = node.created_at ? new Date(node.created_at) : null;
   return {
     id: String(node.id),
@@ -44,13 +51,21 @@ export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', 
     thumbUrl: typeof node.image_url === 'string' && (/^https?:/i.test(node.image_url) || node.image_url.startsWith('/api/node-image/')) ? node.image_url : null,
     color: categoryColor,
     label: String(categoryLabel || category).replace(/_/g, ' ').toUpperCase(),
-    group: group ? { name: group.name, color: group.color, source: group.source } : null
+    group: group ? { name: group.name, color: group.color, source: group.source } : null,
+    outcome: type === 'outcome' ? {
+      steps: plan && Array.isArray(plan.steps) ? plan.steps.length : 0,
+      effort: String((plan && plan.effort) || ''),
+      template: TEMPLATE_LABELS[plan && plan.template] || '',
+      status: String(node.outcome_status || 'proposed'),
+      sources: sources.map(String).slice(0, 3)
+    } : null
   };
 }
 
 // A cheap fingerprint of what the face shows, so textures are only redrawn when something visible changed.
 export function faceKey(face, imageReady) {
-  return [face.type, face.title, face.text, face.site, face.date, face.color, face.label, face.group ? face.group.name + face.group.color : '', imageReady ? 1 : 0].join('|');
+  const outcome = face.outcome ? [face.outcome.steps, face.outcome.effort, face.outcome.template, face.outcome.status, face.outcome.sources.join(',')].join('/') : '';
+  return [face.type, face.title, face.text, face.site, face.date, face.color, face.label, face.group ? face.group.name + face.group.color : '', outcome, imageReady ? 1 : 0].join('|');
 }
 
 // Word-wraps into at most maxLines, ending with an ellipsis when text is cut.
@@ -285,11 +300,61 @@ function drawNote(ctx, face) {
   }
 }
 
+function drawOutcome(ctx, face) {
+  // Gold border, OUTCOME badge and template, then title, goal, and a footer of step count, effort and source topics.
+  roundRect(ctx, 5, 5, FACE_WIDTH - 10, FACE_HEIGHT - 10, 24);
+  ctx.strokeStyle = OUTCOME_GOLD;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  const bw = drawBadge(ctx, PAD, PAD, 'OUTCOME ✦', OUTCOME_GOLD);
+  const info = face.outcome || { steps: 0, effort: '', template: '', status: 'proposed', sources: [] };
+  ctx.font = '500 13px ' + FONT;
+  ctx.fillStyle = '#d9c7a0';
+  ctx.textBaseline = 'middle';
+  const status = info.status === 'accepted' ? 'Accepted' : info.status === 'sent' ? 'Exported' : 'Proposed';
+  ctx.fillText([info.template, status].filter(Boolean).join(' · '), PAD + bw + 10, PAD + 10.5);
+  ctx.textBaseline = 'alphabetic';
+  let y = drawTitle(ctx, face, PAD + 60, 2, 25);
+  ctx.font = '400 15px ' + FONT;
+  ctx.fillStyle = BODY;
+  wrapText(value => ctx.measureText(value).width, face.text, FACE_WIDTH - PAD * 2, 2).forEach(line => {
+    ctx.fillText(line, PAD, y + 4);
+    y += 21;
+  });
+  const footerY = FACE_HEIGHT - PAD - 8;
+  ctx.font = '600 13px ' + FONT;
+  ctx.fillStyle = OUTCOME_GOLD;
+  const steps = info.steps + (info.steps === 1 ? ' step' : ' steps') + (info.effort ? ' · ' + info.effort : '');
+  ctx.fillText(wrapText(value => ctx.measureText(value).width, steps, 220, 1)[0] || '', PAD, footerY);
+  // Source topic chips, right-aligned.
+  ctx.font = '500 12px ' + FONT;
+  let x = FACE_WIDTH - PAD;
+  for (const source of [...info.sources].reverse()) {
+    const text = wrapText(value => ctx.measureText(value).width, source, 110, 1)[0] || '';
+    const w = ctx.measureText(text).width + 16;
+    if (x - w < PAD + 230) break;
+    x -= w;
+    roundRect(ctx, x, footerY - 15, w, 22, 4);
+    ctx.strokeStyle = 'rgba(255,182,39,0.45)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#e8dcc0';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 8, footerY - 3.5);
+    ctx.textBaseline = 'alphabetic';
+    x -= 6;
+  }
+}
+
 // Draws the whole face into a FACE_WIDTH × FACE_HEIGHT canvas. image is a loaded, CORS-clean image or null.
 export function drawFace(ctx, face, image = null) {
   ctx.clearRect(0, 0, FACE_WIDTH, FACE_HEIGHT);
   ctx.fillStyle = SURFACES[face.type] || SURFACES.note;
   ctx.fillRect(0, 0, FACE_WIDTH, FACE_HEIGHT);
+  if (face.type === 'outcome') {
+    drawOutcome(ctx, face);
+    return;
+  }
   if (face.type === 'video' || face.type === 'image') drawMedia(ctx, face, image);
   else if (face.type === 'link') drawLink(ctx, face);
   else drawNote(ctx, face);

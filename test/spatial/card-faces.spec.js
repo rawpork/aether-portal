@@ -30,6 +30,17 @@ describe("faceFromNode", () => {
 	});
 });
 
+describe("faceFromNode for Outcome Nodes", () => {
+	it("uses the outcome face with plan details and source topics", () => {
+		const face = faceFromNode(
+			{ id: "o1", category: "outcome", title: "Launch a funnel", url: "aether:outcome/o1", description: "Why", outcome_status: "accepted", outcome_plan: { template: "content_creation", goal: "Get sign-ups", effort: "2 weekends", steps: [{}, {}, {}] } },
+			{ categoryColor: "#ffb627", categoryLabel: "outcome", sources: ["AI video", "SEO", "Lead gen", "Extra"] }
+		);
+		expect(face).toMatchObject({ type: "outcome", text: "Get sign-ups", site: "", outcome: { steps: 3, effort: "2 weekends", template: "Content", status: "accepted", sources: ["AI video", "SEO", "Lead gen"] } });
+		expect(faceKey(face, false)).not.toBe(faceKey({ ...face, outcome: { ...face.outcome, status: "sent" } }, false));
+	});
+});
+
 describe("wrapText", () => {
 	const measure = text => text.length;
 

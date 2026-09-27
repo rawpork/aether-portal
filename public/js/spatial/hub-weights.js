@@ -3,7 +3,7 @@
 
 // Link types and how much each says about a connection. Category chain links join every node to a neighbour of the
 // same category, so they carry no signal.
-export const LINK_WEIGHTS = { ai: 1, concept: 0.6, semantic: 0.5, category: 0 };
+export const LINK_WEIGHTS = { ai: 1, synthesis: 1, concept: 0.6, semantic: 0.5, category: 0 };
 export const HUB_MAX_SCALE = 1.35;
 // Weight at which a hub starts to glow (DESIGN.md glow exception).
 export const GLOW_THRESHOLD = 0.35;

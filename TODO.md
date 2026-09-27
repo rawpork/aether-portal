@@ -26,14 +26,14 @@ Actionable tasks, roughly in priority order. Phases refer to [ROADMAP.md](ROADMA
 
 Aether's core value: a subconscious "big brain" that turns saves from different areas into executable Outcome Nodes (Input A + Input B → Outcome C).
 
-- [ ] Migration 0014: `outcome_status`, `outcome_fingerprint` on `saved_nodes`; `outcome_inputs` table.
-- [ ] Local candidate bundle scoring (diversity × strength × recency × novelty), unit-tested.
-- [ ] Synthesis Gemini call after the daily miner, and a validator (cited steps, known templates, 3-10 steps), unit-tested.
-- [ ] Create Outcome Nodes (`category = 'outcome'`) with synthesis links; at most 2 per user per day; dismiss memory by fingerprint.
-- [ ] Outcome card face (gold border, OUTCOME ✦ badge) and Outcome Gold glow with breathing pulse.
-- [ ] Node card plan view: numbered steps, tappable cited inputs, Accept / Dismiss / Regenerate / Send to Finish Line.
-- [ ] Outcome placement between the islands it bridges; always shown regardless of time scope.
-- [ ] `aether.blueprint/1` export for Finish Line.
+- [x] Migration 0014: `outcome_status`, `outcome_fingerprint` on `saved_nodes`; `outcome_inputs` table.
+- [x] Local candidate bundle scoring (diversity × strength × recency × novelty), unit-tested.
+- [x] Synthesis Gemini call after the daily miner, and a validator (cited steps, known templates, 3-10 steps), unit-tested.
+- [x] Create Outcome Nodes (`category = 'outcome'`) with synthesis links; at most 2 per user per day; dismiss memory by fingerprint.
+- [x] Outcome card face (gold border, OUTCOME ✦ badge) and Outcome Gold glow with breathing pulse.
+- [x] Node card plan view: numbered steps, tappable cited inputs, Accept / Dismiss / Regenerate / Send to Finish Line.
+- [x] Outcome placement between the islands it bridges; always shown regardless of time scope.
+- [x] `aether.blueprint/1` export for Finish Line.
 
 ## Future ideas
 
