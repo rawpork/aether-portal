@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aether 3D Node Mockup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    /* Main portal hybrid tokens (DESIGN.md, System 2); the page base is #0E0F11 for this mockup. */
+    :root {
+      color-scheme: dark;
+      --bg-page: #0E0F11;
+      --bg-panel: #0b1320;
+      --bg-raised: rgba(255, 255, 255, 0.04);
+      --hairline: 1px solid rgba(255, 255, 255, 0.08);
+      --text: #dffdf7;
+      --text-muted: #8a93a6;
+      --accent: #00ffcc;
+      --accent-line: rgba(0, 255, 204, 0.55);
+      --active-fill: linear-gradient(135deg, rgba(0, 255, 204, 0.3), rgba(79, 132, 255, 0.3));
+      --radius-s: 6px;
+      --radius-m: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      overflow: hidden;
+      background: var(--bg-page);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+    #scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+
+    .panel { position: fixed; z-index: 2; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-panel); }
+    #head { top: 12px; left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 8px 0 12px; }
+    #head .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    #head .hint { flex: 1; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .seg { display: flex; gap: 2px; padding: 2px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); }
+    .seg button { height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .seg button[aria-pressed="true"] { background: var(--active-fill); border-color: var(--accent-line); color: #fff; font-weight: 600; }
+    .seg button:focus-visible, .reset:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 2px; }
+
+    #legend { left: 12px; bottom: 12px; padding: 8px; min-width: 176px; }
+    #legend .t { margin: 0 4px 6px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+    .row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; }
+    .row svg { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
+    .row .n { flex: 1; }
+    .row .c { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+    #card { right: 12px; bottom: 12px; width: min(300px, calc(100vw - 24px)); padding: 12px; display: flex; flex-direction: column; gap: 6px; border-color: rgba(0, 255, 204, 0.3); }
+    #card .meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+    #card .tag { padding: 2px 6px; border: 1px solid var(--accent-line); border-radius: 4px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    #card h2 { margin: 0; font-size: 15px; font-weight: 600; color: #fff; line-height: 1.3; }
+    #card p { margin: 0; color: #aab3c5; line-height: 1.45; }
+    .reset { align-self: flex-start; height: 32px; margin-top: 4px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+
+    #label { position: fixed; z-index: 3; padding: 4px 8px; border: var(--hairline); border-radius: 4px; background: var(--bg-panel); color: var(--text); font-size: 12px; pointer-events: none; transform: translate(-50%, calc(-100% - 12px)); white-space: nowrap; }
+    #label[hidden] { display: none; }
+    #error { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; color: var(--text-muted); text-align: center; }
+    #error[hidden] { display: none; }
+
+    @media (max-width: 640px) {
+      #head .hint { display: none; }
+      #head { gap: 8px; }
+      #legend { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D cluster of saved nodes. Drag to orbit, scroll to zoom, click a node to select it."></canvas>
+
+  <header id="head" class="panel">
+    <span class="brand">Aether Portal</span>
+    <span class="hint">Drag to orbit · scroll or pinch to zoom · click a node to select it</span>
+    <div class="seg" role="group" aria-label="Background">
+      <button type="button" data-bg="#0E0F11" aria-pressed="true">#0E0F11</button>
+      <button type="button" data-bg="#080c14" aria-pressed="false">Portal #080c14</button>
+    </div>
+  </header>
+
+  <section id="legend" class="panel" aria-label="Shape key">
+    <p class="t">Shapes</p>
+    <div class="row">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      <span class="n">YouTube / video</span><span class="c" id="count-video"></span>
+    </div>
+    <div class="row">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+      <span class="n">Web link</span><span class="c" id="count-link"></span>
+    </div>
+    <div class="row">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="10" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+      <span class="n">Note</span><span class="c" id="count-note"></span>
+    </div>
+  </section>
+
+  <aside id="card" class="panel" aria-live="polite">
+    <div class="meta"><span class="tag" id="card-type"></span><span id="card-site"></span></div>
+    <h2 id="card-title"></h2>
+    <p id="card-text"></p>
+    <button type="button" class="reset" id="reset">Reset view</button>
+  </aside>
+
+  <div id="label" hidden></div>
+  <div id="error" hidden>WebGL is not available in this browser, so the 3D mockup cannot render.</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const ACCENT = 0x00ffcc;
+    const HAIRLINE = 0xffffff;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Muted, slightly tinted greys per type so the shapes read as a family without competing with the accent.
+    const TYPES = {
+      video: { label: 'Video', color: 0x4a4046 },
+      link: { label: 'Web link', color: 0x3c4658 },
+      note: { label: 'Note', color: 0x4a473c }
+    };
+
+    const NODES = [
+      { id: 'n1', type: 'link', title: 'Spaced repetition', site: 'en.wikipedia.org', text: 'Reviewing material at increasing intervals to move it into long-term memory.', pos: [0, 0.2, 0] },
+      { id: 'n2', type: 'video', title: 'How memory consolidation works during sleep', site: 'youtube.com', text: 'A 14-minute explainer on hippocampal replay.', pos: [-2.6, 1.1, -0.8] },
+      { id: 'n3', type: 'note', title: 'Japanese vocab deck plan', site: 'Note', text: 'Try spaced repetition for the N4 word list, 20 new cards a day.', pos: [2.3, 1.4, 0.6] },
+      { id: 'n4', type: 'link', title: 'The forgetting curve', site: 'psychology.org', text: 'Ebbinghaus on how quickly unreviewed memories fade.', pos: [1.6, -1.5, -1.4] },
+      { id: 'n5', type: 'video', title: 'Anki setup for beginners', site: 'youtube.com', text: 'Deck options, daily limits and the review queue.', pos: [-1.9, -1.4, 1.2] },
+      { id: 'n6', type: 'note', title: 'Study session checklist', site: 'Note', text: 'Phone away, 25 minutes, review before new cards.', pos: [-0.4, 2.4, 1.6] },
+      { id: 'n7', type: 'link', title: 'Interleaved practice', site: 'learningscientists.org', text: 'Mixing topics within one session to improve transfer.', pos: [3.2, -0.3, -2.2] },
+      { id: 'n8', type: 'video', title: 'Active recall vs rereading', site: 'youtube.com', text: 'Why testing yourself beats highlighting.', pos: [0.9, -2.6, 1.9] },
+      { id: 'n9', type: 'note', title: 'Questions for Thursday', site: 'Note', text: 'Ask how long the review intervals should get before the exam.', pos: [-3.3, 0.1, 2.1] }
+    ];
+    const LINKS = [['n1', 'n2'], ['n1', 'n3'], ['n1', 'n4'], ['n1', 'n7'], ['n2', 'n5'], ['n2', 'n8'], ['n3', 'n6'], ['n3', 'n9'], ['n4', 'n8'], ['n5', 'n9'], ['n6', 'n2']];
+
+    const canvas = document.getElementById('scene');
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    } catch (err) {
+      document.getElementById('error').hidden = false;
+      throw err;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    const background = new THREE.Color('#0E0F11');
+    scene.background = background;
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    const HOME = new THREE.Vector3(6.5, 3.2, 9);
+    camera.position.copy(HOME);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 4;
+    controls.maxDistance = 22;
+    controls.target.set(0, 0, 0);
+
+    // Soft, even light: shapes are read by their form, not by highlights.
+    scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x0b1320, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(5, 8, 6);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9fb4ff, 0.5);
+    rim.position.set(-6, -2, -5);
+    scene.add(rim);
+
+    // Play-button prism: a right-pointing triangle, extruded with a small bevel.
+    function playGeometry() {
+      const shape = new THREE.Shape();
+      const r = 0.62;
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.26, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3 });
+      geometry.center();
+      return geometry;
+    }
+    const GEOMETRY = {
+      video: playGeometry(),
+      link: new THREE.SphereGeometry(0.5, 48, 32),
+      note: new THREE.BoxGeometry(0.82, 1.06, 0.07)
+    };
+    // Hairline edges on the flat-sided shapes echo the 1px borders of the 2D UI; the sphere stays smooth.
+    const EDGES = {
+      video: new THREE.EdgesGeometry(GEOMETRY.video, 30),
+      note: new THREE.EdgesGeometry(GEOMETRY.note, 30)
+    };
+
+    const byId = new Map();
+    const pickables = [];
+    NODES.forEach((node, index) => {
+      const material = new THREE.MeshStandardMaterial({ color: TYPES[node.type].color, roughness: 0.55, metalness: 0.08, emissive: 0x000000 });
+      const mesh = new THREE.Mesh(GEOMETRY[node.type], material);
+      const group = new THREE.Group();
+      group.add(mesh);
+      let edges = null;
+      if (EDGES[node.type]) {
+        edges = new THREE.LineSegments(EDGES[node.type], new THREE.LineBasicMaterial({ color: HAIRLINE, transparent: true, opacity: 0.14 }));
+        group.add(edges);
+      }
+      group.position.set(...node.pos);
+      group.rotation.set(0.25 * Math.sin(index), 0.6 * Math.cos(index * 1.7), 0);
+      scene.add(group);
+      mesh.userData.id = node.id;
+      pickables.push(mesh);
+      byId.set(node.id, { node, group, mesh, material, edges, base: node.pos[1], phase: index * 0.9, spin: 0.12 + (index % 3) * 0.04 });
+    });
+
+    ['video', 'link', 'note'].forEach(type => {
+      document.getElementById('count-' + type).textContent = NODES.filter(node => node.type === type).length;
+    });
+
+    // Links: faint hairlines; the ones touching the selected node turn teal.
+    const linkObjects = LINKS.map(([a, b]) => {
+      const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+      const material = new THREE.LineBasicMaterial({ color: HAIRLINE, transparent: true, opacity: 0.1 });
+      const line = new THREE.Line(geometry, material);
+      scene.add(line);
+      return { a, b, line, material };
+    });
+    const updateLinks = () => {
+      linkObjects.forEach(({ a, b, line }) => {
+        const positions = line.geometry.attributes.position;
+        const pa = byId.get(a).group.position;
+        const pb = byId.get(b).group.position;
+        positions.setXYZ(0, pa.x, pa.y, pa.z);
+        positions.setXYZ(1, pb.x, pb.y, pb.z);
+        positions.needsUpdate = true;
+      });
+    };
+
+    // Selection: exactly one node carries the accent; everything else stays muted.
+    let selectedId = null;
+    const cardType = document.getElementById('card-type');
+    const cardSite = document.getElementById('card-site');
+    const cardTitle = document.getElementById('card-title');
+    const cardText = document.getElementById('card-text');
+    function select(id, { focus = true } = {}) {
+      selectedId = id;
+      byId.forEach(entry => {
+        const on = entry.node.id === id;
+        entry.material.color.setHex(on ? ACCENT : TYPES[entry.node.type].color);
+        entry.material.emissive.setHex(on ? ACCENT : 0x000000);
+        entry.material.emissiveIntensity = on ? 0.22 : 0;
+        if (entry.edges) {
+          entry.edges.material.color.setHex(on ? 0x041016 : HAIRLINE);
+          entry.edges.material.opacity = on ? 0.35 : 0.14;
+        }
+      });
+      linkObjects.forEach(({ a, b, material }) => {
+        const on = a === id || b === id;
+        material.color.setHex(on ? ACCENT : HAIRLINE);
+        material.opacity = on ? 0.55 : 0.1;
+      });
+      const { node, group } = byId.get(id);
+      cardType.textContent = TYPES[node.type].label;
+      cardSite.textContent = node.site;
+      cardTitle.textContent = node.title;
+      cardText.textContent = node.text;
+      if (focus) {
+        const target = group.position.clone();
+        const offset = camera.position.clone().sub(controls.target);
+        tweenTo(target, target.clone().add(offset));
+      }
+    }
+
+    function tweenTo(target, position) {
+      if (reduceMotion || !window.gsap) {
+        controls.target.copy(target);
+        camera.position.copy(position);
+        return;
+      }
+      gsap.to(controls.target, { x: target.x, y: target.y, z: target.z, duration: 0.6, ease: 'power3.out' });
+      gsap.to(camera.position, { x: position.x, y: position.y, z: position.z, duration: 0.6, ease: 'power3.out' });
+    }
+
+    document.getElementById('reset').addEventListener('click', () => tweenTo(new THREE.Vector3(0, 0, 0), HOME));
+
+    // Pointer: hover shows a label and a slight lift; a click without a drag selects.
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const label = document.getElementById('label');
+    let hoveredId = null;
+    let downAt = null;
+    function pick(event) {
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(pickables, false)[0];
+      return hit ? hit.object.userData.id : null;
+    }
+    function setHover(id) {
+      if (id === hoveredId) return;
+      const previous = hoveredId && byId.get(hoveredId);
+      if (previous) scaleTo(previous.group, 1);
+      hoveredId = id;
+      canvas.style.cursor = id ? 'pointer' : '';
+      if (id) scaleTo(byId.get(id).group, 1.08);
+      label.hidden = !id;
+      if (id) label.textContent = byId.get(id).node.title;
+    }
+    function scaleTo(group, s) {
+      if (reduceMotion || !window.gsap) { group.scale.setScalar(s); return; }
+      gsap.to(group.scale, { x: s, y: s, z: s, duration: 0.3, ease: 'power2.out' });
+    }
+    canvas.addEventListener('pointermove', event => {
+      if (event.pointerType === 'mouse') setHover(pick(event));
+    });
+    canvas.addEventListener('pointerleave', () => setHover(null));
+    canvas.addEventListener('pointerdown', event => { downAt = { x: event.clientX, y: event.clientY }; });
+    canvas.addEventListener('pointerup', event => {
+      if (!downAt) return;
+      const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y);
+      downAt = null;
+      if (moved > 5) return;
+      const id = pick(event);
+      if (id) select(id);
+    });
+
+    // Background switch: the spec base and the portal's real graph background.
+    document.querySelectorAll('[data-bg]').forEach(button => {
+      button.addEventListener('click', () => {
+        background.set(button.dataset.bg);
+        document.documentElement.style.setProperty('--bg-page', button.dataset.bg);
+        document.querySelectorAll('[data-bg]').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      });
+    });
+
+    function resize() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const clock = new THREE.Clock();
+    const projected = new THREE.Vector3();
+    renderer.setAnimationLoop(() => {
+      const t = clock.getElapsedTime();
+      if (!reduceMotion) {
+        byId.forEach(entry => {
+          entry.group.position.y = entry.base + Math.sin(t * 0.8 + entry.phase) * 0.12;
+          entry.group.rotation.y += entry.spin * 0.01;
+        });
+      }
+      updateLinks();
+      controls.update();
+      if (hoveredId) {
+        projected.copy(byId.get(hoveredId).group.position).project(camera);
+        const rect = canvas.getBoundingClientRect();
+        label.style.left = (rect.left + (projected.x + 1) / 2 * rect.width) + 'px';
+        label.style.top = (rect.top + (1 - projected.y) / 2 * rect.height) + 'px';
+      }
+      renderer.render(scene, camera);
+    });
+
+    select('n1', { focus: false });
+  </script>
+</body>
+</html>

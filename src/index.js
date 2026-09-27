@@ -1715,7 +1715,9 @@ export default {
       .board-column { scroll-snap-align: start; }
     }
   </style>
-  <script src="https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
+  <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
+  <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
+  <script type="module" src="/js/spatial/index.js"></script>
 </head>
 <body>
   <header id="topbar">
@@ -3149,6 +3151,13 @@ export default {
       scheduleResume();
     };
 
+    // The spatial modules (public/js/spatial/) load as a module script, after this one; their design tokens
+    // replace the defaults here once they are ready.
+    let particleColor = '#00ffcc';
+    const applySpatialTokens = () => { particleColor = window.AetherSpatial.tokens.accent; };
+    if (window.AetherSpatial) applySpatialTokens();
+    else window.addEventListener('aether-spatial-ready', applySpatialTokens, { once: true });
+
     const Graph = ForceGraph3D({ controlType: 'orbit' })(document.getElementById('3d-graph'))
       .nodeLabel(node => {
         const title = node.title || node.name || 'Saved Entry';
@@ -3159,7 +3168,7 @@ export default {
       .linkWidth(link => link.type === 'ai' ? 1.2 : 0)
       .linkDirectionalParticleSpeed(0.008)
       .linkDirectionalParticleWidth(2.5)
-      .linkDirectionalParticleColor(() => '#00ffcc')
+      .linkDirectionalParticleColor(() => particleColor)
       .onNodeClick(node => {
         lastBackgroundTap = null;
         selectNode(node);
@@ -3243,7 +3252,7 @@ export default {
     });
     resumeAutoRotate();
 
-    import('https://unpkg.com/three@0.180.0/build/three.module.js')
+    import('/vendor/three-0.180.0/three.module.js')
       .then(module => {
         THREE = module;
         territories.group = new THREE.Group();

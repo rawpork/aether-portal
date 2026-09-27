@@ -19,5 +19,5 @@ Actionable tasks, roughly in priority order. Phases refer to [ROADMAP.md](ROADMA
 
 - [ ] Paginate / time-window `/api/graph` (Phase 5).
 - [ ] Rename the worker from `lingering-water-de49` to something descriptive (requires re-pointing the Telegram webhook).
-- [ ] Pin or self-host the `3d-force-graph` script instead of loading from unpkg.
+- [x] Pin or self-host the `3d-force-graph` script instead of loading from unpkg (`public/vendor/`, with three.js).
 - [ ] Finish Line hand-off and Shamely.io publishing (Phase 6).

@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aether Spatial Nodes</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    /* Main portal hybrid tokens (DESIGN.md, System 2). */
+    :root {
+      color-scheme: dark;
+      --bg-page: #080c14;
+      --bg-panel: #0b1320;
+      --bg-raised: rgba(255, 255, 255, 0.04);
+      --hairline: 1px solid rgba(255, 255, 255, 0.08);
+      --text: #dffdf7;
+      --text-muted: #8a93a6;
+      --accent: #00ffcc;
+      --accent-line: rgba(0, 255, 204, 0.55);
+      --radius-s: 6px;
+      --radius-m: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      overflow: hidden;
+      background: var(--bg-page);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+
+    .panel { position: fixed; z-index: 2; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-panel); }
+    #head { top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; }
+    #head .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    #head .hint { flex: 1; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    #card { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(300px, calc(100vw - 24px)); padding: 12px; display: flex; flex-direction: column; gap: 6px; border-color: rgba(0, 255, 204, 0.3); transition: opacity 300ms cubic-bezier(0.25, 1, 0.5, 1), transform 300ms cubic-bezier(0.25, 1, 0.5, 1); }
+    #card.idle { opacity: 0; transform: translateY(8px); pointer-events: none; }
+    #card .meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+    #card .tag { padding: 2px 6px; border: 1px solid var(--accent-line); border-radius: 4px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    #card h2 { margin: 0; font-size: 15px; font-weight: 600; color: #fff; line-height: 1.3; }
+    #card p { margin: 0; color: #aab3c5; line-height: 1.45; }
+    .actions { display: flex; gap: 8px; margin-top: 4px; }
+    .actions button { height: 32px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1); }
+    .actions button:active { transform: scale(0.98); transition-duration: 0s; }
+    .actions button:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 2px; }
+
+    #key { left: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+    #key .row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; color: var(--text); }
+    #key svg { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
+    #error { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; color: var(--text-muted); text-align: center; }
+    #error[hidden] { display: none; }
+    @media (max-width: 640px) {
+      #head .hint { font-size: 12px; }
+      #key { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D cluster of saved nodes. Drag to orbit, pinch or scroll to zoom, tap a node to select it."></canvas>
+
+  <header id="head" class="panel">
+    <span class="brand">Aether</span>
+    <span class="hint" id="hint">Drag to orbit · pinch or scroll to zoom · tap a node</span>
+  </header>
+
+  <section id="key" class="panel" aria-label="Shape key">
+    <div class="row"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3.2v9.6c0 .6.6.9 1.1.6l7.4-4.8c.5-.3.5-.9 0-1.2L5.6 2.6c-.5-.3-1.1 0-1.1.6z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>Video</div>
+    <div class="row"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" fill="currentColor"/><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="1.6 1.6"/></svg>Web link</div>
+    <div class="row"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2" width="9" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>Note</div>
+  </section>
+
+  <aside id="card" class="panel idle" aria-live="polite">
+    <div class="meta"><span class="tag" id="card-type"></span><span id="card-site"></span></div>
+    <h2 id="card-title"></h2>
+    <p id="card-text"></p>
+    <div class="actions">
+      <button type="button" id="clear">Deselect</button>
+      <button type="button" id="reset">Reset view</button>
+    </div>
+  </aside>
+
+  <div id="error" hidden>WebGL is not available in this browser, so the 3D mockup cannot render.</div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const TEAL = new THREE.Color('#00ffcc');
+    const GLASS = new THREE.Color('#9fb2cc');
+    const CORE = new THREE.Color('#3a4a63');
+    const WIRE = new THREE.Color('#c8d4e6');
+    const BG = new THREE.Color('#080c14');
+
+    // Frame-rate independent smoothing: the same feel at 30, 60 or 120 fps.
+    const damp = (current, target, lambda, dt) => current + (target - current) * (1 - Math.exp(-lambda * dt));
+
+    const NODES = [
+      { id: 'n1', type: 'link', title: 'Spaced repetition', site: 'en.wikipedia.org', text: 'Reviewing material at increasing intervals to move it into long-term memory.', pos: [0, 0.1, 0] },
+      { id: 'n2', type: 'video', title: 'How memory consolidation works during sleep', site: 'youtube.com', text: 'A 14-minute explainer on hippocampal replay.', pos: [-2.8, 1.2, -0.9] },
+      { id: 'n3', type: 'note', title: 'Japanese vocab deck plan', site: 'Note', text: 'Spaced repetition for the N4 word list, 20 new cards a day.', pos: [2.5, 1.5, 0.7] },
+      { id: 'n4', type: 'link', title: 'The forgetting curve', site: 'psychology.org', text: 'Ebbinghaus on how quickly unreviewed memories fade.', pos: [1.8, -1.6, -1.5] },
+      { id: 'n5', type: 'video', title: 'Anki setup for beginners', site: 'youtube.com', text: 'Deck options, daily limits and the review queue.', pos: [-2.0, -1.5, 1.3] },
+      { id: 'n6', type: 'note', title: 'Study session checklist', site: 'Note', text: 'Phone away, 25 minutes, review before new cards.', pos: [-0.5, 2.6, 1.7] },
+      { id: 'n7', type: 'link', title: 'Interleaved practice', site: 'learningscientists.org', text: 'Mixing topics within one session to improve transfer.', pos: [3.4, -0.3, -2.3] },
+      { id: 'n8', type: 'video', title: 'Active recall vs rereading', site: 'youtube.com', text: 'Why testing yourself beats highlighting.', pos: [0.9, -2.8, 2.0] },
+      { id: 'n9', type: 'note', title: 'Questions for Thursday', site: 'Note', text: 'How long should review intervals get before the exam?', pos: [-3.5, 0.1, 2.2] },
+      { id: 'n10', type: 'link', title: 'Sleep and learning', site: 'sleepfoundation.org', text: 'Why a night of sleep after study locks memories in.', pos: [-1.2, 0.9, -2.8] }
+    ];
+    const TYPE_LABEL = { video: 'Video', link: 'Web link', note: 'Note' };
+    const LINKS = [['n1', 'n2'], ['n1', 'n3'], ['n1', 'n4'], ['n1', 'n7'], ['n1', 'n10'], ['n2', 'n5'], ['n2', 'n8'], ['n3', 'n6'], ['n3', 'n9'], ['n4', 'n8'], ['n5', 'n9'], ['n6', 'n2'], ['n10', 'n2']];
+
+    // ---------- Renderer, scene, environment ----------
+    const canvas = document.getElementById('scene');
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    } catch (err) {
+      document.getElementById('error').hidden = false;
+      throw err;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+
+    const scene = new THREE.Scene();
+    scene.background = BG;
+    scene.fog = new THREE.FogExp2(BG, 0.045);
+    // A soft studio reflection map gives the frosted glass something to refract, at low strength.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+
+    // ---------- Lighting: soft fill plus a teal rim that follows the camera ----------
+    scene.add(new THREE.AmbientLight(0xb8c6dc, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x00ffcc, 2.2);
+    scene.add(rim);
+    const rimTarget = new THREE.Object3D();
+    scene.add(rimTarget);
+    rim.target = rimTarget;
+    key.target = rimTarget;
+
+    // ---------- Geometry ----------
+    function roundedRectShape(w, h, r) {
+      const s = new THREE.Shape();
+      const x = -w / 2, y = -h / 2;
+      s.moveTo(x + r, y);
+      s.lineTo(x + w - r, y);
+      s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r);
+      s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h);
+      s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r);
+      s.quadraticCurveTo(x, y, x + r, y);
+      return s;
+    }
+    function roundedTriangleShape(radius, corner) {
+      const v = [0, 1, 2].map(i => new THREE.Vector2(Math.cos(i * 2 * Math.PI / 3) * radius, Math.sin(i * 2 * Math.PI / 3) * radius));
+      const s = new THREE.Shape();
+      v.forEach((p, i) => {
+        const prev = v[(i + 2) % 3];
+        const next = v[(i + 1) % 3];
+        const a = p.clone().add(prev.clone().sub(p).setLength(corner));
+        const b = p.clone().add(next.clone().sub(p).setLength(corner));
+        if (i === 0) s.moveTo(a.x, a.y); else s.lineTo(a.x, a.y);
+        s.quadraticCurveTo(p.x, p.y, b.x, b.y);
+      });
+      s.closePath();
+      return s;
+    }
+    // Outline of a shape's front and back faces, drawn as hairlines.
+    function outline(shape, halfDepth) {
+      const pts = shape.getPoints(24);
+      const positions = [];
+      [halfDepth, -halfDepth].forEach(z => {
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i], q = pts[(i + 1) % pts.length];
+          positions.push(p.x, p.y, z, q.x, q.y, z);
+        }
+      });
+      return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    }
+
+    // Notes: a razor-thin rounded card. Extruded so the corners stay round at 3mm-style thickness.
+    const noteShape = roundedRectShape(0.86, 1.12, 0.1);
+    const NOTE_DEPTH = 0.03;
+    const noteGeo = new THREE.ExtrudeGeometry(noteShape, { depth: NOTE_DEPTH, bevelEnabled: true, bevelThickness: 0.008, bevelSize: 0.008, bevelSegments: 2, curveSegments: 16 });
+    noteGeo.center();
+    const noteLines = outline(noteShape, NOTE_DEPTH / 2 + 0.01);
+
+    // Videos: a rounded play-glyph prism.
+    const playShape = roundedTriangleShape(0.62, 0.16);
+    const PLAY_DEPTH = 0.2;
+    const playGeo = new THREE.ExtrudeGeometry(playShape, { depth: PLAY_DEPTH, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 4, curveSegments: 16 });
+    playGeo.center();
+    const playLines = outline(playShape, PLAY_DEPTH / 2 + 0.045);
+
+    // Links: a solid core, a wireframe shell and one orbit ring with a satellite.
+    const coreGeo = new THREE.SphereGeometry(0.24, 48, 32);
+    const shellGeo = new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(0.52, 1));
+    const glassShellGeo = new THREE.SphereGeometry(0.5, 48, 32);
+    const ringGeo = new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, 0.74, 0.74).getPoints(96).map(p => new THREE.Vector3(p.x, p.y, 0)));
+    const satGeo = new THREE.SphereGeometry(0.035, 16, 12);
+    const hitGeo = new THREE.SphereGeometry(0.8, 12, 8);
+    const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+
+    function glassMaterial() {
+      return new THREE.MeshPhysicalMaterial({
+        color: GLASS.clone(),
+        transmission: 1,
+        thickness: 0.6,
+        roughness: 0.32,
+        ior: 1.45,
+        metalness: 0,
+        clearcoat: 1,
+        clearcoatRoughness: 0.2,
+        attenuationColor: new THREE.Color('#1c2a40'),
+        attenuationDistance: 2.5,
+        emissive: TEAL.clone(),
+        emissiveIntensity: 0,
+        envMapIntensity: 0.35,
+        transparent: true
+      });
+    }
+    const wireMaterial = opacity => new THREE.LineBasicMaterial({ color: WIRE.clone(), transparent: true, opacity, depthWrite: false });
+
+    // ---------- Nodes ----------
+    const nodes = new Map();
+    const hitTargets = [];
+    NODES.forEach((data, index) => {
+      const group = new THREE.Group();
+      const spin = new THREE.Group();
+      group.add(spin);
+      const parts = { glass: null, wires: [], core: null, satellite: null, ring: null };
+
+      if (data.type === 'note') {
+        parts.glass = glassMaterial();
+        spin.add(new THREE.Mesh(noteGeo, parts.glass));
+        const lines = new THREE.LineSegments(noteLines, wireMaterial(0.22));
+        spin.add(lines);
+        parts.wires.push({ material: lines.material, base: 0.22 });
+      } else if (data.type === 'video') {
+        parts.glass = glassMaterial();
+        spin.add(new THREE.Mesh(playGeo, parts.glass));
+        const lines = new THREE.LineSegments(playLines, wireMaterial(0.2));
+        spin.add(lines);
+        parts.wires.push({ material: lines.material, base: 0.2 });
+      } else {
+        parts.core = new THREE.MeshPhysicalMaterial({ color: CORE.clone(), roughness: 0.25, metalness: 0.2, clearcoat: 1, envMapIntensity: 0.35, emissive: TEAL.clone(), emissiveIntensity: 0 });
+        spin.add(new THREE.Mesh(coreGeo, parts.core));
+        parts.glass = glassMaterial();
+        parts.glass.roughness = 0.62;
+        spin.add(new THREE.Mesh(glassShellGeo, parts.glass));
+        const shell = new THREE.LineSegments(shellGeo, wireMaterial(0.12));
+        spin.add(shell);
+        parts.wires.push({ material: shell.material, base: 0.12 });
+        const ring = new THREE.Line(ringGeo, wireMaterial(0.16));
+        ring.rotation.set(1.1 + index * 0.3, 0.4, 0);
+        group.add(ring);
+        parts.wires.push({ material: ring.material, base: 0.16 });
+        parts.ring = ring;
+        parts.satMat = new THREE.MeshBasicMaterial({ color: WIRE.clone() });
+        parts.satellite = new THREE.Mesh(satGeo, parts.satMat);
+        ring.add(parts.satellite);
+      }
+
+      const hit = new THREE.Mesh(hitGeo, hitMat);
+      hit.userData.id = data.id;
+      group.add(hit);
+      hitTargets.push(hit);
+
+      group.position.set(...data.pos);
+      spin.rotation.set(0.3 * Math.sin(index * 2.1), 0.8 * Math.cos(index * 1.3), 0.15 * Math.sin(index));
+      scene.add(group);
+
+      nodes.set(data.id, {
+        data, group, spin, parts,
+        base: new THREE.Vector3(...data.pos),
+        heat: 0,
+        // Each node drifts on its own slow, incommensurate frequencies so the cluster never loops visibly.
+        f: [0.21 + index * 0.017, 0.27 + index * 0.013, 0.17 + index * 0.019],
+        ph: [index * 1.7, index * 2.3, index * 0.9],
+        spinRate: [0.05 + (index % 3) * 0.02, 0.08 + (index % 4) * 0.015]
+      });
+    });
+
+    // ---------- Links ----------
+    const links = LINKS.map(([a, b]) => {
+      const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+      const material = new THREE.LineBasicMaterial({ color: WIRE.clone(), transparent: true, opacity: 0.07, depthWrite: false });
+      const line = new THREE.Line(geometry, material);
+      scene.add(line);
+      return { a: nodes.get(a), b: nodes.get(b), line, material };
+    });
+
+    // ---------- Dust: faint points for depth ----------
+    const dustPoints = (() => {
+      const count = 260;
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const r = 6 + Math.random() * 12;
+        const t = Math.random() * Math.PI * 2;
+        const p = Math.acos(2 * Math.random() - 1);
+        positions.set([r * Math.sin(p) * Math.cos(t), r * Math.cos(p) * 0.6, r * Math.sin(p) * Math.sin(t)], i * 3);
+      }
+      const dust = new THREE.Points(
+        new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(positions, 3)),
+        new THREE.PointsMaterial({ color: 0x8fa3c0, size: 0.03, transparent: true, opacity: 0.35, depthWrite: false })
+      );
+      scene.add(dust);
+      return dust;
+    })();
+
+    // ---------- Camera rig: spherical goal, smoothly damped current ----------
+    const HOME = { theta: 0.65, phi: 1.2, radius: 11.5 };
+    const goal = { ...HOME, target: new THREE.Vector3() };
+    const cur = { ...HOME, target: new THREE.Vector3() };
+    let thetaVel = 0, phiVel = 0;
+    let lastInput = -10;
+    const clampPhi = v => Math.min(2.6, Math.max(0.45, v));
+    const clampRadius = v => Math.min(20, Math.max(4.5, v));
+
+    // ---------- Selection and hover ----------
+    let selected = null;
+    let hovered = null;
+    let followNode = null;
+    const card = document.getElementById('card');
+    function select(id) {
+      selected = id ? nodes.get(id) : null;
+      followNode = selected;
+      if (selected) {
+        const d = selected.data;
+        document.getElementById('card-type').textContent = TYPE_LABEL[d.type];
+        document.getElementById('card-site').textContent = d.site;
+        document.getElementById('card-title').textContent = d.title;
+        document.getElementById('card-text').textContent = d.text;
+        goal.radius = Math.min(goal.radius, 8);
+      }
+      card.classList.toggle('idle', !selected);
+    }
+    document.getElementById('clear').addEventListener('click', () => { select(null); goal.target.set(0, 0, 0); });
+    document.getElementById('reset').addEventListener('click', () => {
+      select(null);
+      Object.assign(goal, { theta: HOME.theta, phi: HOME.phi, radius: HOME.radius });
+      goal.target.set(0, 0, 0);
+      thetaVel = phiVel = 0;
+    });
+
+    // ---------- Input: drag with momentum, wheel and pinch zoom, tap to select ----------
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const pointers = new Map();
+    let dragStart = null;
+    let pinchDist = 0;
+    function pickAt(x, y) {
+      const rect = canvas.getBoundingClientRect();
+      ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const hit = raycaster.intersectObjects(hitTargets, false)[0];
+      return hit ? hit.object.userData.id : null;
+    }
+    canvas.addEventListener('pointerdown', e => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+      lastInput = clock.elapsedTime;
+      if (pointers.size === 1) {
+        dragStart = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
+        thetaVel = phiVel = 0;
+      } else if (pointers.size === 2) {
+        const [p1, p2] = [...pointers.values()];
+        pinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        dragStart = null;
+      }
+    });
+    canvas.addEventListener('pointermove', e => {
+      const prev = pointers.get(e.pointerId);
+      if (!prev) {
+        if (e.pointerType === 'mouse') hovered = pickAt(e.clientX, e.clientY);
+        canvas.style.cursor = hovered ? 'pointer' : 'grab';
+        return;
+      }
+      const now = performance.now();
+      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      const dt = Math.max(1, now - prev.t) / 1000;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: now });
+      lastInput = clock.elapsedTime;
+      if (pointers.size === 1) {
+        const sens = 0.0055;
+        goal.theta -= dx * sens;
+        goal.phi = clampPhi(goal.phi - dy * sens);
+        // Smoothed release velocity, so a flick glides instead of snapping.
+        thetaVel = damp(thetaVel, (-dx * sens) / dt, 18, dt);
+        phiVel = damp(phiVel, (-dy * sens) / dt, 18, dt);
+        if (dragStart) dragStart.moved += Math.abs(dx) + Math.abs(dy);
+        canvas.style.cursor = 'grabbing';
+      } else if (pointers.size === 2) {
+        const [p1, p2] = [...pointers.values()];
+        const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        if (pinchDist) goal.radius = clampRadius(goal.radius * (pinchDist / dist));
+        pinchDist = dist;
+      }
+    });
+    function endPointer(e) {
+      const last = pointers.get(e.pointerId);
+      if (!last) return;
+      pointers.delete(e.pointerId);
+      // No momentum if the finger rested before lifting.
+      if (performance.now() - last.t > 90) thetaVel = phiVel = 0;
+      if (pointers.size === 0 && dragStart) {
+        const quick = performance.now() - dragStart.t < 450;
+        if (dragStart.moved < 8 && quick) {
+          const id = pickAt(e.clientX, e.clientY);
+          select(id);
+          if (!id) goal.target.set(0, 0, 0);
+          thetaVel = phiVel = 0;
+        }
+        dragStart = null;
+      }
+      if (pointers.size < 2) pinchDist = 0;
+      canvas.style.cursor = 'grab';
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !pointers.size) hovered = null; });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      goal.radius = clampRadius(goal.radius * Math.exp(e.deltaY * 0.0012));
+      lastInput = clock.elapsedTime;
+    }, { passive: false });
+    if (matchMedia('(hover: none)').matches) document.getElementById('hint').textContent = 'Drag to orbit · pinch to zoom · tap a node';
+
+    // ---------- Resize ----------
+    function resize() {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.fov = w < h ? 55 : 42;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ---------- Frame loop ----------
+    const clock = new THREE.Clock();
+    const tmp = new THREE.Vector3();
+    const tealMix = new THREE.Color();
+    const CAM_LAMBDA = reduceMotion ? 30 : 5.5;
+    const HEAT_LAMBDA = reduceMotion ? 30 : 7;
+
+    renderer.setAnimationLoop(() => {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const t = clock.elapsedTime;
+      const dragging = pointers.size > 0;
+
+      // Momentum after a flick, decaying smoothly.
+      if (!dragging) {
+        goal.theta += thetaVel * dt;
+        goal.phi = clampPhi(goal.phi + phiVel * dt);
+        thetaVel *= Math.exp(-3.2 * dt);
+        phiVel *= Math.exp(-3.2 * dt);
+        // A slow idle drift once the viewer has let go for a while.
+        if (!reduceMotion && t - lastInput > 4) goal.theta += 0.045 * dt;
+      }
+
+      // Nodes: organic drift, slow spin, and a damped highlight.
+      nodes.forEach(n => {
+        if (!reduceMotion) {
+          n.group.position.set(
+            n.base.x + Math.sin(t * n.f[0] + n.ph[0]) * 0.16 + Math.sin(t * n.f[1] * 0.53 + n.ph[2]) * 0.06,
+            n.base.y + Math.sin(t * n.f[1] + n.ph[1]) * 0.22,
+            n.base.z + Math.sin(t * n.f[2] + n.ph[2]) * 0.14
+          );
+          n.spin.rotation.y += n.spinRate[0] * dt;
+          n.spin.rotation.x = Math.sin(t * 0.3 + n.ph[0]) * 0.12;
+          if (n.parts.ring) n.parts.satellite.position.set(Math.cos(t * 0.9 + n.ph[1]) * 0.74, Math.sin(t * 0.9 + n.ph[1]) * 0.74, 0);
+        }
+        const target = n === selected ? 1 : n.data.id === hovered ? 0.55 : 0;
+        n.heat = damp(n.heat, target, HEAT_LAMBDA, dt);
+        const h = n.heat;
+        const p = n.parts;
+        p.glass.color.lerpColors(GLASS, TEAL, h * 0.85);
+        p.glass.emissiveIntensity = h * 0.18;
+        p.glass.roughness = (n.data.type === 'link' ? 0.62 : 0.32) - h * 0.1;
+        p.wires.forEach(w => {
+          w.material.color.lerpColors(WIRE, TEAL, h);
+          w.material.opacity = w.base + h * 0.55;
+        });
+        if (p.core) {
+          p.core.color.lerpColors(CORE, TEAL, h);
+          p.core.emissiveIntensity = h * 0.6;
+          p.satMat.color.lerpColors(WIRE, TEAL, h);
+        }
+        n.group.scale.setScalar(1 + h * 0.07);
+      });
+
+      links.forEach(l => {
+        const a = l.a.group.position, b = l.b.group.position;
+        const arr = l.line.geometry.attributes.position;
+        arr.setXYZ(0, a.x, a.y, a.z);
+        arr.setXYZ(1, b.x, b.y, b.z);
+        arr.needsUpdate = true;
+        const h = Math.max(l.a === selected ? l.a.heat : 0, l.b === selected ? l.b.heat : 0, l.a.data.id === hovered ? l.a.heat * 0.6 : 0, l.b.data.id === hovered ? l.b.heat * 0.6 : 0);
+        l.material.color.lerpColors(WIRE, TEAL, h);
+        l.material.opacity = 0.07 + h * 0.45;
+      });
+
+      if (!reduceMotion) dustPoints.rotation.y += 0.006 * dt;
+
+      // Camera: follow the selected node's live position, then damp everything toward the goal.
+      if (followNode) goal.target.copy(followNode.group.position);
+      cur.theta = damp(cur.theta, goal.theta, CAM_LAMBDA, dt);
+      cur.phi = damp(cur.phi, goal.phi, CAM_LAMBDA, dt);
+      cur.radius = damp(cur.radius, goal.radius, CAM_LAMBDA * 0.8, dt);
+      cur.target.x = damp(cur.target.x, goal.target.x, CAM_LAMBDA * 0.7, dt);
+      cur.target.y = damp(cur.target.y, goal.target.y, CAM_LAMBDA * 0.7, dt);
+      cur.target.z = damp(cur.target.z, goal.target.z, CAM_LAMBDA * 0.7, dt);
+      tmp.setFromSphericalCoords(cur.radius, cur.phi, cur.theta);
+      camera.position.copy(cur.target).add(tmp);
+      camera.lookAt(cur.target);
+
+      // Rim light sits behind the cluster from the camera's point of view; the key light sits above the camera.
+      const back = tmp.clone().normalize();
+      rim.position.copy(cur.target).addScaledVector(back, -10).add(new THREE.Vector3(0, 3, 0));
+      key.position.copy(cur.target).addScaledVector(back, 8).add(new THREE.Vector3(2, 6, 0));
+      rimTarget.position.copy(cur.target);
+
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>

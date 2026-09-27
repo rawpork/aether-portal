@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aether Preview Cards</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <style>
+    /* Main portal hybrid tokens (DESIGN.md, System 2). */
+    :root {
+      color-scheme: dark;
+      --bg-page: #080c14;
+      --bg-panel: #0b1320;
+      --bg-raised: rgba(255, 255, 255, 0.04);
+      --hairline: 1px solid rgba(255, 255, 255, 0.08);
+      --text: #dffdf7;
+      --text-muted: #8a93a6;
+      --accent: #00ffcc;
+      --accent-line: rgba(0, 255, 204, 0.55);
+      --radius-s: 6px;
+      --radius-m: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      overflow: hidden;
+      background: var(--bg-page);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #scene { position: fixed; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
+    .panel { position: fixed; z-index: 2; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-panel); }
+    #head { top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; }
+    #head .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    #head .hint { flex: 1; min-width: 0; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    #key { left: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+    #key .row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
+    #key .sw { width: 14px; height: 10px; flex: none; border-radius: 2px; border: 1px solid rgba(255, 255, 255, 0.14); }
+
+    #bar { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; gap: 8px; padding: 6px; transition: opacity 300ms cubic-bezier(0.25, 1, 0.5, 1), transform 300ms cubic-bezier(0.25, 1, 0.5, 1); }
+    #bar.idle { opacity: 0; transform: translateY(8px); pointer-events: none; }
+    #bar button { height: 32px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1); }
+    #bar button:active { transform: scale(0.98); transition-duration: 0s; }
+    #bar button:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 2px; }
+    #error { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; color: var(--text-muted); text-align: center; }
+    #error[hidden] { display: none; }
+    @media (max-width: 640px) { #key { display: none; } }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D cluster of saved cards. Drag to orbit, pinch or scroll to zoom, tap a card to focus it."></canvas>
+
+  <header id="head" class="panel">
+    <span class="brand">Aether</span>
+    <span class="hint" id="hint">Drag to orbit · pinch or scroll to zoom · tap a card</span>
+  </header>
+
+  <section id="key" class="panel" aria-label="Card types">
+    <div class="row"><span class="sw" style="background:#111a28; border-color: rgba(0,255,204,0.55)"></span>Video</div>
+    <div class="row"><span class="sw" style="background:#16233a"></span>Web link</div>
+    <div class="row"><span class="sw" style="background:#101722"></span>Note</div>
+  </section>
+
+  <div id="bar" class="panel idle">
+    <button type="button" id="clear">Deselect</button>
+    <button type="button" id="reset">Reset view</button>
+  </div>
+
+  <div id="error" hidden>WebGL is not available in this browser, so the 3D mockup cannot render.</div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const TEAL = new THREE.Color('#00ffcc');
+    const HAIR = new THREE.Color('#ffffff');
+    const BG = new THREE.Color('#080c14');
+    const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif';
+
+    // Frame-rate independent smoothing.
+    const damp = (current, target, lambda, dt) => current + (target - current) * (1 - Math.exp(-lambda * dt));
+
+    // Card surfaces per type, from the hybrid palette.
+    const STYLE = {
+      video: { surface: '#111a28', body: 0x111a28, edge: 0.34, edgeTeal: true },
+      link: { surface: '#15213a', body: 0x15213a, edge: 0.14, edgeTeal: false },
+      note: { surface: '#101722', body: 0x101722, edge: 0.12, edgeTeal: false }
+    };
+
+    const CARDS = [
+      { id: 'c1', type: 'link', title: 'Spaced repetition', site: 'wikipedia.org', letter: 'W', read: '6 min read', body: 'A learning technique where material is reviewed at increasing intervals, moving it into long-term memory.', pos: [0, 0.1, 0] },
+      { id: 'c2', type: 'video', title: 'Witt Bits / Confucius Coin', channel: 'Witt Bits', meta: '12:47', art: 'coin', progress: 0.38, pos: [-2.9, 1.2, -0.9] },
+      { id: 'c3', type: 'note', title: 'Japanese vocab deck plan', lines: ['Spaced repetition for the N4 list.', '20 new cards a day, reviews first.', 'Check retention every Sunday.', 'Add audio for the tricky readings.'], meta: 'Sep 24', pos: [2.7, 1.5, 0.7] },
+      { id: 'c4', type: 'link', title: 'The forgetting curve', site: 'psychology.org', letter: 'P', read: '4 min read', body: 'Ebbinghaus showed how quickly unreviewed memories fade, and how each review flattens the curve.', pos: [1.9, -1.7, -1.5] },
+      { id: 'c5', type: 'video', title: 'How memory consolidation works during sleep', channel: 'Neuro Explained', meta: '14:08', art: 'moon', progress: 0, pos: [-2.1, -1.6, 1.3] },
+      { id: 'c6', type: 'note', title: 'Study session checklist', lines: ['Phone in the other room.', '25 minutes on, 5 minutes off.', 'Review before new cards.', 'Stop after four rounds.'], meta: 'Sep 22', pos: [-0.5, 2.7, 1.7] },
+      { id: 'c7', type: 'link', title: 'Interleaved practice', site: 'learningscientists.org', letter: 'L', read: '5 min read', body: 'Mixing different topics within one study session improves long-term retention and transfer.', pos: [3.6, -0.3, -2.3] },
+      { id: 'c8', type: 'video', title: 'Anki setup for beginners', channel: 'Study Lab', meta: '22:41', art: 'cards', progress: 0.72, pos: [0.9, -2.9, 2.0] },
+      { id: 'c9', type: 'note', title: 'Questions for Thursday', lines: ['How long should intervals get', 'before the exam?', 'Is 85% retention enough?', 'Ask about mock test dates.'], meta: 'Sep 21', pos: [-3.6, 0.1, 2.2] },
+      { id: 'c10', type: 'link', title: 'Sleep and learning', site: 'sleepfoundation.org', letter: 'S', read: '7 min read', body: 'Why a full night of sleep after studying helps lock new memories in.', pos: [-1.3, 0.9, -2.9] },
+      { id: 'c11', type: 'video', title: 'Active recall vs rereading', channel: 'Learn Better', meta: '9:52', art: 'waves', progress: 0.15, pos: [1.5, 2.8, -1.8] },
+      { id: 'c12', type: 'note', title: 'Reading list', lines: ['Make It Stick, chapters 2-4.', 'Moonwalking with Einstein.', 'The Talent Code, if time.', ''], meta: 'Sep 20', pos: [2.2, -0.6, 2.6] }
+    ];
+    const LINKS = [['c1', 'c2'], ['c1', 'c3'], ['c1', 'c4'], ['c1', 'c7'], ['c1', 'c10'], ['c2', 'c5'], ['c2', 'c8'], ['c3', 'c6'], ['c3', 'c9'], ['c3', 'c12'], ['c4', 'c8'], ['c5', 'c9'], ['c6', 'c11'], ['c10', 'c2'], ['c11', 'c3']];
+
+    // ---------- Renderer and scene ----------
+    const canvas = document.getElementById('scene');
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    } catch (err) {
+      document.getElementById('error').hidden = false;
+      throw err;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+    const scene = new THREE.Scene();
+    scene.background = BG;
+    scene.fog = new THREE.FogExp2(BG, 0.05);
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+
+    // Soft fill plus a teal rim that stays behind the cluster from the camera's view.
+    scene.add(new THREE.AmbientLight(0xb8c6dc, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 0.8);
+    const rim = new THREE.DirectionalLight(0x00ffcc, 2.4);
+    const lightTarget = new THREE.Object3D();
+    scene.add(key, rim, lightTarget);
+    key.target = rim.target = lightTarget;
+
+    // ---------- Card geometry: a thin rounded slab, a face plane and a hairline edge ----------
+    const W = 1.28, H = 0.8, R = 0.07, D = 0.024;
+    function roundedRect(w, h, r) {
+      const s = new THREE.Shape();
+      const x = -w / 2, y = -h / 2;
+      s.moveTo(x + r, y);
+      s.lineTo(x + w - r, y);
+      s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r);
+      s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h);
+      s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r);
+      s.quadraticCurveTo(x, y, x + r, y);
+      return s;
+    }
+    const cardShape = roundedRect(W, H, R);
+    const bodyGeo = new THREE.ExtrudeGeometry(cardShape, { depth: D, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2, curveSegments: 12 });
+    bodyGeo.center();
+    // The face carries the canvas texture; its UVs are remapped to 0-1 across the card.
+    const faceGeo = new THREE.ShapeGeometry(cardShape, 12);
+    {
+      const pos = faceGeo.attributes.position, uv = faceGeo.attributes.uv;
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + W / 2) / W, (pos.getY(i) + H / 2) / H);
+      uv.needsUpdate = true;
+    }
+    const edgeGeo = new THREE.BufferGeometry().setFromPoints(cardShape.getPoints(16).map(p => new THREE.Vector3(p.x, p.y, 0)));
+
+    // ---------- Card faces drawn on a canvas ----------
+    const TEX_W = 1024, TEX_H = 640, PAD = 48;
+    // The 3D corner radius (0.07 of a 1.28-wide card) in texture pixels, so inner borders follow the card's shape.
+    const FACE_R = Math.round(R / W * TEX_W);
+    // Word-wraps into at most maxLines, ending with an ellipsis when text is cut.
+    function wrap(ctx, text, maxWidth, maxLines) {
+      const words = text.split(' ');
+      const lines = [];
+      let line = '';
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (ctx.measureText(test).width <= maxWidth || !line) {
+          line = test;
+          continue;
+        }
+        lines.push(line);
+        line = word;
+        if (lines.length === maxLines) {
+          let last = lines[maxLines - 1];
+          while (ctx.measureText(last + '…').width > maxWidth && last.length) last = last.slice(0, -1);
+          lines[maxLines - 1] = last.trimEnd() + '…';
+          return lines;
+        }
+      }
+      if (line) lines.push(line);
+      return lines;
+    }
+    function roundRectPath(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    // Small seeded random, so each thumbnail looks the same on every load.
+    function seeded(seed) {
+      return () => {
+        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    // Placeholder thumbnails, drawn procedurally per video.
+    const ART = {
+      coin(ctx, x, y, w, h, rand) {
+        const g = ctx.createRadialGradient(x + w * 0.7, y + h * 0.45, 10, x + w * 0.6, y + h * 0.5, w * 0.7);
+        g.addColorStop(0, '#4a3514');
+        g.addColorStop(1, '#120c05');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        const cx = x + w * 0.74, cy = y + h * 0.52, r = h * 0.36;
+        const gold = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+        gold.addColorStop(0, '#f1d284');
+        gold.addColorStop(0.55, '#c49a3e');
+        gold.addColorStop(1, '#7a5a1c');
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = gold; ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy, r * 0.84, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(90,60,15,0.6)'; ctx.lineWidth = 4; ctx.stroke();
+        const hole = r * 0.3;
+        ctx.fillStyle = '#1a1206';
+        ctx.fillRect(cx - hole / 2, cy - hole / 2, hole, hole);
+        ctx.fillStyle = 'rgba(90,60,15,0.55)';
+        [[0, -1], [0, 1], [-1, 0], [1, 0]].forEach(([dx, dy]) => ctx.fillRect(cx + dx * r * 0.55 - 9, cy + dy * r * 0.55 - 9, 18, 18));
+        for (let i = 0; i < 14; i++) {
+          ctx.fillStyle = 'rgba(255,220,140,' + (0.15 + rand() * 0.35) + ')';
+          ctx.beginPath(); ctx.arc(x + rand() * w * 0.5, y + rand() * h, 1.5 + rand() * 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+      },
+      moon(ctx, x, y, w, h, rand) {
+        const g = ctx.createLinearGradient(x, y, x, y + h);
+        g.addColorStop(0, '#0c1834');
+        g.addColorStop(1, '#1c3263');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        for (let i = 0; i < 60; i++) {
+          ctx.fillStyle = 'rgba(255,255,255,' + (0.2 + rand() * 0.6) + ')';
+          ctx.beginPath(); ctx.arc(x + rand() * w, y + rand() * h * 0.8, 0.8 + rand() * 1.8, 0, Math.PI * 2); ctx.fill();
+        }
+        const cx = x + w * 0.76, cy = y + h * 0.4, r = h * 0.26;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = '#f3ecd2'; ctx.fill();
+        ctx.beginPath(); ctx.arc(cx + r * 0.42, cy - r * 0.2, r * 0.92, 0, Math.PI * 2); ctx.fillStyle = '#13244a'; ctx.fill();
+        ctx.fillStyle = 'rgba(8,14,30,0.8)';
+        ctx.beginPath(); ctx.moveTo(x, y + h); ctx.quadraticCurveTo(x + w * 0.3, y + h * 0.7, x + w * 0.6, y + h * 0.85); ctx.quadraticCurveTo(x + w * 0.85, y + h * 0.95, x + w, y + h * 0.8); ctx.lineTo(x + w, y + h); ctx.fill();
+      },
+      cards(ctx, x, y, w, h) {
+        const g = ctx.createLinearGradient(x, y, x + w, y + h);
+        g.addColorStop(0, '#0d2b2e');
+        g.addColorStop(1, '#16404a');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        const cx = x + w * 0.72, cy = y + h * 0.52;
+        [[-0.2, '#9ec9c4'], [0.05, '#cfe6e2'], [0.28, '#f4fbfa']].forEach(([angle, color], i) => {
+          ctx.save();
+          ctx.translate(cx + i * 12, cy - i * 8);
+          ctx.rotate(angle);
+          roundRectPath(ctx, -95, -62, 190, 124, 12);
+          ctx.fillStyle = color; ctx.fill();
+          ctx.fillStyle = 'rgba(13,43,46,0.35)';
+          ctx.fillRect(-70, -30, 110, 10);
+          ctx.fillRect(-70, -8, 140, 8);
+          ctx.fillRect(-70, 10, 90, 8);
+          ctx.restore();
+        });
+      },
+      waves(ctx, x, y, w, h) {
+        const g = ctx.createLinearGradient(x, y, x + w, y + h);
+        g.addColorStop(0, '#1d1640');
+        g.addColorStop(1, '#2b2a6e');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        for (let k = 0; k < 6; k++) {
+          ctx.beginPath();
+          for (let i = 0; i <= 60; i++) {
+            const px = x + (i / 60) * w;
+            const py = y + h * (0.3 + k * 0.1) + Math.sin(i * 0.25 + k * 0.9) * (14 + k * 3);
+            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+          }
+          ctx.strokeStyle = 'rgba(160,170,255,' + (0.18 + k * 0.08) + ')';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+    };
+
+    function drawBadge(ctx, x, y, label, color, alpha) {
+      ctx.font = '700 22px ' + FONT;
+      const w = ctx.measureText(label).width + 24;
+      roundRectPath(ctx, x, y, w, 38, 7);
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, x + 12, y + 20);
+      ctx.textBaseline = 'alphabetic';
+      return w;
+    }
+
+    function drawVideo(ctx, card) {
+      // Thumbnail band across the top, with the play badge, duration pill and watched progress.
+      const tx = PAD, ty = PAD, tw = TEX_W - PAD * 2, th = 330;
+      ctx.save();
+      roundRectPath(ctx, tx, ty, tw, th, 18);
+      ctx.clip();
+      ART[card.art](ctx, tx, ty, tw, th, seeded(card.id.length * 97 + card.title.length));
+      const shade = ctx.createLinearGradient(0, ty + th * 0.55, 0, ty + th);
+      shade.addColorStop(0, 'rgba(0,0,0,0)');
+      shade.addColorStop(1, 'rgba(0,0,0,0.45)');
+      ctx.fillStyle = shade;
+      ctx.fillRect(tx, ty, tw, th);
+      if (card.progress) {
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(tx, ty + th - 8, tw, 8);
+        ctx.fillStyle = '#00ffcc';
+        ctx.fillRect(tx, ty + th - 8, tw * card.progress, 8);
+      }
+      ctx.restore();
+      ctx.font = '600 24px ' + FONT;
+      const dw = ctx.measureText(card.meta).width + 20;
+      roundRectPath(ctx, tx + tw - dw - 16, ty + th - 58, dw, 36, 6);
+      ctx.fillStyle = 'rgba(0,0,0,0.78)';
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(card.meta, tx + tw - dw - 6, ty + th - 39);
+      ctx.textBaseline = 'alphabetic';
+      const px = tx + tw * 0.34, py = ty + th / 2;
+      ctx.beginPath(); ctx.arc(px, py, 46, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(8,12,20,0.72)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,255,204,0.85)'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - 13, py - 20); ctx.lineTo(px + 22, py); ctx.lineTo(px - 13, py + 20); ctx.closePath();
+      ctx.fillStyle = '#00ffcc'; ctx.fill();
+
+      // Badge row and title.
+      let y = ty + th + 28;
+      const bw = drawBadge(ctx, PAD, y, 'VIDEO', '#00ffcc', 0.85);
+      ctx.font = '400 26px ' + FONT;
+      ctx.fillStyle = '#8a93a6';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(card.channel + ' · youtube.com', PAD + bw + 16, y + 20);
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '600 44px ' + FONT;
+      ctx.fillStyle = 'rgba(255,255,255,0.94)';
+      y += 38 + 58;
+      wrap(ctx, card.title, TEX_W - PAD * 2, 2).forEach(line => { ctx.fillText(line, PAD, y); y += 54; });
+    }
+
+    function drawNote(ctx, card) {
+      // Note icon: a page with a folded corner.
+      const ix = PAD, iy = PAD;
+      ctx.strokeStyle = '#8a93a6';
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(ix, iy); ctx.lineTo(ix + 22, iy); ctx.lineTo(ix + 32, iy + 10); ctx.lineTo(ix + 32, iy + 40); ctx.lineTo(ix, iy + 40); ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ix + 22, iy); ctx.lineTo(ix + 22, iy + 10); ctx.lineTo(ix + 32, iy + 10); ctx.stroke();
+      [18, 26].forEach(dy => { ctx.beginPath(); ctx.moveTo(ix + 7, iy + dy); ctx.lineTo(ix + 25, iy + dy); ctx.stroke(); });
+      ctx.font = '600 24px ' + FONT;
+      ctx.fillStyle = '#8a93a6';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('NOTE', ix + 48, iy + 21);
+      ctx.textAlign = 'right';
+      ctx.font = '400 24px ' + FONT;
+      ctx.fillText(card.meta, TEX_W - PAD, iy + 21);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      // Title, then ruled lines with the note's text sitting on them.
+      ctx.font = '600 46px ' + FONT;
+      ctx.fillStyle = 'rgba(255,255,255,0.94)';
+      ctx.fillText(wrap(ctx, card.title, TEX_W - PAD * 2, 1)[0], PAD, iy + 118);
+      const first = iy + 196, gap = 64;
+      ctx.font = '400 32px ' + FONT;
+      for (let i = 0; i < 6; i++) {
+        const ly = first + i * gap;
+        if (ly > TEX_H - PAD + 8) break;
+        ctx.fillStyle = 'rgba(255,255,255,0.07)';
+        ctx.fillRect(PAD, ly + 14, TEX_W - PAD * 2, 2);
+        const text = card.lines[i];
+        if (text) {
+          ctx.fillStyle = 'rgba(235,240,248,0.66)';
+          ctx.fillText(wrap(ctx, text, TEX_W - PAD * 2, 1)[0], PAD, ly);
+        }
+      }
+    }
+
+    function drawLink(ctx, card) {
+      // Muted accent border that follows the card's rounded corners.
+      roundRectPath(ctx, 12, 12, TEX_W - 24, TEX_H - 24, FACE_R - 10);
+      ctx.strokeStyle = 'rgba(159,180,216,0.38)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Source row: favicon, domain, reading time.
+      const fy = PAD + 26;
+      ctx.beginPath(); ctx.arc(PAD + 22, fy, 22, 0, Math.PI * 2);
+      ctx.fillStyle = '#c9d6ea'; ctx.fill();
+      ctx.font = '700 24px ' + FONT;
+      ctx.fillStyle = '#15213a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(card.letter, PAD + 22, fy + 1);
+      ctx.textAlign = 'left';
+      ctx.font = '500 28px ' + FONT;
+      ctx.fillStyle = '#9fb4d8';
+      ctx.fillText(card.site, PAD + 60, fy);
+      ctx.textAlign = 'right';
+      ctx.font = '400 24px ' + FONT;
+      ctx.fillStyle = '#8a93a6';
+      ctx.fillText(card.read, TEX_W - PAD, fy);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+
+      // Headline and excerpt.
+      ctx.font = '700 56px ' + FONT;
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      let y = PAD + 140;
+      wrap(ctx, card.title, TEX_W - PAD * 2, 2).forEach(line => { ctx.fillText(line, PAD, y); y += 66; });
+      ctx.fillStyle = 'rgba(159,180,216,0.3)';
+      ctx.fillRect(PAD, y - 26, 72, 3);
+      ctx.font = '400 32px ' + FONT;
+      ctx.fillStyle = '#aab3c5';
+      y += 30;
+      wrap(ctx, card.body, TEX_W - PAD * 2, 3).forEach(line => { ctx.fillText(line, PAD, y); y += 46; });
+    }
+
+    function drawFace(card) {
+      const c = document.createElement('canvas');
+      c.width = TEX_W;
+      c.height = TEX_H;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = STYLE[card.type].surface;
+      ctx.fillRect(0, 0, TEX_W, TEX_H);
+      ({ video: drawVideo, note: drawNote, link: drawLink })[card.type](ctx, card);
+      const texture = new THREE.CanvasTexture(c);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = maxAniso;
+      return texture;
+    }
+
+    // ---------- Build the cards ----------
+    const cards = new Map();
+    const hitTargets = [];
+    const tmpQ = new THREE.Quaternion();
+    CARDS.forEach((data, index) => {
+      const style = STYLE[data.type];
+      const group = new THREE.Group();
+      const tilt = new THREE.Group();
+      group.add(tilt);
+
+      const bodyMat = new THREE.MeshStandardMaterial({ color: style.body, roughness: 0.45, metalness: 0.15, emissive: TEAL.clone(), emissiveIntensity: 0 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.userData.id = data.id;
+      tilt.add(body);
+      hitTargets.push(body);
+
+      const faceMat = new THREE.MeshBasicMaterial({ map: drawFace(data), toneMapped: false });
+      const face = new THREE.Mesh(faceGeo, faceMat);
+      face.position.z = D / 2 + 0.0045;
+      tilt.add(face);
+
+      const baseEdge = style.edgeTeal ? TEAL.clone() : HAIR.clone();
+      const edgeMat = new THREE.LineBasicMaterial({ color: baseEdge.clone(), transparent: true, opacity: style.edge, depthWrite: false });
+      const edge = new THREE.LineLoop(edgeGeo, edgeMat);
+      edge.position.z = D / 2 + 0.006;
+      tilt.add(edge);
+
+      group.position.set(...data.pos);
+      scene.add(group);
+
+      cards.set(data.id, {
+        data, group, tilt, bodyMat, faceMat, edgeMat, baseEdge, style,
+        base: new THREE.Vector3(...data.pos),
+        heat: 0,
+        dim: 0,
+        basePos: new THREE.Vector3(),
+        f: [0.19 + index * 0.013, 0.24 + index * 0.011, 0.16 + index * 0.015],
+        ph: [index * 1.7, index * 2.3, index * 0.9],
+        lean: [0.18 * Math.sin(index * 2.1), 0.28 * Math.cos(index * 1.3), 0.06 * Math.sin(index * 0.7)]
+      });
+    });
+
+    // ---------- Links ----------
+    const links = LINKS.map(([a, b]) => {
+      const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+      const material = new THREE.LineBasicMaterial({ color: HAIR.clone(), transparent: true, opacity: 0.06, depthWrite: false });
+      scene.add(new THREE.Line(geometry, material));
+      return { a: cards.get(a), b: cards.get(b), geometry, material };
+    });
+
+    // ---------- Dust for depth ----------
+    const dust = (() => {
+      const count = 240;
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const r = 6 + Math.random() * 12, t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
+        positions.set([r * Math.sin(p) * Math.cos(t), r * Math.cos(p) * 0.6, r * Math.sin(p) * Math.sin(t)], i * 3);
+      }
+      const points = new THREE.Points(
+        new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(positions, 3)),
+        new THREE.PointsMaterial({ color: 0x8fa3c0, size: 0.03, transparent: true, opacity: 0.3, depthWrite: false })
+      );
+      scene.add(points);
+      return points;
+    })();
+
+    // ---------- Camera rig ----------
+    const HOME = { theta: 0.35, phi: 1.28, radius: 11 };
+    const goal = { ...HOME, target: new THREE.Vector3() };
+    const cur = { ...HOME, target: new THREE.Vector3() };
+    let thetaVel = 0, phiVel = 0, lastInput = -10;
+    const clampPhi = v => Math.min(2.5, Math.max(0.55, v));
+    const clampRadius = v => Math.min(20, Math.max(3.2, v));
+
+    // ---------- Selection ----------
+    let selected = null, hovered = null;
+    const bar = document.getElementById('bar');
+    function select(id) {
+      selected = id ? cards.get(id) : null;
+      if (selected) goal.radius = Math.min(goal.radius, 4.2);
+      else goal.target.set(0, 0, 0);
+      bar.classList.toggle('idle', !selected);
+    }
+    document.getElementById('clear').addEventListener('click', () => select(null));
+    document.getElementById('reset').addEventListener('click', () => {
+      select(null);
+      Object.assign(goal, { theta: HOME.theta, phi: HOME.phi, radius: HOME.radius });
+      thetaVel = phiVel = 0;
+    });
+
+    // ---------- Input ----------
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    const pointers = new Map();
+    let dragStart = null, pinchDist = 0;
+    function pickAt(x, y) {
+      const rect = canvas.getBoundingClientRect();
+      ndc.set(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      const hit = raycaster.intersectObjects(hitTargets, false)[0];
+      return hit ? hit.object.userData.id : null;
+    }
+    canvas.addEventListener('pointerdown', e => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+      lastInput = clock.elapsedTime;
+      if (pointers.size === 1) {
+        dragStart = { t: performance.now(), moved: 0 };
+        thetaVel = phiVel = 0;
+      } else if (pointers.size === 2) {
+        const [p1, p2] = [...pointers.values()];
+        pinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        dragStart = null;
+      }
+    });
+    canvas.addEventListener('pointermove', e => {
+      const prev = pointers.get(e.pointerId);
+      if (!prev) {
+        if (e.pointerType === 'mouse') {
+          hovered = pickAt(e.clientX, e.clientY);
+          canvas.style.cursor = hovered ? 'pointer' : 'grab';
+        }
+        return;
+      }
+      const now = performance.now();
+      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      const dt = Math.max(1, now - prev.t) / 1000;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: now });
+      lastInput = clock.elapsedTime;
+      if (pointers.size === 1) {
+        const sens = 0.0055;
+        goal.theta -= dx * sens;
+        goal.phi = clampPhi(goal.phi - dy * sens);
+        thetaVel = damp(thetaVel, (-dx * sens) / dt, 18, dt);
+        phiVel = damp(phiVel, (-dy * sens) / dt, 18, dt);
+        if (dragStart) dragStart.moved += Math.abs(dx) + Math.abs(dy);
+        canvas.style.cursor = 'grabbing';
+      } else if (pointers.size === 2) {
+        const [p1, p2] = [...pointers.values()];
+        const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        if (pinchDist) goal.radius = clampRadius(goal.radius * (pinchDist / dist));
+        pinchDist = dist;
+      }
+    });
+    function endPointer(e) {
+      const last = pointers.get(e.pointerId);
+      if (!last) return;
+      pointers.delete(e.pointerId);
+      if (performance.now() - last.t > 90) thetaVel = phiVel = 0;
+      if (pointers.size === 0 && dragStart) {
+        if (dragStart.moved < 8 && performance.now() - dragStart.t < 450) {
+          select(pickAt(e.clientX, e.clientY));
+          thetaVel = phiVel = 0;
+        }
+        dragStart = null;
+      }
+      if (pointers.size < 2) pinchDist = 0;
+      canvas.style.cursor = 'grab';
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse' && !pointers.size) hovered = null; });
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      goal.radius = clampRadius(goal.radius * Math.exp(e.deltaY * 0.0012));
+      lastInput = clock.elapsedTime;
+    }, { passive: false });
+    if (matchMedia('(hover: none)').matches) document.getElementById('hint').textContent = 'Drag to orbit · pinch to zoom · tap a card';
+
+    function resize() {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.fov = w < h ? 58 : 42;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ---------- Frame loop ----------
+    const clock = new THREE.Clock();
+    const offset = new THREE.Vector3();
+    const lookM = new THREE.Matrix4();
+    const leanQ = new THREE.Quaternion();
+    const leanE = new THREE.Euler();
+    const UP = new THREE.Vector3(0, 1, 0);
+    const dimColor = new THREE.Color();
+    const toCam = new THREE.Vector3();
+    const CAM = reduceMotion ? 30 : 5.5;
+    const HEAT = reduceMotion ? 30 : 7;
+    const TURN = reduceMotion ? 30 : 1.6;
+
+    renderer.setAnimationLoop(() => {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const t = clock.elapsedTime;
+
+      if (!pointers.size) {
+        goal.theta += thetaVel * dt;
+        goal.phi = clampPhi(goal.phi + phiVel * dt);
+        thetaVel *= Math.exp(-3.2 * dt);
+        phiVel *= Math.exp(-3.2 * dt);
+        if (!reduceMotion && !selected && t - lastInput > 4) goal.theta += 0.04 * dt;
+      }
+
+      // Camera: follow the focused card's live position, damped.
+      if (selected) goal.target.copy(selected.basePos);
+      cur.theta = damp(cur.theta, goal.theta, CAM, dt);
+      cur.phi = damp(cur.phi, goal.phi, CAM, dt);
+      cur.radius = damp(cur.radius, goal.radius, CAM * 0.8, dt);
+      ['x', 'y', 'z'].forEach(k => { cur.target[k] = damp(cur.target[k], goal.target[k], CAM * 0.7, dt); });
+      offset.setFromSphericalCoords(cur.radius, cur.phi, cur.theta);
+      camera.position.copy(cur.target).add(offset);
+      camera.lookAt(cur.target);
+
+      cards.forEach(c => {
+        // Organic drift (or the fixed resting position with reduced motion).
+        if (reduceMotion) c.group.position.copy(c.base);
+        else {
+          c.group.position.set(
+            c.base.x + Math.sin(t * c.f[0] + c.ph[0]) * 0.16 + Math.sin(t * c.f[1] * 0.53 + c.ph[2]) * 0.06,
+            c.base.y + Math.sin(t * c.f[1] + c.ph[1]) * 0.2,
+            c.base.z + Math.sin(t * c.f[2] + c.ph[2]) * 0.14
+          );
+        }
+        // Highlight and focus, both damped.
+        const target = c === selected ? 1 : c.data.id === hovered ? 0.5 : 0;
+        c.heat = damp(c.heat, target, HEAT, dt);
+        c.basePos.copy(c.group.position);
+        if (c.heat > 0.001) {
+          toCam.copy(camera.position).sub(c.basePos).normalize();
+          c.group.position.addScaledVector(toCam, c.heat * 0.6);
+        }
+        c.dim = damp(c.dim, selected && c !== selected ? 1 : 0, HEAT * 0.6, dt);
+        const h = c.heat;
+
+        // Cards lazily turn toward the camera; a focused card turns faster and fully, others keep a slight lean.
+        lookM.lookAt(camera.position, c.group.position, UP);
+        tmpQ.setFromRotationMatrix(lookM);
+        const lean = 1 - h;
+        leanE.set(
+          c.lean[0] * lean + (reduceMotion ? 0 : Math.sin(t * 0.35 + c.ph[0]) * 0.05 * lean),
+          c.lean[1] * lean + (reduceMotion ? 0 : Math.sin(t * 0.28 + c.ph[1]) * 0.07 * lean),
+          c.lean[2] * lean
+        );
+        leanQ.setFromEuler(leanE);
+        tmpQ.multiply(leanQ);
+        c.group.quaternion.slerp(tmpQ, 1 - Math.exp(-(TURN + h * 6) * dt));
+
+        c.group.scale.setScalar(1 + h * 0.14);
+        c.edgeMat.color.lerpColors(c.baseEdge, TEAL, h);
+        c.edgeMat.opacity = c.style.edge + h * (0.95 - c.style.edge);
+        c.bodyMat.emissiveIntensity = h * 0.35;
+        // Everything but the focused card recedes.
+        const shade = 1 - c.dim * 0.55;
+        c.faceMat.color.setScalar(shade);
+        dimColor.setHex(c.style.body).multiplyScalar(shade);
+        c.bodyMat.color.copy(dimColor);
+      });
+
+      links.forEach(l => {
+        const a = l.a.basePos, b = l.b.basePos;
+        const arr = l.geometry.attributes.position;
+        arr.setXYZ(0, a.x, a.y, a.z);
+        arr.setXYZ(1, b.x, b.y, b.z);
+        arr.needsUpdate = true;
+        const h = Math.max(l.a === selected ? l.a.heat : 0, l.b === selected ? l.b.heat : 0);
+        l.material.color.lerpColors(HAIR, TEAL, h);
+        l.material.opacity = 0.06 + h * 0.45;
+      });
+
+      if (!reduceMotion) dust.rotation.y += 0.006 * dt;
+
+      const back = offset.clone().normalize();
+      rim.position.copy(cur.target).addScaledVector(back, -10).add(new THREE.Vector3(0, 3, 0));
+      key.position.copy(cur.target).addScaledVector(back, 8).add(new THREE.Vector3(2, 6, 0));
+      lightTarget.position.copy(cur.target);
+
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>
