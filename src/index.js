@@ -694,7 +694,24 @@ export default {
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="google-client-id" content="${escapeHtmlText(env.GOOGLE_CLIENT_ID || "")}">
   <style>
-    body { margin: 0; overflow: hidden; background-color: #080c14; font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
+    /* DESIGN.md, main portal: navy surfaces and a teal accent for the brand, selected states and primary buttons;
+       6-8px corners, hairline borders, no backdrop blur, glows or heavy shadows. */
+    :root {
+      --bg-page: #080c14;
+      --bg-panel: #0b1320;
+      --bg-raised: rgba(255,255,255,0.04);
+      --hairline: 1px solid rgba(255,255,255,0.08);
+      --text: #dffdf7;
+      --text-muted: #8a93a6;
+      --accent: #00ffcc;
+      --accent-line: rgba(0,255,204,0.55);
+      --accent-soft: rgba(0,255,204,0.14);
+      --on-accent: #041016;
+      --active-fill: linear-gradient(135deg, rgba(0,255,204,0.3), rgba(79,132,255,0.3));
+      --radius-s: 6px;
+      --radius-m: 8px;
+    }
+    body { margin: 0; overflow: hidden; background-color: var(--bg-page); font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
     #topbar {
       position: absolute;
       top: 10px;
@@ -707,13 +724,11 @@ export default {
       align-items: center;
       gap: 8px;
       padding: 0 10px;
-      border-radius: 14px;
-      background: rgba(8, 12, 20, 0.6);
-      border: 1px solid rgba(255,255,255,0.1);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      border: var(--hairline);
     }
-    #topbar .brand { color: #00ffcc; font-size: 14px; font-weight: 600; white-space: nowrap; }
+    #topbar .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
     #topbar .bar-spacer { flex: 1; }
     .bar-btn {
       appearance: none;
@@ -722,10 +737,10 @@ export default {
       height: 30px;
       box-sizing: border-box;
       padding: 0 12px;
-      border: 1px solid rgba(0,255,204,0.35);
-      border-radius: 999px;
-      background: rgba(255,255,255,0.04);
-      color: #dffdf7;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      color: var(--text);
       font-size: 12px;
       white-space: nowrap;
       cursor: pointer;
@@ -737,15 +752,16 @@ export default {
       min-width: 0;
       height: 30px;
       box-sizing: border-box;
-      border: 1px solid rgba(0,255,204,0.25);
-      background: rgba(255,255,255,0.04);
-      color: #00ffcc;
-      border-radius: 999px;
+      border: var(--hairline);
+      background: var(--bg-raised);
+      color: var(--text);
+      border-radius: var(--radius-s);
       padding: 0 12px;
       font-size: 12px;
       outline: none;
     }
-    #search-input::placeholder { color: rgba(0,255,204,0.4); }
+    #search-input::placeholder { color: var(--text-muted); }
+    #search-input:focus { border-color: var(--accent-line); }
     #filter-menu summary { list-style: none; }
     #filter-menu summary::-webkit-details-marker { display: none; }
     #filter-menu[open] summary { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
@@ -758,10 +774,9 @@ export default {
       flex-direction: column;
       gap: 8px;
       padding: 10px;
-      border-radius: 12px;
-      background: rgba(9, 15, 25, 0.96);
-      border: 1px solid rgba(255,255,255,0.1);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      border: var(--hairline);
     }
     .filter-row {
       display: flex;
@@ -771,31 +786,31 @@ export default {
     }
     .filter-pill, .toggle-button, #time-filter, #type-filter, #collection-sort {
       appearance: none;
-      border: 1px solid rgba(0,255,204,0.25);
-      background: rgba(255,255,255,0.04);
-      color: #dffdf7;
-      border-radius: 999px;
+      border: var(--hairline);
+      background: var(--bg-raised);
+      color: var(--text);
+      border-radius: var(--radius-s);
       padding: 7px 12px;
       font-size: 12px;
       cursor: pointer;
       transition: all 0.2s ease;
     }
     .filter-pill.active, .toggle-button.active {
-      background: linear-gradient(135deg, rgba(0,255,204,0.3), rgba(79,132,255,0.3));
-      border-color: rgba(0,255,204,0.65);
+      background: var(--active-fill);
+      border-color: var(--accent-line);
       color: #ffffff;
     }
     #time-filter, #type-filter { min-width: 140px; color: #dffdf7; }
     #time-filter option, #type-filter option { background: #0b1320; }
     .filter-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #8a93a6; }
-    .filter-badge { min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; box-sizing: border-box; border-radius: 999px; background: #00ffcc; color: #041016; font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+    .filter-badge { min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; box-sizing: border-box; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
     .filter-badge[hidden] { display: none; }
-    .filters-reset { appearance: none; margin-top: 2px; padding: 6px; border: none; border-top: 1px solid rgba(255,255,255,0.08); background: none; color: #00ffcc; font-size: 12px; cursor: pointer; }
+    .filters-reset { appearance: none; margin-top: 2px; padding: 6px; border: none; border-top: 1px solid rgba(255,255,255,0.08); background: none; color: var(--accent); font-size: 12px; cursor: pointer; }
     .filters-reset:hover, .filters-reset:focus-visible { text-decoration: underline; outline: none; }
     .toggle-button {
       font-weight: 600;
     }
-    #add-node-button { font-size: 18px; line-height: 1; }
+    #add-node-button { font-size: 18px; line-height: 1; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 700; }
     /* Filter toolbar: a second row under the header (32px tall, ends at about 92px; panels below start at 102px+).
        The origin filters are one segmented control; the Filters popover sits at its right end. */
     #filter-toolbar {
@@ -819,11 +834,11 @@ export default {
       overflow-x: auto;
       scrollbar-width: none;
       touch-action: pan-x;
-      border-radius: 999px;
-      border: 1px solid rgba(0,255,204,0.35);
-      background: rgba(8, 12, 20, 0.72);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      gap: 2px;
+      padding: 2px;
+      border-radius: var(--radius-s);
+      border: var(--hairline);
+      background: var(--bg-panel);
     }
     #platform-bar::-webkit-scrollbar { display: none; }
     .platform-pill {
@@ -831,30 +846,29 @@ export default {
       appearance: none;
       height: 100%;
       padding: 0 12px;
-      border: none;
-      border-radius: 0;
+      border: 1px solid transparent;
+      border-radius: 4px;
       background: transparent;
-      color: #dffdf7;
+      color: var(--text);
       font-size: 12px;
       white-space: nowrap;
       cursor: pointer;
     }
-    .platform-pill + .platform-pill { border-left: 1px solid rgba(0,255,204,0.18); }
     .platform-pill:hover:not(:disabled), .platform-pill:focus-visible { background: rgba(0,255,204,0.08); outline: none; }
-    .platform-pill[aria-pressed="true"] { background: rgba(0,255,204,0.22); color: #fff; font-weight: 600; }
+    .platform-pill[aria-pressed="true"] { background: var(--active-fill); border-color: var(--accent-line); color: #fff; font-weight: 600; }
     .platform-pill:disabled { opacity: 0.4; cursor: default; }
     #filter-menu { position: relative; flex: none; }
-    #filter-menu summary { height: 32px; background: rgba(8, 12, 20, 0.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    #filter-menu summary { height: 32px; background: var(--bg-panel); }
     #telegram-help-button { gap: 6px; flex: none; }
     .bar-icon { width: 14px; height: 14px; flex: none; }
     .settings-option.phone-only { display: none; }
     #telegram-help-button svg { width: 14px; height: 14px; flex: none; }
     .help-panel { width: min(600px, 94vw); }
     .help-panel .reader-body { white-space: normal; font-size: 13px; line-height: 1.55; }
-    .help-panel h4 { margin: 18px 0 6px; font-size: 13px; color: #00ffcc; }
+    .help-panel h4 { margin: 18px 0 6px; font-size: 13px; color: var(--accent); }
     .help-panel p { margin: 0 0 10px; }
     .help-panel .help-lead { color: #aab3c5; }
-    .help-panel code { padding: 1px 6px; border-radius: 6px; background: rgba(0,255,204,0.1); color: #00ffcc; font-size: 12px; white-space: nowrap; }
+    .help-panel code { padding: 1px 6px; border-radius: 6px; background: rgba(0,255,204,0.1); color: var(--accent); font-size: 12px; white-space: nowrap; }
     .command-list { display: flex; flex-direction: column; gap: 6px; }
     .command-row {
       display: grid;
@@ -862,9 +876,9 @@ export default {
       gap: 10px;
       align-items: baseline;
       padding: 8px 10px;
-      border-radius: 10px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      border: var(--hairline);
     }
     .command-row span { color: #dffdf7; }
     .help-steps { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
@@ -873,10 +887,12 @@ export default {
       flex: none;
       height: 30px;
       box-sizing: border-box;
-      border: 1px solid rgba(0,255,204,0.35);
-      border-radius: 999px;
+      gap: 2px;
+      padding: 2px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
       overflow: hidden;
-      background: rgba(255,255,255,0.04);
+      background: var(--bg-panel);
     }
     #view-switch button {
       appearance: none;
@@ -884,15 +900,15 @@ export default {
       align-items: center;
       gap: 5px;
       padding: 0 11px;
-      border: none;
+      border: 1px solid transparent;
+      border-radius: 4px;
       background: transparent;
-      color: #dffdf7;
+      color: var(--text);
       font-size: 12px;
       white-space: nowrap;
       cursor: pointer;
     }
-    #view-switch button + button { border-left: 1px solid rgba(0,255,204,0.2); }
-    #view-switch button[aria-pressed="true"] { background: rgba(0,255,204,0.2); color: #fff; }
+    #view-switch button[aria-pressed="true"] { background: var(--active-fill); border-color: var(--accent-line); color: #fff; font-weight: 600; }
     #view-switch .view-icon { font-size: 13px; line-height: 1; }
     body.collection-mode #view-toggle,
     body.collection-mode #legend { display: none !important; }
@@ -931,19 +947,17 @@ export default {
       min-width: 0;
       box-sizing: border-box;
       padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(8, 12, 20, 0.72);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      color: #dffdf7;
+      border-radius: var(--radius-m);
+      border: var(--hairline);
+      background: var(--bg-panel);
+      color: var(--text);
       text-align: left;
       cursor: pointer;
       overflow: hidden;
       transition: border-color 0.15s ease, background 0.15s ease;
     }
     .item-card:hover, .item-card:focus-visible { border-color: rgba(0,255,204,0.45); background: rgba(0,255,204,0.07); outline: none; }
-    .item-card.active { border-color: #00ffcc; box-shadow: inset 0 0 0 1px #00ffcc; }
+    .item-card.active { border-color: var(--accent); }
     .item-card.timeline { padding: 9px 12px; gap: 4px; }
     /* Board view: four status columns; cards move between them by drag and drop or the card's status pills. */
     body.board-mode #collection-view { touch-action: pan-x pan-y; }
@@ -952,25 +966,23 @@ export default {
       display: flex;
       flex-direction: column;
       min-width: 0;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: var(--radius-m);
+      border: var(--hairline);
       border-top: 3px solid var(--column);
-      background: rgba(8, 12, 20, 0.55);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: rgba(255,255,255,0.02);
       transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
     .board-column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; font-size: 13px; font-weight: 600; color: #fff; }
-    .board-count { min-width: 22px; padding: 1px 7px; box-sizing: border-box; border-radius: 999px; background: rgba(255,255,255,0.08); color: #aab3c5; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+    .board-count { min-width: 22px; padding: 1px 7px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.08); color: #aab3c5; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
     .board-column-body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; min-height: 90px; }
-    .board-empty { display: flex; align-items: center; justify-content: center; min-height: 72px; border: 1px dashed rgba(255,255,255,0.12); border-radius: 10px; color: #6b7385; font-size: 12px; }
+    .board-empty { display: flex; align-items: center; justify-content: center; min-height: 72px; border: 1px dashed rgba(255,255,255,0.12); border-radius: var(--radius-s); color: #6b7385; font-size: 12px; }
     .board-column.drop-target { border-color: var(--column); background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px var(--column); }
     .item-card.board { padding: 10px 12px; gap: 4px; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease, opacity 0.15s ease; }
     .item-card.board .item-title { font-size: 13px; }
     .item-card.board.pressing { transform: scale(0.97); }
     .item-card.drag-source { opacity: 0.35; }
     /* The card following the pointer; above the node card (20), below the top bar (30). */
-    .item-card.board-ghost { position: fixed; left: 0; top: 0; z-index: 25; margin: 0; pointer-events: none; transition: none; border-color: #00ffcc; box-shadow: 0 14px 34px rgba(0,0,0,0.6); opacity: 0.95; }
+    .item-card.board-ghost { position: fixed; left: 0; top: 0; z-index: 25; margin: 0; pointer-events: none; transition: none; border-color: var(--accent); box-shadow: 0 8px 20px rgba(0,0,0,0.45); opacity: 0.95; }
     body.board-dragging, body.board-dragging * { cursor: grabbing !important; }
     /* Carousel view: one card on top of a stack, dragged or swiped sideways to page. Cards past the top one sit
        lower, smaller and fainter; the previous card waits off-screen left. Transforms are set from script. */
@@ -984,17 +996,15 @@ export default {
       bottom: 40px;
       gap: 8px;
       /* Opaque so the cards underneath don't show through the top one. */
-      background: #0b1320;
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
+      background: var(--bg-panel);
       border-color: rgba(0,255,204,0.18);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.45);
       transform-origin: 50% 100%;
       transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.34s ease, border-color 0.15s ease;
       will-change: transform, opacity;
     }
     .item-card.carousel:hover, .item-card.carousel:focus-visible { background: #0e1a27; }
-    .item-card.carousel.active { box-shadow: inset 0 0 0 1px #00ffcc, 0 18px 40px rgba(0,0,0,0.55); }
+    .item-card.carousel.active { border-color: var(--accent); }
     .item-card.carousel.behind { pointer-events: none; }
     .item-card.carousel img { -webkit-user-drag: none; }
     .item-card.carousel .item-cover { flex: none; }
@@ -1003,7 +1013,7 @@ export default {
     .item-card.carousel .item-foot { margin-top: auto; }
     .deck-stage.dragging .item-card.carousel { transition: none; cursor: grabbing; }
     .deck-controls { display: flex; align-items: center; gap: 14px; }
-    .deck-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 20px; line-height: 1; cursor: pointer; }
+    .deck-btn { width: 38px; height: 38px; border-radius: var(--radius-s); border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 20px; line-height: 1; cursor: pointer; }
     .deck-btn:hover, .deck-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
     .deck-btn:disabled { opacity: 0.3; cursor: default; }
     .deck-counter { min-width: 72px; text-align: center; font-size: 13px; color: #aab3c5; font-variant-numeric: tabular-nums; }
@@ -1016,7 +1026,7 @@ export default {
     .card-status button {
       appearance: none;
       padding: 3px 9px;
-      border-radius: 999px;
+      border-radius: var(--radius-s);
       border: 1px solid rgba(255,255,255,0.12);
       background: rgba(255,255,255,0.04);
       color: #aab3c5;
@@ -1065,8 +1075,8 @@ export default {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 2px 8px;
-      border-radius: 999px;
+      padding: 2px 6px;
+      border-radius: 4px;
       border: 1px solid var(--chip, #8a93a6);
       color: var(--chip, #8a93a6);
       font-size: 10px;
@@ -1080,7 +1090,7 @@ export default {
     .item-preview { font-size: 12px; color: #aab3c5; line-height: 1.45; overflow-wrap: anywhere; }
     .item-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; min-width: 0; }
     .item-foot .item-site { min-width: 0; overflow-wrap: anywhere; }
-    .item-foot a { margin-left: auto; flex: none; color: #00ffcc; font-weight: 700; text-decoration: none; }
+    .item-foot a { margin-left: auto; flex: none; color: var(--accent); font-weight: 700; text-decoration: none; }
     .collection-empty { text-align: center; color: #8a93a6; padding: 48px 16px; font-size: 13px; }
     .collection-empty button { margin-top: 12px; }
     .timeline { max-width: 820px; margin: 0 auto; }
@@ -1093,7 +1103,7 @@ export default {
       font-size: 11px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: #00ffcc;
+      color: var(--accent);
       background: linear-gradient(#080c14 75%, rgba(8,12,20,0));
     }
     .timeline-items {
@@ -1114,7 +1124,7 @@ export default {
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      background: var(--dot, #00ffcc);
+      background: var(--dot, var(--accent));
       box-shadow: 0 0 0 3px #080c14;
     }
     .modal-backdrop {
@@ -1133,19 +1143,18 @@ export default {
       flex-direction: column;
       gap: 10px;
       padding: 18px;
-      border-radius: 12px;
-      background: rgba(9, 15, 25, 0.96);
-      border: 1px solid rgba(255,255,255,0.1);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      border: var(--hairline);
       color: #dffdf7;
     }
-    .modal-panel h3 { margin: 0 0 4px; color: #00ffcc; font-size: 16px; }
+    .modal-panel h3 { margin: 0 0 4px; color: var(--accent); font-size: 16px; }
     .modal-panel label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: rgba(223,253,247,0.75); }
     .modal-panel input, .modal-panel select, .modal-panel textarea {
-      border: 1px solid rgba(0,255,204,0.25);
-      background: rgba(255,255,255,0.04);
-      color: #dffdf7;
-      border-radius: 8px;
+      border: var(--hairline);
+      background: var(--bg-raised);
+      color: var(--text);
+      border-radius: var(--radius-s);
       padding: 8px 10px;
       font: inherit;
       font-size: 13px;
@@ -1155,6 +1164,8 @@ export default {
     .modal-error { margin: 0; min-height: 1em; font-size: 12px; color: #ff6b81; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .modal-actions button { cursor: pointer; }
+    .modal-panel input:focus, .modal-panel select:focus, .modal-panel textarea:focus { outline: none; border-color: var(--accent-line); }
+    .modal-actions button[type="submit"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 700; }
     .settings-wrap { position: relative; }
     .view-toggle.active { background: rgba(0,255,204,0.18); border-color: rgba(0,255,204,0.6); }
     .settings-menu {
@@ -1162,12 +1173,11 @@ export default {
       right: 0;
       top: 40px;
       width: 220px;
-      background: rgba(9, 15, 25, 0.96);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 12px;
+      background: var(--bg-panel);
+      border: var(--hairline);
+      border-radius: var(--radius-m);
       padding: 10px;
       display: none;
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
     }
     .settings-menu.open {
       display: block;
@@ -1182,9 +1192,7 @@ export default {
       justify-content: center;
       padding: 16px;
       box-sizing: border-box;
-      background: radial-gradient(circle at 50% 30%, rgba(0,255,204,0.10), rgba(8,12,20,0.78) 62%);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      background: radial-gradient(circle at 50% 30%, rgba(0,255,204,0.10), transparent 62%), var(--bg-page);
     }
     #login-gate[hidden] { display: none; }
     .login-panel {
@@ -1194,18 +1202,15 @@ export default {
       align-items: stretch;
       gap: 14px;
       padding: 36px 28px 26px;
-      border-radius: 28px;
-      background: rgba(28, 28, 30, 0.78);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      backdrop-filter: blur(30px) saturate(1.5);
-      -webkit-backdrop-filter: blur(30px) saturate(1.5);
-      box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      border: var(--hairline);
       color: #f5f5f7;
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
       text-align: center;
       box-sizing: border-box;
     }
-    .login-logo { width: 64px; height: 64px; margin: 0 auto 2px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,255,204,0.18); }
+    .login-logo { width: 64px; height: 64px; margin: 0 auto 2px; border-radius: var(--radius-m); }
     .login-panel h2 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; color: #f5f5f7; }
     .login-panel .login-sub { margin: -6px 0 10px; font-size: 15px; line-height: 1.4; color: #a1a1a6; }
     .google-button {
@@ -1213,16 +1218,17 @@ export default {
       align-items: center;
       justify-content: center;
       gap: 10px;
-      height: 48px;
-      border-radius: 999px;
+      height: 44px;
+      border-radius: var(--radius-m);
       background: #fff;
       color: #1f1f1f;
       font-size: 15px;
       font-weight: 600;
       text-decoration: none;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      transition: transform 0.15s ease, opacity 0.15s ease;
     }
-    .google-button:hover, .google-button:focus-visible { box-shadow: 0 0 0 4px rgba(255,255,255,0.18); outline: none; }
+    .google-button:hover { opacity: 0.9; }
+    .google-button:focus-visible { outline: 2px solid rgba(255,255,255,0.5); outline-offset: 2px; }
     .google-button:active { transform: scale(0.98); }
     .google-button[hidden] { display: none; }
     .google-button svg { width: 20px; height: 20px; flex: none; }
@@ -1230,10 +1236,10 @@ export default {
     .login-error:empty { display: none; }
     .settings-option {
       width: 100%;
-      border: 1px solid rgba(0,255,204,0.2);
-      background: rgba(255,255,255,0.03);
+      border: var(--hairline);
+      background: var(--bg-raised);
       color: #fff;
-      border-radius: 10px;
+      border-radius: var(--radius-s);
       padding: 10px 12px;
       cursor: pointer;
       text-align: left;
@@ -1250,15 +1256,13 @@ export default {
       /* Above the cluster drawer (11), legend (9) and list view (5); below the platform bar and top bar
          (29/30), whose Filter and Settings menus must stay on top, and below modals (40). */
       z-index: 20;
-      background: rgba(8, 12, 20, 0.92);
+      background: var(--bg-panel);
       padding: 16px 20px;
-      border-radius: 14px;
+      border-radius: var(--radius-m);
       border: 1px solid rgba(0, 255, 204, 0.3);
       display: none;
       max-height: calc(100vh - 110px);
       overflow-y: auto;
-      backdrop-filter: blur(12px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
     }
     #node-card .card-close {
       position: absolute;
@@ -1273,7 +1277,7 @@ export default {
       cursor: pointer;
       padding: 2px 6px;
     }
-    #node-card .card-close:hover { color: #00ffcc; }
+    #node-card .card-close:hover { color: var(--accent); }
     #node-card .card-delete {
       position: absolute;
       top: 12px;
@@ -1305,19 +1309,20 @@ export default {
       max-height: 120px;
       resize: vertical;
       padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid rgba(0,255,204,0.3);
-      background: rgba(0,0,0,0.35);
+      border-radius: var(--radius-s);
+      border: var(--hairline);
+      background: var(--bg-raised);
       color: #fff;
       font: inherit;
       font-size: 12px;
     }
+    .ask-box textarea:focus { outline: none; border-color: var(--accent-line); }
     .ask-box button {
       padding: 0 14px;
-      border-radius: 8px;
+      border-radius: var(--radius-s);
       border: 1px solid rgba(0,255,204,0.55);
       background: rgba(0,255,204,0.12);
-      color: #00ffcc;
+      color: var(--accent);
       font-weight: 700;
       font-size: 12px;
       cursor: pointer;
@@ -1328,9 +1333,9 @@ export default {
       max-height: 30vh;
       overflow-y: auto;
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: var(--radius-s);
       background: rgba(0,255,204,0.06);
-      border-left: 2px solid #00ffcc;
+      border-left: 2px solid var(--accent);
       color: #dffdf7;
       font-size: 12px;
       line-height: 1.45;
@@ -1342,18 +1347,18 @@ export default {
       display: none;
       align-self: flex-start;
       padding: 6px 12px;
-      border-radius: 8px;
+      border-radius: var(--radius-s);
       border: 1px solid rgba(0,255,204,0.55);
       background: rgba(0,255,204,0.12);
-      color: #00ffcc;
+      color: var(--accent);
       font-weight: 700;
       font-size: 12px;
       cursor: pointer;
     }
     .card-research { display: none; margin-top: 10px; font-size: 12px; }
-    .card-research summary { cursor: pointer; color: #00ffcc; font-weight: 700; }
+    .card-research summary { cursor: pointer; color: var(--accent); font-weight: 700; }
     .card-research-list { max-height: 26vh; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
-    .research-entry { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.04); }
+    .research-entry { padding: 6px 8px; border-radius: var(--radius-s); background: rgba(255,255,255,0.04); }
     .research-entry summary { color: #fff; font-weight: 600; font-size: 12px; }
     .research-entry .research-date { color: #8a93a6; font-size: 10px; margin-left: 6px; font-weight: 400; }
     .research-entry .research-body { margin-top: 6px; color: #dffdf7; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1361,7 +1366,7 @@ export default {
     #node-card .card-preview {
       display: none;
       margin: 0 0 10px;
-      border-radius: 10px;
+      border-radius: var(--radius-s);
       overflow: hidden;
       border: 1px solid rgba(255,255,255,0.1);
       background: rgba(255,255,255,0.03);
@@ -1383,7 +1388,7 @@ export default {
       display: none;
       margin: 0 0 12px;
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: var(--radius-s);
       border-left: 2px solid #ffd166;
       background: rgba(255, 209, 102, 0.08);
     }
@@ -1391,13 +1396,13 @@ export default {
     #node-card .card-note-text { font-size: 13px; color: #fff3d1; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
     #node-card .card-preview-bar a { flex: none; }
     /* YouTube nodes: synopsis and transcript actions from /api/transcript. */
-    #node-card .card-transcript { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; border-left: 2px solid #ff5a5a; background: rgba(255, 90, 90, 0.07); }
+    #node-card .card-transcript { margin: 0 0 12px; padding: 8px 10px; border-radius: var(--radius-s); border-left: 2px solid #ff5a5a; background: rgba(255, 90, 90, 0.07); }
     #node-card .card-transcript[hidden] { display: none; }
     #node-card .card-transcript-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ff8a8a; }
     #node-card .card-synopsis { margin-bottom: 8px; font-size: 13px; color: #ffe4e4; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
     #node-card .card-synopsis:empty { display: none; }
     #node-card .card-transcript-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-    #node-card .card-transcript-actions button { appearance: none; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255,138,138,0.5); background: rgba(255,90,90,0.1); color: #ffd9d9; font-size: 12px; cursor: pointer; }
+    #node-card .card-transcript-actions button { appearance: none; padding: 4px 10px; border-radius: var(--radius-s); border: 1px solid rgba(255,138,138,0.5); background: rgba(255,90,90,0.1); color: #ffd9d9; font-size: 12px; cursor: pointer; }
     #node-card .card-transcript-actions button:hover:not(:disabled), #node-card .card-transcript-actions button:focus-visible { background: rgba(255,90,90,0.22); outline: none; }
     #node-card .card-transcript-actions button:disabled { opacity: 0.55; cursor: progress; }
     #node-card .card-transcript-actions button[hidden] { display: none; }
@@ -1413,10 +1418,10 @@ export default {
       display: none;
       margin: -4px 0 12px;
       padding: 6px 12px;
-      border-radius: 8px;
+      border-radius: var(--radius-s);
       border: 1px solid rgba(0,255,204,0.55);
       background: rgba(0,255,204,0.12);
-      color: #00ffcc;
+      color: var(--accent);
       font-weight: 700;
       font-size: 12px;
       cursor: pointer;
@@ -1429,16 +1434,13 @@ export default {
       flex-direction: column;
       gap: 10px;
       padding: 20px 22px;
-      border-radius: 14px;
-      background: rgba(8, 12, 20, 0.8);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
       border: 1px solid rgba(0, 255, 204, 0.3);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      box-shadow: 0 18px 40px rgba(0,0,0,0.6);
       color: #dffdf7;
       box-sizing: border-box;
     }
-    .reader-panel h3 { margin: 0; padding-right: 32px; color: #00ffcc; font-size: 17px; line-height: 1.3; }
+    .reader-panel h3 { margin: 0; padding-right: 32px; color: var(--accent); font-size: 17px; line-height: 1.3; }
     .reader-panel .reader-meta { margin: 0; font-size: 11px; color: #8a93a6; letter-spacing: 0.04em; }
     .reader-panel .card-close {
       position: absolute;
@@ -1451,7 +1453,7 @@ export default {
       line-height: 1;
       cursor: pointer;
     }
-    .reader-panel .card-close:hover { color: #00ffcc; }
+    .reader-panel .card-close:hover { color: var(--accent); }
     .reader-body {
       flex: 1;
       min-height: 0;
@@ -1464,7 +1466,7 @@ export default {
     }
     .reader-panel a {
       align-self: flex-start;
-      background: #00ffcc;
+      background: var(--accent);
       color: #0b0f19;
       padding: 8px 14px;
       border-radius: 8px;
@@ -1484,18 +1486,15 @@ export default {
       flex-direction: column;
       gap: 10px;
       padding: 14px 16px;
-      border-radius: 14px;
-      background: rgba(8, 12, 20, 0.72);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
       border: 1px solid rgba(0, 255, 204, 0.3);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
       color: #fff;
     }
     #cluster-drawer.open { display: flex; }
     #cluster-drawer .drawer-head { display: flex; align-items: center; gap: 8px; padding-right: 24px; }
     #cluster-drawer .drawer-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-    #cluster-drawer h3 { margin: 0; font-size: 15px; color: #00ffcc; text-transform: capitalize; }
+    #cluster-drawer h3 { margin: 0; font-size: 15px; color: var(--accent); text-transform: capitalize; }
     #cluster-drawer .drawer-count { color: #8a93a6; font-size: 11px; }
     #cluster-drawer .card-close {
       position: absolute;
@@ -1510,7 +1509,7 @@ export default {
       cursor: pointer;
       padding: 2px 6px;
     }
-    #cluster-drawer .card-close:hover { color: #00ffcc; }
+    #cluster-drawer .card-close:hover { color: var(--accent); }
     #cluster-cards { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .mini-card {
       position: relative;
@@ -1519,9 +1518,9 @@ export default {
       text-align: left;
       width: 100%;
       padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.04);
+      border-radius: var(--radius-s);
+      border: var(--hairline);
+      background: var(--bg-raised);
       color: inherit;
       font: inherit;
       cursor: pointer;
@@ -1530,16 +1529,15 @@ export default {
     /* Mirrors a hovered 3D node; declared before .active so the selected card wins. */
     .mini-card.hover { border-color: #22d3ee; background: rgba(30,41,59,0.8); }
     .mini-card.active {
-      border-color: rgba(0,255,204,0.85);
-      background: rgba(0,255,204,0.12);
-      box-shadow: 0 0 0 1px rgba(0,255,204,0.5), 0 0 14px rgba(0,255,204,0.35);
+      border-color: var(--accent);
+      background: var(--accent-soft);
     }
     /* Keep the node card clear of the drawer so both stay usable side by side. */
     #node-card .card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; padding-right: 72px; }
     #node-card .card-head .card-tag { margin-bottom: 0; }
     .card-carousel { display: inline-flex; align-items: center; gap: 6px; }
     .card-carousel[hidden] { display: none; }
-    .card-to-deck { appearance: none; padding: 2px 9px; border-radius: 999px; border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 11px; cursor: pointer; }
+    .card-to-deck { appearance: none; padding: 2px 9px; border-radius: var(--radius-s); border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 11px; cursor: pointer; }
     .card-to-deck:hover, .card-to-deck:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
     body.carousel-mode .card-to-deck { display: none; }
     .carousel-btn {
@@ -1549,10 +1547,10 @@ export default {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border-radius: 50%;
+      border-radius: var(--radius-s);
       border: 1px solid rgba(0,255,204,0.45);
       background: rgba(0,255,204,0.08);
-      color: #00ffcc;
+      color: var(--accent);
       font-size: 17px;
       line-height: 1;
       cursor: pointer;
@@ -1572,7 +1570,7 @@ export default {
     }
     /* Phones: a bottom sheet with a drag handle (swipe down to close, left/right to page the cluster). */
     @media (max-width: 767px) {
-      #node-card { left: 6px; right: 6px; bottom: 0; max-height: 78vh; padding-top: 24px; border-radius: 16px 16px 0 0; border-bottom: none; }
+      #node-card { left: 6px; right: 6px; bottom: 0; max-height: 78vh; padding-top: 24px; border-radius: var(--radius-m) var(--radius-m) 0 0; border-bottom: none; }
       #node-card.dragging { transition: none; }
       #node-card.settling { transition: transform 0.2s ease; }
       .card-handle {
@@ -1598,18 +1596,18 @@ export default {
     }
     .mini-card strong { display: block; font-size: 12px; color: #fff; line-height: 1.3; margin-bottom: 4px; }
     .mini-card span { display: block; font-size: 11px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
-    .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: #00ffcc; text-decoration: none; }
+    .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: var(--accent); text-decoration: none; }
     #cluster-drawer .ask-box { margin-top: 0; }
-    #node-card h3 { padding-right: 56px; margin: 0 0 6px 0; font-size: 15px; color: #00ffcc; line-height: 1.3; }
+    #node-card h3 { padding-right: 56px; margin: 0 0 6px 0; font-size: 15px; color: var(--accent); line-height: 1.3; }
     #node-card p { margin: 0 0 12px 0; font-size: 13px; color: #ccc; word-break: break-word; line-height: 1.4; }
     #node-card .card-tag {
       display: inline-block;
       margin-bottom: 8px;
-      padding: 3px 9px;
-      border-radius: 999px;
+      padding: 3px 7px;
+      border-radius: 4px;
       border: 1px solid rgba(0,255,204,0.45);
       background: rgba(0,255,204,0.1);
-      color: #00ffcc;
+      color: var(--accent);
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.06em;
@@ -1617,7 +1615,7 @@ export default {
     #node-card .card-meta { font-size: 11px; color: #8a93a6; }
     #node-card a {
       display: inline-block;
-      background: #00ffcc;
+      background: var(--accent);
       color: #0b0f19;
       padding: 8px 14px;
       border-radius: 8px;
@@ -1634,11 +1632,9 @@ export default {
       max-height: 45vh;
       overflow-y: auto;
       padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(8, 12, 20, 0.55);
-      border: 1px solid rgba(255,255,255,0.1);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      border: var(--hairline);
       color: #dffdf7;
       font-size: 11px;
     }
@@ -1669,7 +1665,7 @@ export default {
       margin: 2px 0;
       padding: 4px 6px;
       border: 1px solid transparent;
-      border-radius: 8px;
+      border-radius: 4px;
       background: transparent;
       color: inherit;
       font-size: 11px;
