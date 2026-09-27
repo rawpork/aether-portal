@@ -383,11 +383,16 @@ export function createCardField({ THREE, reducedMotion = false }) {
   let clusterOfCard = new Map();
   let lodMode = 'auto';
 
+  // three.js raycasts ignore .visible, and 3d-force-graph treats the nearest hit of any kind as the click target, so
+  // anything not meant to be clicked (collapsed cards, faded or hidden proxies) must also leave the default layer.
+  const setClickable = (object, clickable) => {
+    object.traverse(child => child.layers.set(clickable ? 0 : HIDDEN_LAYER));
+  };
   const setCardHidden = (card, hidden) => {
     if (card.hidden === hidden) return;
     card.hidden = hidden;
     card.root.visible = !hidden;
-    card.root.traverse(child => child.layers.set(hidden ? HIDDEN_LAYER : 0));
+    setClickable(card.root, !hidden);
   };
 
   const captionCanvas = (label, count, color) => {
@@ -476,12 +481,25 @@ export function createCardField({ THREE, reducedMotion = false }) {
       lodState.set(key, value);
       let proxy = proxies.get(key);
       if (value < 0.01) {
-        if (proxy) proxy.group.visible = false;
+        if (proxy && proxy.group.visible) {
+          proxy.group.visible = false;
+          setClickable(proxy.group, false);
+          proxy.clickable = false;
+        }
         return;
       }
       if (!proxy) {
         proxy = buildProxy(cluster);
+        proxy.clickable = true;
+        setClickable(proxy.group, false);
+        proxy.clickable = false;
         proxies.set(key, proxy);
+      }
+      // A proxy only takes clicks once it is mostly faded in; before that, clicks go to the cards around it.
+      const clickable = value >= 0.5;
+      if (proxy.clickable !== clickable) {
+        setClickable(proxy.group, clickable);
+        proxy.clickable = clickable;
       }
       const captionKey = cluster.label + '|' + cluster.count + '|' + cluster.color;
       if (proxy.captionKey !== captionKey) {
@@ -650,6 +668,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     setGallerySlide: units => { gallerySlide = Number.isFinite(units) ? Math.max(0, units) : null; },
     size: () => cards.size,
     proxyRoot,
+    hiddenLayer: HIDDEN_LAYER,
     setClusters,
     setLodMode,
     proxyTargets,

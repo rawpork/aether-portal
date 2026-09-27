@@ -2315,9 +2315,15 @@ export default {
       nodes.forEach(node => { node.__hub = window.AetherSpatial.hubScale(hubWeights.get(node.id) || 0); });
     };
     // heat: 1 focused, 0.5 hovered; dim: outside the focused neighbourhood, or filtered out by the legend or platform bar.
+    // In the gallery the arc is the context: the focused card is lit, the rest of its cluster stays readable (slightly
+    // subdued while a card is focused) and every card off the arc recedes.
+    const getGalleryDim = node => {
+      if (!gallery.ids.has(String(node.id))) return 1;
+      return focus.node && focus.node.id !== node.id ? 0.15 : 0;
+    };
     const getCardTargets = node => ({
       heat: focus.node && focus.node.id === node.id ? 1 : hover.id === node.id ? 0.5 : 0,
-      dim: focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1),
+      dim: gallery ? getGalleryDim(node) : focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1),
       weight: hubWeights.get(node.id) || 0
     });
     const syncCards = () => {
@@ -3379,7 +3385,7 @@ export default {
       for (let step = 1; step < count; step++) {
         const next = visible.get(carousel.ids[((index + delta * step) % count + count) % count]);
         if (next) {
-          selectNode(next, { fly: true, keepCarousel: true });
+          focusCard(next, { keepCarousel: true });
           return;
         }
       }
@@ -3533,7 +3539,7 @@ export default {
       .linkDirectionalParticleColor(() => particleColor)
       .onNodeClick(node => {
         lastBackgroundTap = null;
-        selectNode(node);
+        focusCard(node);
       })
       .onNodeHover(node => setHover(node, 'canvas'))
       .onBackgroundClick(handleBackgroundClick)
@@ -3734,7 +3740,10 @@ export default {
         cardField.frame(dt, Graph.camera());
         const showLabels = !focus.node && !gallery;
         territories.entries.forEach((entry, key) => {
-          entry.label.visible = showLabels && entry.hasNodes !== false && cardField.clusterLod(key) < 0.5;
+          const visible = showLabels && entry.hasNodes !== false && cardField.clusterLod(key) < 0.5;
+          // Hidden labels must also stop taking clicks (raycasts ignore visibility), or they swallow taps on cards.
+          if (entry.label.visible !== visible) entry.label.layers.set(visible ? 0 : cardField.hiddenLayer);
+          entry.label.visible = visible;
         });
       }
       cardFrame = requestAnimationFrame(cardLoop);
@@ -3825,6 +3834,7 @@ export default {
       const yaw = window.AetherSpatial.yawToward(camera, origin);
       const placed = cardField.enterGallery(ids, { origin, yaw, centerId });
       gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids };
+      syncCards();
       Graph.linkVisibility(link => !gallery || !(gallery.ids.has(linkEndId(link.source)) || gallery.ids.has(linkEndId(link.target))));
       if (territories.group) territories.group.visible = false;
       pauseAutoRotate();
@@ -3843,16 +3853,33 @@ export default {
       const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId });
       gallery.ids = placed.ids;
       gallery.radius = placed.radius;
+      syncCards();
     };
     const exitGallery = () => {
       if (!gallery) return;
       const key = gallery.key;
       gallery = null;
       cardField.exitGallery();
+      syncCards();
       Graph.linkVisibility(true);
       lockGalleryControls(false);
       if (territories.group) territories.group.visible = !focus.node;
       if (filterState.view === 'graph') flyToCluster(key);
+    };
+
+    // Universal focus (2026-09-27): selecting a card in the 3D graph, in any time scope, opens its cluster as the
+    // 180-degree gallery with the card focused. A new gallery is centred on the card; in a gallery already open on that
+    // cluster the camera turns to the card instead of reshuffling the wall (unless centre is asked for). 2D mode and
+    // the moment before the cards load keep the plain close-up.
+    const focusCard = (node, options = {}) => {
+      const { centre = false, ...selectOptions } = options;
+      const placed = [node.x, node.y, node.z].every(Number.isFinite);
+      if (cardField && placed && !filterState.flat && filterState.view === 'graph') {
+        const key = getClusterKey(node);
+        if (!gallery || gallery.key !== key) openClusterDrawer(key, { centerId: node.id });
+        else if (centre) refreshGallery(node.id);
+      }
+      selectNode(node, { ...selectOptions, fly: true });
     };
 
     // Post-creation framing: a card that was just added (Add Node, or the share sheet's View Node link) opens straight
@@ -3871,8 +3898,7 @@ export default {
           else if (placed) selectNode(node, { fly: true });
           return;
         }
-        if (cardField && !filterState.flat) openClusterDrawer(getClusterKey(node), { centerId: node.id });
-        selectNode(node, { fly: true });
+        focusCard(node, { centre: true });
       };
       requestAnimationFrame(attempt);
     };

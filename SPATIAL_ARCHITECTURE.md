@@ -548,7 +548,22 @@ A screen's horizontal field of view (about 70°-100°) cannot show the full 180�
 - **Paging:** past `3 × maxPerRow` cards, the gallery rotates by one page width, a yaw of the card ring around `V`, never a rotation of the viewer (XR comfort rule, section 5.2).
 - **Reduced motion:** cards cross-fade into their slots instead of flying.
 
-### 6.4 As built (Phase 4a)
+### 6.4 Universal focus (2026-09-27)
+
+The gallery is the focus state for the whole 3D graph, not only for groups. **Selecting any card**, in any time scope (Today, This week, This month, Groups or All time), opens that card's cluster as the gallery with the card focused:
+- **New gallery:** the card takes the centre slot of the middle row.
+- **Gallery already open on that cluster:** the camera turns to the card and the wall does not reshuffle.
+
+This covers canvas clicks, the node card's previous/next arrows, new cards and deep links, all through one `focusCard` path. 2D mode and the moment before the cards load keep the plain Node close-up.
+
+Dimming in the gallery follows the arc, not graph links:
+- the focused card is lit (dim 0);
+- the rest of its cluster stays readable along the arc (dim 0.15 while a card is focused, 0 otherwise);
+- every card off the arc recedes (dim 1).
+
+**Click-picking rule:** three.js raycasts ignore `.visible`, and 3d-force-graph treats the nearest hit of any kind as the click target. So anything hidden or not meant to be clicked leaves the default render layer: collapsed cards, faded or hidden group proxies, and hidden cluster labels. Before this rule, an invisible proxy left over from an earlier zoom-out sat over its cluster's cards and turned clicks on them into background clicks.
+
+### 6.5 As built (Phase 4a)
 
 - **Card size:** 12 × 7.5 world units, 0.3 thick, corner radius 0.66. The collision force uses half the card's diagonal as the radius, so cards in a cluster never overlap.
 - **Entry and exit:** the gallery opens with the cluster drawer (tapping a cluster label or a drawer entry point) and closes with it. It also closes when leaving the graph view or switching to 2D. `minRadius` is 18.
