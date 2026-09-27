@@ -958,6 +958,14 @@ export default {
     #add-node-button { font-size: 18px; line-height: 1; border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 700; }
     /* Filter toolbar: a second row under the header (32px tall, ends at about 92px; panels below start at 102px+).
        The origin filters are one segmented control; the Filters popover sits at its right end. */
+    /* Time scope stepper (semantic zoom): shorter or longer time span of cards. */
+    #scope-stepper { display: inline-flex; flex: none; align-items: center; gap: 2px; height: 32px; padding: 2px; box-sizing: border-box; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-panel); }
+    #scope-stepper button { position: relative; appearance: none; width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
+    #scope-stepper button::after { content: ''; position: absolute; inset: -9px -2px; }
+    #scope-stepper button:hover:not(:disabled), #scope-stepper button:focus-visible { border-color: var(--accent-line); outline: none; }
+    #scope-stepper button:active:not(:disabled) { transform: scale(0.98); }
+    #scope-stepper button:disabled { opacity: 0.35; cursor: default; }
+    #scope-label { min-width: 92px; padding: 0 4px; color: #fff; font-size: 12px; font-weight: 600; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
     #filter-toolbar {
       position: absolute;
       top: 60px;
@@ -1898,6 +1906,11 @@ export default {
 
   <!-- Second toolbar row: one segmented origin control, then the secondary filters popover at its right end. -->
   <div id="filter-toolbar">
+    <div id="scope-stepper" role="group" aria-label="Time scope">
+      <button type="button" id="scope-narrow" title="Show a shorter time span" aria-label="Show a shorter time span">−</button>
+      <span id="scope-label" aria-live="polite">All time</span>
+      <button type="button" id="scope-widen" title="Show a longer time span" aria-label="Show a longer time span">+</button>
+    </div>
     <nav id="platform-bar" role="group" aria-label="Platform filter">
       <button type="button" class="platform-pill" data-platform="all" aria-pressed="true">All</button>
       <button type="button" class="platform-pill" data-platform="youtube" aria-pressed="false">YouTube</button>
@@ -2429,20 +2442,21 @@ export default {
       }
     };
 
-    const matchesTimeFilter = node => {
-      if (filterState.horizon === 'all') return true;
+    const isWithinHorizon = (node, horizon) => {
+      if (horizon === 'all') return true;
       if (!node.created_at) return true;
       const ts = new Date(node.created_at).getTime();
       if (Number.isNaN(ts)) return true;
       const diffMs = Date.now() - ts;
       const dayMs = 24 * 60 * 60 * 1000;
-      switch (filterState.horizon) {
+      switch (horizon) {
         case 'day': return diffMs <= dayMs;
         case 'week': return diffMs <= 7 * dayMs;
         case 'month': return diffMs <= 30 * dayMs;
         default: return true;
       }
     };
+    const matchesTimeFilter = node => isWithinHorizon(node, filterState.horizon);
 
     const matchesSearch = node => {
       if (!filterState.query) return true;
@@ -3052,7 +3066,8 @@ export default {
 
     // Front-on view of every visible node, camera on the +z side of their centre: the flat 2D canvas fits its
     // x/y extent, 3D fits a bounding sphere so the whole graph stays in view.
-    const resetCameraView = () => {
+    // Where the Macro framing of everything visible puts the camera: { center, distance }.
+    const getMacroFraming = () => {
       const camera = Graph.camera();
       const vFov = camera.fov * Math.PI / 180;
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
@@ -3069,6 +3084,10 @@ export default {
           : Math.hypot(halfW, halfH, halfD) / Math.sin(Math.min(vFov, hFov) / 2);
         distance = Math.max(fit * 1.1 + 20, 120);
       }
+      return { center, distance };
+    };
+    const resetCameraView = () => {
+      const { center, distance } = getMacroFraming();
       // Macro state, or Group when every visible node is in one cluster (a filter such as Day narrowed it).
       const clusters = new Set(Graph.graphData().nodes.map(getClusterKey));
       const single = clusters.size === 1 ? [...clusters][0] : null;
@@ -3818,6 +3837,54 @@ export default {
       requestAnimationFrame(attempt);
     };
 
+    // ---- Time scope and semantic zoom (SPATIAL_ARCHITECTURE.md 2.7) ----
+    // The portal opens on a small, recent set of cards and widens its time span step by step: with the stepper in the
+    // filter toolbar, or by pulling the camera well back past the framing of what is shown.
+    const SCOPES = ['day', 'week', 'month', 'all'];
+    const SCOPE_LABELS = { day: 'Today', week: 'This week', month: 'This month', all: 'All time' };
+    // The startup scope is the shortest span with at least this many cards.
+    const MIN_STARTUP_CARDS = 5;
+    // Pulling back past this multiple of the fitted distance widens the span one step.
+    const SCOPE_PULL_BACK = 1.8;
+    const scopeLabel = document.getElementById('scope-label');
+    const scopeNarrow = document.getElementById('scope-narrow');
+    const scopeWiden = document.getElementById('scope-widen');
+    const renderScope = () => {
+      const index = SCOPES.indexOf(filterState.horizon);
+      scopeLabel.textContent = (SCOPE_LABELS[filterState.horizon] || 'All time') + ' · ' + currentVisibleNodes.length;
+      scopeNarrow.disabled = index <= 0;
+      scopeWiden.disabled = index < 0 || index >= SCOPES.length - 1;
+    };
+    const pickStartupScope = nodes => SCOPES.find(horizon => horizon === 'all' || nodes.filter(node => isWithinHorizon(node, horizon)).length >= MIN_STARTUP_CARDS);
+    // Changing the span leaves any gallery or open card and reframes what is now shown, again once the new cards settle.
+    const setScope = horizon => {
+      if (!SCOPES.includes(horizon) || horizon === filterState.horizon) return;
+      filterState.horizon = horizon;
+      timeFilter.value = horizon;
+      if (gallery) closeClusterDrawer();
+      if (focus.node) hideNodeCard();
+      applyGraphFilters();
+      if (filterState.view !== 'graph') return;
+      cancelPendingFit();
+      resetCameraView();
+      scheduleFit();
+    };
+    const stepScope = delta => setScope(SCOPES[SCOPES.indexOf(filterState.horizon) + delta]);
+    scopeNarrow.addEventListener('click', () => stepScope(-1));
+    scopeWiden.addEventListener('click', () => stepScope(1));
+    let scopeZoomTimer = null;
+    const checkScopeZoom = () => {
+      if (filterState.view !== 'graph' || gallery || focus.node || (cameraRig && cameraRig.active)) return;
+      const index = SCOPES.indexOf(filterState.horizon);
+      if (index < 0 || index >= SCOPES.length - 1) return;
+      const distance = Graph.camera().position.distanceTo(Graph.controls().target);
+      if (distance > getMacroFraming().distance * SCOPE_PULL_BACK) stepScope(1);
+    };
+    graphControls.addEventListener('end', () => {
+      clearTimeout(scopeZoomTimer);
+      scopeZoomTimer = setTimeout(checkScopeZoom, 250);
+    });
+
     // Closing the card steps back out from Node to the node's cluster (Group state).
     const closeNodeCard = () => {
       const node = focus.node;
@@ -3986,6 +4053,7 @@ export default {
       syncTerritories(filteredNodes);
       renderClusterDrawer();
       currentVisibleNodes = filteredNodes;
+      renderScope();
       if (cardField) cardField.retain(visibleIds);
       refreshGallery();
       renderActiveView();
@@ -3999,6 +4067,12 @@ export default {
       }
       if (!res.ok) throw new Error('Graph request failed: ' + res.status);
       graphData = normalizeGraphData(await res.json());
+      // First load opens on a short, recent time span (the shortest with enough cards) instead of everything; a deep
+      // link keeps whatever span shows its card.
+      if (!graphLoaded && !deepLinkId) {
+        filterState.horizon = pickStartupScope(graphData.nodes);
+        timeFilter.value = filterState.horizon;
+      }
       graphLoaded = true;
       pinToPlane(graphData.nodes);
       applyGraphFilters();
