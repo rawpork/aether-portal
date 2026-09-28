@@ -1789,8 +1789,8 @@ export default {
       color: #fff;
     }
     #cluster-drawer.open { display: flex; }
-    /* Gallery arrows: translucent, flanking the focused card inside the open centre between the sidebars. The page
-       places them every frame while the gallery is open. */
+    /* Gallery arrows: translucent, side by side in the dark space below the wall, centred in the open area between the
+       sidebars. The page places them every frame while the gallery is open. */
     #gallery-nav[hidden], body.collection-mode #gallery-nav { display: none; }
     #gallery-nav button {
       position: fixed;
@@ -4283,7 +4283,12 @@ export default {
     const galleryNav = document.getElementById('gallery-nav');
     const galleryPrevButton = document.getElementById('gallery-prev');
     const galleryNextButton = document.getElementById('gallery-next');
-    const GALLERY_NAV_INSET = 12;
+    // Space between the two arrows, and above the bottom of the free area: clear of the controls hint on desktop; on
+    // phones the band between the sheets is short, and the focused card fills only its middle half (FOCUS_FILL), so
+    // the arrows sit just above the lower sheet.
+    const GALLERY_NAV_GAP = 24;
+    const GALLERY_NAV_BOTTOM = 40;
+    const GALLERY_NAV_BOTTOM_COMPACT = 8;
     const GALLERY_NAV_SIZE = 44;
     // Clear of the top bar and filter toolbar.
     const GALLERY_NAV_MIN_TOP = 130;
@@ -4330,16 +4335,16 @@ export default {
       const show = Boolean(gallery) && gallery.ids.size > 1 && filterState.view === 'graph' && canvas.width > 0;
       galleryNav.hidden = !show;
       if (!show) return;
+      // Side by side at the bottom of the free part of the screen, in the dark space below the wall, so they never sit
+      // on top of a card's picture.
       const free = getFreeView(getCardCover());
-      const left = canvas.left + canvas.width * (1 + free.centreX - free.width) / 2;
-      const right = left + canvas.width * free.width;
-      // The focused card sits in the middle of the free part of the screen (galleryPose), below the toolbars.
-      const middle = Math.max(canvas.top + GALLERY_NAV_MIN_TOP, canvas.top + canvas.height * (1 - free.centreY) / 2);
-      const top = Math.round(middle - GALLERY_NAV_SIZE / 2) + 'px';
+      const centreX = canvas.left + canvas.width * (1 + free.centreX) / 2;
+      const freeBottom = canvas.top + canvas.height * (1 - free.centreY + free.height) / 2;
+      const top = Math.round(Math.max(canvas.top + GALLERY_NAV_MIN_TOP, freeBottom - (compactLayout.matches ? GALLERY_NAV_BOTTOM_COMPACT : GALLERY_NAV_BOTTOM) - GALLERY_NAV_SIZE)) + 'px';
       galleryPrevButton.style.top = top;
       galleryNextButton.style.top = top;
-      galleryPrevButton.style.left = Math.round(left + GALLERY_NAV_INSET) + 'px';
-      galleryNextButton.style.left = Math.round(right - GALLERY_NAV_INSET - GALLERY_NAV_SIZE) + 'px';
+      galleryPrevButton.style.left = Math.round(centreX - GALLERY_NAV_GAP / 2 - GALLERY_NAV_SIZE) + 'px';
+      galleryNextButton.style.left = Math.round(centreX + GALLERY_NAV_GAP / 2) + 'px';
       galleryNavFrame = requestAnimationFrame(placeGalleryNav);
     };
     const startGalleryNav = () => {
