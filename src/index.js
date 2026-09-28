@@ -938,6 +938,8 @@ export default {
 
     // Endpoint 5: Mobile-Optimized 3D Visualizer UI
     // NOTE: this is a template literal - avoid backslashes and ${ } in the client script below.
+    // Each deploy has its own version id, so the module entry URL changes and no browser keeps last deploy's code.
+    const assetVersion = encodeURIComponent(env.CF_VERSION_METADATA?.id || "dev");
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -2005,7 +2007,7 @@ export default {
   </style>
   <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
   <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
-  <script type="module" src="/js/spatial/index.js"></script>
+  <script type="module" src="/js/spatial/index.js?v=${assetVersion}"></script>
 </head>
 <body>
   <header id="topbar">
@@ -4194,19 +4196,33 @@ export default {
     // into its group's 180-degree gallery, centred on the wall and focused, rather than the whole graph. It waits up to
     // 2 s for the graph to build the card and give it a position; in 2D, or before the cards load, it falls back to the
     // plain close-up.
+    // The swoop starts only once the card has been built and has stopped drifting (under SETTLE_SPEED world units per
+    // frame for SETTLE_FRAMES frames in a row), so the camera lands where the card ends up. If it is still moving after
+    // waitMs, it goes anyway; a gallery pins its cards to the wall.
+    const SETTLE_SPEED = 0.5;
+    const SETTLE_FRAMES = 12;
     const focusNewNode = (id, waitMs = 2000) => {
       if (filterState.view !== 'graph') setView('graph');
+      // A pending whole-graph framing would pull the camera back out after the swoop.
+      cancelPendingFit();
       const started = performance.now();
+      let last = null;
+      let still = 0;
       const attempt = () => {
         const node = Graph.graphData().nodes.find(item => String(item.id) === String(id));
         const placed = node && [node.x, node.y, node.z].every(Number.isFinite);
-        const ready = placed && (!cardField || cardField.has(node.id));
-        if (!ready) {
-          if (performance.now() - started < waitMs) requestAnimationFrame(attempt);
-          else if (placed) selectNode(node, { fly: true });
+        const built = placed && (!cardField || cardField.has(node.id));
+        if (built) {
+          still = last && Math.hypot(node.x - last.x, node.y - last.y, node.z - last.z) < SETTLE_SPEED ? still + 1 : 0;
+          last = { x: node.x, y: node.y, z: node.z };
+        }
+        const timedOut = performance.now() - started >= waitMs;
+        if (built && (still >= SETTLE_FRAMES || timedOut)) {
+          focusCard(node, { centre: true });
           return;
         }
-        focusCard(node, { centre: true });
+        if (!timedOut) requestAnimationFrame(attempt);
+        else if (placed) selectNode(node, { fly: true });
       };
       requestAnimationFrame(attempt);
     };
@@ -4449,7 +4465,10 @@ export default {
         return;
       }
       if (!res.ok) throw new Error('Graph request failed: ' + res.status);
+      const previous = new Map(graphData.nodes.map(node => [node.id, node]));
       graphData = normalizeGraphData(await res.json());
+      const firstLoad = !graphLoaded;
+      if (!firstLoad) keepLayout(previous, graphData.nodes);
       // First load opens on a short, recent time span (the shortest with enough cards) instead of everything; a deep
       // link keeps whatever span shows its card.
       if (!graphLoaded && !deepLinkId) {
@@ -4459,9 +4478,32 @@ export default {
       graphLoaded = true;
       pinToPlane(graphData.nodes);
       applyGraphFilters();
-      // First load in graph view: the layout grows out from the origin, so frame it once it has spread.
-      if (filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
+      // First load in graph view: the layout grows out from the origin, so frame it once it has spread. A reload keeps
+      // the layout (keepLayout), so it leaves the camera where it is.
+      if (firstLoad && filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
       if (deepLinkId) openDeepLink();
+    };
+
+    // A reload (after an admin run, for example) would otherwise rebuild every node without a position and regrow the
+    // whole layout from the origin, so anything focused right after it would slide away. Known nodes keep their
+    // positions; a new Outcome starts between the saves it cites, and any other new node next to the camera target.
+    const keepLayout = (previous, nodes) => {
+      const byId = new Map();
+      nodes.forEach(node => {
+        const old = previous.get(node.id);
+        if (old && [old.x, old.y, old.z].every(Number.isFinite)) {
+          ['x', 'y', 'z', 'vx', 'vy', 'vz'].forEach(axis => { node[axis] = old[axis]; });
+        }
+        byId.set(node.id, node);
+      });
+      nodes.forEach(node => {
+        if ([node.x, node.y, node.z].every(Number.isFinite)) return;
+        const inputs = (node.outcome_inputs || []).map(id => byId.get(id)).filter(item => item && Number.isFinite(item.x));
+        const centre = inputs.length
+          ? inputs.reduce((sum, item) => ({ x: sum.x + item.x / inputs.length, y: sum.y + item.y / inputs.length, z: sum.z + item.z / inputs.length }), { x: 0, y: 0, z: 0 })
+          : null;
+        seedNodePosition(node, centre);
+      });
     };
 
     // A /node/<id> deep link (the share sheet's View Node button) opens that node's card on the first load.
@@ -6012,7 +6054,7 @@ export default {
 </html>`;
 
     return new Response(html, {
-      headers: { "Content-Type": "text/html;charset=UTF-8" }
+      headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
     });
   }
 };

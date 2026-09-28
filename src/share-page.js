@@ -36,21 +36,25 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
   <meta charset="utf-8">
   <title>Save to Aether</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090A">
+  <meta name="theme-color" content="#080c14">
   <link rel="manifest" href="/manifest.json">
   <style>
-    /* Aether dark sheet: a flat #0E0F11 sheet, #1A1C1E surfaces, hairline borders, 6-8px radii, no accent colour
-       and no shadows. Every control keeps a 44pt hit area and presses down to scale(0.98) on pointer-down. */
+    /* The main portal system (DESIGN.md, System 2): a navy panel on the navy page, raised rows with hairline borders,
+       and the teal accent for the heading, the selected chips, the one primary button and links. 6-8px radii, no
+       shadows or glows. Every control keeps a 44pt hit area and presses down to scale(0.98) on pointer-down. */
     :root {
       color-scheme: dark;
-      --bg-page: #08090A;
-      --bg-base: #0E0F11;
-      --bg-surface: #1A1C1E;
+      --bg-page: #080c14;
+      --bg-panel: #0b1320;
+      --bg-raised: rgba(255, 255, 255, 0.04);
       --hairline: 1px solid rgba(255, 255, 255, 0.08);
-      --hairline-strong: rgba(255, 255, 255, 0.24);
-      --text-primary: rgba(255, 255, 255, 0.9);
-      --text-secondary: rgba(255, 255, 255, 0.5);
-      --text-tertiary: rgba(255, 255, 255, 0.3);
+      --text: #dffdf7;
+      --text-muted: #8a93a6;
+      --accent: #00ffcc;
+      --accent-line: rgba(0, 255, 204, 0.55);
+      --accent-soft: rgba(0, 255, 204, 0.14);
+      --on-accent: #041016;
+      --active-fill: linear-gradient(135deg, rgba(0, 255, 204, 0.3), rgba(79, 132, 255, 0.3));
       --danger: #E5484D;
       --radius-s: 6px;
       --radius-m: 8px;
@@ -67,7 +71,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
       font-size: 15px;
       line-height: 1.4;
-      color: var(--text-primary);
+      color: var(--text);
       background: var(--bg-page);
       -webkit-font-smoothing: antialiased;
       -webkit-tap-highlight-color: transparent;
@@ -81,7 +85,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
       padding: 16px;
       border: var(--hairline);
       border-radius: var(--radius-m);
-      background: var(--bg-base);
+      background: var(--bg-panel);
     }
     @media (max-width: 520px) {
       body { align-items: flex-end; padding: 0; }
@@ -89,42 +93,43 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     }
     button, .button { font: inherit; color: inherit; cursor: pointer; transition: transform 300ms var(--ease-settle), color 300ms var(--ease-settle); }
     button:active:not(:disabled), .button:active { transform: scale(0.98); transition-duration: 0s; }
-    :focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
+    :focus-visible { outline: 1px solid var(--accent-line); outline-offset: 2px; }
     .sheet-head { display: flex; align-items: center; justify-content: space-between; margin: -8px -12px -8px 0; }
-    .sheet-head h1 { margin: 0; font-size: 15px; font-weight: 600; }
-    .close { width: 44px; height: 44px; flex: none; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 20px; line-height: 1; }
-    .link { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 12px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-surface); }
+    .sheet-head h1 { margin: 0; font-size: 15px; font-weight: 600; color: var(--accent); }
+    .close { width: 44px; height: 44px; flex: none; padding: 0; border: 0; background: none; color: var(--text-muted); font-size: 20px; line-height: 1; }
+    .link { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 12px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); }
     .link[hidden] { display: none; }
-    .link-domain, .link-url { font-size: 12px; color: var(--text-secondary); }
+    .link-domain, .link-url { font-size: 12px; color: var(--text-muted); }
     .link-title { font-size: 15px; overflow-wrap: anywhere; }
     .link-url { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .compose { position: relative; }
-    .input { display: block; width: 100%; min-height: 72px; max-height: 40vh; padding: 0; border: 0; background: transparent; color: var(--text-primary); caret-color: #ffffff; font: inherit; font-size: 17px; line-height: 1.35; resize: none; outline: none; }
-    .input::placeholder { color: var(--text-tertiary); }
-    .suggestions { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: flex; flex-direction: column; padding: 4px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-surface); z-index: 2; }
+    .input { display: block; width: 100%; min-height: 72px; max-height: 40vh; padding: 0; border: 0; background: transparent; color: var(--text); caret-color: var(--accent); font: inherit; font-size: 17px; line-height: 1.35; resize: none; outline: none; }
+    .input::placeholder { color: var(--text-muted); }
+    .suggestions { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); display: flex; flex-direction: column; padding: 4px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-panel); z-index: 2; }
     .suggestions[hidden] { display: none; }
     .suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 8px; border: 0; border-radius: 4px; background: transparent; font-size: 15px; text-align: left; }
-    .suggestions button:hover, .suggestions button.active { background: rgba(255, 255, 255, 0.06); }
-    .suggestions button span { color: var(--text-secondary); font-size: 13px; }
+    .suggestions button:hover { background: var(--bg-raised); }
+    .suggestions button.active { background: var(--accent-soft); }
+    .suggestions button span { color: var(--text-muted); font-size: 13px; }
     /* One row that scrolls sideways and runs to the sheet edges, with no visible scrollbar. Each chip is a 44px
        hit area; the visible 32px chip is drawn by ::before so the row stays compact. */
     .ribbon { display: flex; gap: 8px; margin: -8px -16px; padding: 0 16px; overflow-x: auto; overscroll-behavior-x: contain; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none; }
     .ribbon::-webkit-scrollbar { display: none; }
-    .ribbon button { position: relative; z-index: 0; flex: none; height: 44px; padding: 0 10px; border: 0; background: none; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
-    .ribbon button::before { content: ""; position: absolute; inset: 6px 0; z-index: -1; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-surface); }
-    .ribbon button:active:not(:disabled), .ribbon button[aria-pressed="true"] { color: var(--text-primary); }
-    .ribbon button[aria-pressed="true"]::before { border-color: var(--hairline-strong); }
+    .ribbon button { position: relative; z-index: 0; flex: none; height: 44px; padding: 0 10px; border: 0; background: none; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    .ribbon button::before { content: ""; position: absolute; inset: 6px 0; z-index: -1; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); }
+    .ribbon button:active:not(:disabled), .ribbon button[aria-pressed="true"] { color: #ffffff; }
+    .ribbon button[aria-pressed="true"]::before { border-color: var(--accent-line); background: var(--active-fill); }
     .ribbon button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .primary { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-m); background: #ffffff; color: #000000; font-size: 15px; font-weight: 600; text-decoration: none; }
+    .primary { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-m); background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 600; text-decoration: none; }
     .primary:disabled { opacity: 0.4; cursor: progress; }
-    .status { min-height: 16px; margin: -8px 0 0; font-size: 13px; text-align: center; color: var(--text-secondary); }
+    .status { min-height: 16px; margin: -8px 0 0; font-size: 13px; text-align: center; color: var(--text-muted); }
     .status.error { color: var(--danger); }
     .done { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px; text-align: center; }
     .done[hidden] { display: none; }
-    .done-mark { width: 40px; height: 40px; color: var(--text-primary); }
+    .done-mark { width: 40px; height: 40px; color: var(--accent); }
     .done-title { margin: 8px 0 0; font-size: 17px; font-weight: 600; }
-    .done-text { margin: 0 0 12px; font-size: 13px; color: var(--text-secondary); }
-    .secondary { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; color: var(--text-secondary); font-size: 13px; text-decoration: none; }
+    .done-text { margin: 0 0 12px; font-size: 13px; color: var(--text-muted); }
+    .secondary { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; color: var(--accent); font-size: 13px; text-decoration: none; }
     @media (prefers-reduced-motion: reduce) {
       button, .button { transition: none; }
       button:active:not(:disabled), .button:active { transform: none; }

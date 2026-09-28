@@ -3,21 +3,14 @@
 ## Persona & Standard
 Act as a Principal UI/UX Designer at Apple. Every component, interface layout, and interaction must adhere strictly to Apple Human Interface Guidelines (HIG). Eliminate "AI aesthetic slop": no rounded floating container-in-container layouts, no decorative glows (the 3D graph's meaning-carrying hub and Outcome glows are the one exception, see "Glow exception"), no backdrop blur, and no fluff text.
 
-Aether has two visual systems that share one structure:
-
-| Surface | System | Feel |
-| --- | --- | --- |
-| Share sheet (`src/share-page.js`) | Minimal greyscale | Quiet, fast, content only |
-| Main portal (`src/index.js`) | Teal accent hybrid | Navy and teal, alive but precise |
-
-New screens use the main portal system unless they are a quick-capture flow like the share sheet.
+Every Aether surface uses one visual system, the **teal accent hybrid** (System 2 below): the main portal (`src/index.js`) and the share sheet ingest card (`src/share-page.js`) alike. Navy and teal, alive but precise. The earlier minimal greyscale share sheet was retired on 2026-09-27 so the ingest card matches the rest of the app.
 
 ## Core Design Principles
 1. DEFERENCE: The UI recedes into the background so the user's content and data take full focus. Chrome and controls must feel weightless.
 2. CLARITY: High legibility, crisp typography scale, strict semantic hierarchy, and purposeful white space.
 3. DEPTH: Show hierarchy with surface colour and hairline borders, not blur or glow. A layer sits above another only when it is functionally on top (a menu over an input, a card being dragged).
 
-## Shared Structure (both systems)
+## Shared Structure
 - Typography: System fonts (-apple-system, BlinkMacSystemFont, SF Pro Display, SF Pro Text). Text inputs use at least 16px (17px preferred) so iOS does not zoom on focus.
 - Spacing: Strict 8pt grid with 4pt subdivisions. Compact padding, never chunky.
 - Corners: Never above 8px. `6px` for controls, chips and inner surfaces; `8px` for panels, sheets and primary buttons; `4px` for small tags, badges and segments inside a segmented control. Only data markers stay round: category dots, timeline dots and drag handles.
@@ -27,29 +20,10 @@ New screens use the main portal system unless they are a quick-capture flow like
 - Interactive Targets: Minimum 44x44pt hit area for every clickable or touchable element. When the visible control should be smaller (a 32px chip), keep the 44pt element and draw the visible shape with a `::before` inset, instead of shrinking the hit area.
 - Horizontal rows (chip ribbons, segmented bars): scroll sideways, hide the scrollbar (`scrollbar-width: none` plus `::-webkit-scrollbar { display: none }`), and use `scroll-behavior: smooth`.
 
-## System 1: Share Sheet (minimal greyscale)
-No accent colour. The primary action is the one white element; everything else is grey surface with white-opacity text.
+## System 2: Teal accent hybrid (every surface)
+The portal and the share sheet keep navy surfaces and the teal accent so they feel alive, with the shared structure above.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--bg-page` | `#08090A` | Page behind the sheet |
-| `--bg-base` | `#0E0F11` | Base sheet |
-| `--bg-surface` | `#1A1C1E` | Chips, link card, menus |
-| `--hairline` | `1px solid rgba(255, 255, 255, 0.08)` | Every border |
-| `--hairline-strong` | `rgba(255, 255, 255, 0.24)` | Border of a selected chip |
-| `--text-primary` | `rgba(255, 255, 255, 0.9)` | Primary text |
-| `--text-secondary` | `rgba(255, 255, 255, 0.5)` | URLs, chips, captions |
-| `--text-tertiary` | `rgba(255, 255, 255, 0.3)` | Placeholders only |
-| `--danger` | `#E5484D` | Error messages only |
-| `--radius-s` / `--radius-m` | `6px` / `8px` | See Corners |
-
-- Primary action: background `#FFFFFF`, text `#000000`, 8px radius, 44px tall.
-- Selected chip: `--text-primary` text and a `--hairline-strong` border. Muted chip text turns white while pressed.
-- Text areas sit directly on the sheet: no border, no background, no padding box. The caret is white.
-- Focus rings: `1px solid rgba(255, 255, 255, 0.5)`.
-
-## System 2: Main Portal (teal accent hybrid)
-The portal keeps its navy surfaces and teal accent so it feels alive, with the shared structure above.
+On the share sheet: the "Save to Aether" heading is teal, the link card and chips are `--bg-raised` rows with a hairline, a selected chip uses `--active-fill` with an `--accent-line` border, "Ingest" and "View Node" are the solid teal primary buttons, and the text area sits directly on the panel with a teal caret.
 
 | Token | Value | Use |
 | --- | --- | --- |
