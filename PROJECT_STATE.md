@@ -5,8 +5,8 @@
 ## 1. What is live
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
-- **Latest code commit:** `a8dd679` "fix: Quest headset rendering, graph aspect ratio, Carousel pointer jitter", pushed to `main`.
-- **Live version:** `a1eff263-0ec5-4307-8de0-f91c9e53ec6a` (deployed 2026-09-28).
+- **Latest code commit:** `9843dc9` "fix: cards drag freely between any 2D board columns", pushed to `main`.
+- **Live version:** `d7659dea-b1fe-4331-9f85-697be4f8b9a5` (deployed 2026-09-28).
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
 
@@ -27,6 +27,7 @@
 | `fec3f1d`, `fb51385` | Docs: this handoff file and the Connection Depth spec. |
 | `5286f31` | **Connection Depth slider** (migration 0015, labelled mining, depth rules, synthesis levels, slider). |
 | `a8dd679` | Quest 2 fixes: XR renders past the post-processing composer (with MR-to-VR fallback), the graph is fitted to its container (aspect ratio), Carousel ignores laser jitter. |
+| `9843dc9` | 2D board: cards drag freely between any columns (group columns regroup; type columns change the card's type). |
 
 ## 2. Codebase configuration
 
