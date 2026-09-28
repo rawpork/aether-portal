@@ -695,7 +695,10 @@ export function createCardField({ THREE, reducedMotion = false }) {
           sprite.material.color.copy(glowColor);
           sprite.material.opacity = glow;
           const spread = outcome ? 2 : 1.4 + 0.5 * Math.min(1, card.weight);
-          sprite.scale.set(CARD_WIDTH * spread, CARD_HEIGHT * spread * 1.25, 1);
+          // A sprite's size is applied in the camera's units: graph units on screens, metres in a headset (where the
+          // world is scaled down around the viewer), so there it is converted to metres.
+          const units = unitsPerMetre || 1;
+          sprite.scale.set((CARD_WIDTH * spread) / units, (CARD_HEIGHT * spread * 1.25) / units, 1);
         }
       }
     });

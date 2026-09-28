@@ -208,7 +208,21 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
    - **Still to build:**
      - phase 2 polish, if needed;
      - phase 3: direct files as a `VideoTexture` on the card (including in XR), and "Watch outside VR" (or a hand-off to the Quest Browser's player) for YouTube and Vimeo and for files blocked by CORS in the headset. There is no Worker proxy (decided 2026-09-28).
-4. **Spatial dashboard (next, after video phase 1).** The design agreed on 2026-09-28 is in next step 1 above.
+4. **Spatial dashboard: shipped 2026-09-28** (after the Quest 2 retest).
+   - **The panel:** a 30 cm canvas-drawn panel (`xr-panel.js`, pure and tested, drawn and hit-tested like the card faces; `xr-dashboard.js` puts it in the dolly, in real metres, drawn over everything).
+   - **Where it sits:** it rides 14 cm above the left controller or hand, turned to face the user. **Pin** moves it 55 cm in front and 30 cm below eye level, where it follows lazily once the user has turned about 35°. **X** shows or hides it.
+   - **Using it:** the ray and trigger (or pinch) of either hand, with a light buzz on hover and a firmer one on select.
+   - **Rows:**
+     - **View:** Space, Groups, Status, Map, Timeline, Gallery. The Board layouts become a wall 1.7 m away that fits 2.4 × 1.4 m, with 3D column labels (the HTML headers do not render in a headset). Gallery opens the focused, pointed-at or newest card's 180° gallery.
+     - **Time:** − / +.
+     - **Depth:** Obvious, Logical, Abstract.
+     - **Show:** the platforms.
+     - **Actions:** Back, Recenter, Zoom − / + (factor 1.4), Room on/off (MR only: a dark shell around the head, no session restart), Pin/Unpin, Exit.
+   - **Left thumbstick:** zooms continuously (the world grows or shrinks around the head); the right stick snap-turns.
+   - **Rays** are back to the Quest pointing pose by default. The grip pose's forward axis runs along the handle, which pointed at the sky on the Quest 2. A thumbstick press still switches.
+   - **Sprite sizes:** three.js applies a sprite's size in the camera's units, which are metres in a headset. Labels are now sized in metres directly (2.5 cm tall; the 80968464 fix had made them metres high) and card glows are converted to metres.
+   - **Timeline:** a new board layout on screens too, with a column per day, week or month to fit the span shown. Drops there change nothing.
+   - **Checked** on the emulated Quest 3: every button, both panel placements, and zoom.
 5. **Node Editor view (Map mode): shipped in `21c17b4`.** Possible follow-ups:
    - save dragged map positions (today they are session-only, in `mapMoves`, and lost on reload);
    - highlight the focused card's wires and dim the others;

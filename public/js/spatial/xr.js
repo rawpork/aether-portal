@@ -5,6 +5,11 @@
 
 import { SNAP_TURN, placement, snapTurn } from './xr-math.js';
 
+// Zoom (the left thumbstick, pushed forward or back): how fast the world grows or shrinks around the head, per second
+// at full tilt, and the dead zone before it starts.
+const ZOOM_RATE = 1.2;
+const STICK_DEAD_ZONE = 0.2;
+
 const FADE_MS = 150;
 // Ray length in metres when it hits nothing, and the cursor's radius.
 const RAY_M = 4;
@@ -15,11 +20,12 @@ const STICK_PRESS = 0.7;
 const STICK_RELEASE = 0.3;
 // xr-standard gamepad: the thumbstick press is button 3, A/X is button 4 and B/Y button 5.
 const BACK_BUTTONS = [5];
+const MENU_BUTTON = 4;
 const RAY_MODE_BUTTON = 3;
-// Where a controller's ray comes from: 'grip' follows how the controller is held (the direction the fist points),
-// 'pointer' is the platform's own pointing pose (the Quest Browser's laser). Tracked hands always use their pointing
-// pose. The Quest 2 test found the pointing pose felt off-angle, so the grip is the default.
-export const RAY_MODES = ['grip', 'pointer'];
+// Where a controller's ray comes from: 'pointer' is the platform's own pointing pose (the Quest Browser's laser), the
+// default; 'grip' is the grip pose's forward axis, which on the Quest runs along the handle (the Quest 2 test found it
+// pointing at the sky), kept only as an alternative. Tracked hands always use their pointing pose.
+export const RAY_MODES = ['pointer', 'grip'];
 
 // Which immersive modes this browser can open. Mixed reality comes first when both are there.
 export async function xrSupport() {
@@ -32,10 +38,10 @@ export async function xrSupport() {
 
 // renderer: the graph's WebGLRenderer. camera: the graph's camera, already inside `dolly` (createViewer). frame is
 // called on every XR frame with (time, frame) and must render. pick(ray) returns { distance } (graph units) or null.
-export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, onHover, onSelect, onBack, onEnd, rayMode = 'grip', onRayMode }) {
+export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, onHover, onSelect, onBack, onEnd, rayMode = 'pointer', onRayMode, onMenu, onScale }) {
   let session = null;
   let mode = null;
-  let currentRayMode = RAY_MODES.includes(rayMode) ? rayMode : 'grip';
+  let currentRayMode = RAY_MODES.includes(rayMode) ? rayMode : 'pointer';
   const temp = { matrix: new THREE.Matrix4(), origin: new THREE.Vector3(), direction: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
 
   // ---- Rays: one per controller or tracked hand ----
@@ -162,13 +168,46 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     fade = { phase: 'out', start: null, apply: resolve };
   };
 
-  // ---- Input polling: snap turns and back buttons (select and squeeze arrive as events) ----
-  const pollInput = () => {
+  // Grows or shrinks the world around the head (the head stays where it is): factor multiplies the graph units per
+  // metre, so below 1 zooms in. Returns the new scale.
+  const MIN_SCALE = 0.5;
+  const MAX_SCALE = 1e5;
+  const zoomBy = factor => {
+    const current = { position: { x: dolly.position.x, y: dolly.position.y, z: dolly.position.z }, rotationY: dolly.rotation.y, scale: dolly.scale.x };
+    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current.scale * factor));
+    if (scale === current.scale) return scale;
+    const head = headInDolly();
+    const c = Math.cos(current.rotationY);
+    const s = Math.sin(current.rotationY);
+    const worldHead = {
+      x: current.position.x + (head.x * c + head.z * s) * current.scale,
+      y: current.position.y + head.y * current.scale,
+      z: current.position.z + (-head.x * s + head.z * c) * current.scale
+    };
+    applyDolly(placement({ point: worldHead, yaw: -current.rotationY, scale, head }));
+    if (onScale) onScale(scale);
+    return scale;
+  };
+
+  // ---- Input polling: snap turns (right stick), zoom (left stick), menu and back buttons (select and squeeze arrive
+  // as events) ----
+  let lastPoll = 0;
+  const pollInput = time => {
+    const dt = lastPoll ? Math.min(0.1, (time - lastPoll) / 1000) : 0;
+    lastPoll = time;
     hands.forEach(hand => {
       const gamepad = hand.source && hand.source.gamepad;
       if (!gamepad) return;
       const x = gamepad.axes.length >= 4 ? gamepad.axes[2] : gamepad.axes[0] || 0;
-      if (!hand.stickLatched && Math.abs(x) > STICK_PRESS) {
+      const y = gamepad.axes.length >= 4 ? gamepad.axes[3] : gamepad.axes[1] || 0;
+      const left = hand.source.handedness === 'left';
+      if (left) {
+        // Forward (negative y) zooms in: fewer graph units per metre, so everything looks bigger.
+        if (Math.abs(y) > STICK_DEAD_ZONE && dt) zoomBy(Math.exp(y * ZOOM_RATE * dt));
+        const menu = Boolean(gamepad.buttons[MENU_BUTTON] && gamepad.buttons[MENU_BUTTON].pressed);
+        if (menu && !hand.buttons[MENU_BUTTON] && onMenu) onMenu(hand.index);
+        hand.buttons[MENU_BUTTON] = menu;
+      } else if (!hand.stickLatched && Math.abs(x) > STICK_PRESS) {
         hand.stickLatched = true;
         const current = { position: { ...dolly.position }, rotationY: dolly.rotation.y, scale: dolly.scale.x };
         applyDolly(snapTurn(current, headInDolly(), x > 0 ? SNAP_TURN : -SNAP_TURN));
@@ -233,7 +272,7 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
       fade = { phase: 'in', start: null, apply: null };
     }
     try {
-      pollInput();
+      pollInput(time);
       stepFade(time);
       if (posed) updateRays();
       frame(time, xrFrame);
@@ -270,6 +309,21 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     mode: () => mode,
     rayMode: () => currentRayMode,
     setRayMode,
+    zoomBy,
+    scale: () => dolly.scale.x,
+    // The grip of the controller or hand in that hand ('left' or 'right'), or null when it is not tracked.
+    gripFor: handedness => {
+      const hand = hands.find(item => item.source && item.source.handedness === handedness);
+      return hand ? hand.grip : null;
+    },
+    // A short haptic buzz on a controller, where it has one.
+    pulse: (index, intensity = 0.3, ms = 20) => {
+      const hand = hands[index];
+      const actuator = hand && hand.source && hand.source.gamepad && hand.source.gamepad.hapticActuators && hand.source.gamepad.hapticActuators[0];
+      if (actuator && actuator.pulse) {
+        try { actuator.pulse(intensity, ms); } catch (err) {}
+      }
+    },
     place,
     placement,
     // Starts a session: 'immersive-ar' (mixed reality) or 'immersive-vr'.

@@ -2581,6 +2581,7 @@ export default {
     <button type="button" data-board-mode="groups" aria-pressed="true" title="A column per group">Groups</button>
     <button type="button" data-board-mode="status" aria-pressed="false" title="Inbox, Active, Reference and Done">Status</button>
     <button type="button" data-board-mode="map" aria-pressed="false" title="A node map wired along the connections">Map</button>
+    <button type="button" data-board-mode="timeline" aria-pressed="false" title="Cards in date order, a column per day, week or month">Timeline</button>
   </div>
   <div id="gallery-nav" hidden>
     <button type="button" id="gallery-prev" title="Previous card in the gallery" aria-label="Previous card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 3.5 8 11 13.5z" fill="currentColor"/></svg></button>
@@ -2641,7 +2642,7 @@ export default {
     const LIST_LAYOUTS = ['list', 'grid'];
     const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
     const GROUP_BY_KEYS = ['group', 'category', 'platform', 'tag'];
-    const BOARD_MODES = ['groups', 'status', 'map'];
+    const BOARD_MODES = ['groups', 'status', 'map', 'timeline'];
     try {
       const saved = JSON.parse(localStorage.getItem(VIEW_PREFS_KEY) || '{}') || {};
       if (VIEW_MODES.includes(saved.view)) filterState.view = saved.view;
@@ -4496,10 +4497,12 @@ export default {
         });
       }
     };
-    // 1 on screens; in a headset, whatever makes a label XR_LABEL_HEIGHT_M tall at the current world scale.
+    // 1 on screens; in a headset, whatever makes a label XR_LABEL_HEIGHT_M tall. three.js applies a sprite's size in the
+    // camera's own units, and with the world scaled down around the viewer those are metres, so the size is given in
+    // metres directly (not in graph units, which made labels metres high).
     const labelScale = () => {
-      if (!(viewer && viewer.isPresenting() && viewer.getDolly())) return 1;
-      return (XR_LABEL_HEIGHT_M * viewer.getDolly().scale.x) / LABEL_HEIGHT;
+      if (!(viewer && viewer.isPresenting())) return 1;
+      return XR_LABEL_HEIGHT_M / LABEL_HEIGHT;
     };
     const cardLoop = time => {
       if (!(viewer && viewer.isPresenting())) cardStep(time);
@@ -4990,14 +4993,14 @@ export default {
         }
       }, DEPTH_SAVE_DELAY_MS);
     };
-    depthSlider.addEventListener('input', () => {
-      const level = DEPTH_LEVELS[Number(depthSlider.value)] || 'logical';
-      if (level === filterState.depth) return;
+    const setDepth = level => {
+      if (!DEPTH_LEVELS.includes(level) || level === filterState.depth) return;
       filterState.depth = level;
       renderDepth();
       applyGraphFilters();
       saveDepth();
-    });
+    };
+    depthSlider.addEventListener('input', () => setDepth(DEPTH_LEVELS[Number(depthSlider.value)] || 'logical'));
 
     const applyGraphFilters = () => {
       // Proposed Outcome Nodes always show, whatever the time scope, so a fresh synthesis is never missed.
@@ -5167,9 +5170,9 @@ export default {
     const XR_RAY_MODE_KEY = 'aetherXrRayMode';
     const readXrRayMode = () => {
       try {
-        return localStorage.getItem(XR_RAY_MODE_KEY) || 'grip';
+        return localStorage.getItem(XR_RAY_MODE_KEY) || 'pointer';
       } catch (err) {
-        return 'grip';
+        return 'pointer';
       }
     };
     // A gallery's arc radius in a headset (graph units; 18 on screens) and the size cards are drawn at in the overview:
@@ -5184,6 +5187,11 @@ export default {
       if (!xrRaycaster) xrRaycaster = new THREE.Raycaster();
       xrRaycaster.set(ray.origin, ray.direction);
       xrRaycaster.camera = Graph.camera();
+      // The dashboard is in front of everything, so it takes the ray first.
+      if (xrDashboard) {
+        const panel = xrDashboard.pick(xrRaycaster);
+        if (panel) return { distance: panel.distance, panelId: panel.id };
+      }
       const roots = Graph.graphData().nodes.map(node => node.__threeObj).filter(Boolean);
       const hit = xrRaycaster.intersectObjects(roots, true)[0];
       if (!hit) return null;
@@ -5191,8 +5199,18 @@ export default {
       while (object && !object.__data) object = object.parent;
       return object ? { distance: hit.distance, node: object.__data } : null;
     };
+    const xrPanelHover = new Map();
     const xrOnHover = (hand, hit) => {
-      if (hit) xrHovered.set(hand, hit.node);
+      const onPanel = Boolean(hit && hit.panelId !== undefined);
+      if (onPanel) {
+        // A light buzz when the ray moves onto another button.
+        if (hit.panelId && xrPanelHover.get(hand) !== hit.panelId) xr.pulse(hand, 0.15, 15);
+        xrPanelHover.set(hand, hit.panelId);
+      } else {
+        xrPanelHover.delete(hand);
+      }
+      if (xrDashboard) xrDashboard.setHover(xrPanelHover.get(1) || xrPanelHover.get(0) || null);
+      if (hit && hit.node) xrHovered.set(hand, hit.node);
       else xrHovered.delete(hand);
       const node = xrHovered.get(1) || xrHovered.get(0) || null;
       if (node) {
@@ -5206,6 +5224,7 @@ export default {
       if (!bbox) return;
       const center = { x: (bbox.x[0] + bbox.x[1]) / 2, y: (bbox.y[0] + bbox.y[1]) / 2, z: (bbox.z[0] + bbox.z[1]) / 2 };
       const radius = Math.max(30, Math.hypot(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0], bbox.z[1] - bbox.z[0]) / 2);
+      xrPlacementKind = 'overview';
       xr.place(head => {
         const next = window.AetherSpatial.overviewPlacement({ center, radius, head });
         const cardMetres = window.AetherSpatial.CARD_WIDTH / next.scale;
@@ -5219,6 +5238,7 @@ export default {
     const xrPlaceGallery = () => {
       if (!gallery) return;
       const { origin, yaw, radius } = gallery;
+      xrPlacementKind = 'gallery';
       xr.place(head => {
         const next = window.AetherSpatial.galleryPlacement({ origin, yaw, radius, head });
         if (cardField) {
@@ -5228,8 +5248,15 @@ export default {
         return next;
       });
     };
-    const xrOnSelect = ray => {
+    const xrOnSelect = (ray, hand) => {
       const hit = xrPick(ray);
+      if (hit && hit.panelId !== undefined) {
+        if (hit.panelId) {
+          xr.pulse(hand, 0.5, 30);
+          xrDashboardAction(hit.panelId);
+        }
+        return;
+      }
       if (!hit) {
         xrOnBack();
         return;
@@ -5244,10 +5271,16 @@ export default {
     const xrOnBack = () => {
       if (!gallery && !focus.node) return;
       resetSelection();
-      xrPlaceOverview();
+      if (filterState.flat) xrPlaceBoard();
+      else xrPlaceOverview();
     };
     const xrFrame = time => {
       if (cardField) cardStep(time);
+      if (xrDashboard) {
+        xrDashboard.setState(xrDashboardState());
+        xrDashboard.frame(xr.gripFor('left'), time);
+      }
+      syncXrBoardLabels();
       // One cycle of the graph (layout tick, controls, render); the cycle schedules its own animation frame, which is
       // cancelled straight away so only the XR loop renders. Its render goes straight to the headset (xrDirectRender).
       Graph._animationCycle();
@@ -5270,6 +5303,8 @@ export default {
     };
     const xrOnEnd = () => {
       if (xrSaved) xrDirectRender(false);
+      setDarkRoom(false);
+      syncXrBoardLabels();
       viewer.setPresenting(false);
       if (cardField) {
         cardField.setGlobalScale(1);
@@ -5349,8 +5384,11 @@ export default {
         rayMode: readXrRayMode(),
         onRayMode: mode => {
           try { localStorage.setItem(XR_RAY_MODE_KEY, mode); } catch (err) {}
-        }
+        },
+        onMenu: () => { if (xrDashboard) xrDashboard.toggle(); },
+        onScale: xrOnScale
       });
+      xrDashboard = window.AetherSpatial.createDashboard({ THREE, dolly: viewer.getDolly(), camera: Graph.camera() });
       xrBothModes = support.ar && support.vr;
       xrButton.querySelector('.bar-label').textContent = xrBothModes ? 'Enter XR' : support.ar ? 'Enter MR' : 'Enter VR';
       xrButton.dataset.short = xrBothModes ? 'XR' : support.ar ? 'MR' : 'VR';
@@ -5513,6 +5551,154 @@ export default {
       return true;
     };
 
+    // ---- Headset dashboard (PROJECT_STATE.md): a panel above the left wrist, or pinned at waist height, with the views
+    // (spatial versions: Space, the Board wall in its four layouts, the Gallery), time span, depth, platforms and the
+    // session actions. X shows or hides it; the right hand's ray and trigger (or pinch) use it. ----
+    let xrDashboard = null;
+    let xrPlacementKind = 'overview';
+    let xrDarkRoom = false;
+    let xrDarkShell = null;
+    let xrBoardLabels = null;
+    // The Board wall in a headset: it fits this width and height, standing this far away.
+    const XR_BOARD_WIDTH_M = 2.4;
+    const XR_BOARD_HEIGHT_M = 1.4;
+    const XR_BOARD_DISTANCE_M = 1.7;
+    const XR_BOARD_LABEL_BOOST = 1.4;
+    const XR_ZOOM_STEP = 1.4;
+    const xrDashboardState = () => ({
+      view: gallery ? 'gallery' : filterState.flat ? filterState.boardMode : 'space',
+      scopeLabel: scopeLabel.textContent,
+      depth: filterState.depth,
+      platform: filterState.platform,
+      passthrough: xr && xr.mode() === 'immersive-ar' ? !xrDarkRoom : null
+    });
+    const setFlat = on => {
+      if (filterState.flat !== on) viewToggle.click();
+    };
+    const xrPlaceBoard = () => {
+      if (!boardState) return;
+      const scale = Math.max(boardState.width / XR_BOARD_WIDTH_M, boardState.height / XR_BOARD_HEIGHT_M, 5);
+      xrPlacementKind = 'board';
+      if (cardField) {
+        cardField.setGlobalScale(1);
+        cardField.setUnitsPerMetre(scale);
+      }
+      xr.place(head => xr.placement({ point: { x: 0, y: 0.1 * scale, z: XR_BOARD_DISTANCE_M * scale }, yaw: 0, scale, head }));
+    };
+    const xrRecenter = () => {
+      if (xrPlacementKind === 'board' && filterState.flat) xrPlaceBoard();
+      else if (xrPlacementKind === 'gallery' && gallery) xrPlaceGallery();
+      else xrPlaceOverview();
+    };
+    // After a zoom: the world scale changed, so physical sizes follow (and overview cards keep their size).
+    const xrOnScale = scale => {
+      if (!cardField) return;
+      cardField.setUnitsPerMetre(scale);
+      if (xrPlacementKind === 'overview') {
+        cardField.setGlobalScale(Math.min(XR_OVERVIEW_CARD_MAX, Math.max(1, XR_OVERVIEW_CARD_M / (window.AetherSpatial.CARD_WIDTH / scale))));
+      }
+    };
+    // In mixed reality, "Room off" puts a dark shell around the head: the look of VR without restarting the session.
+    const setDarkRoom = on => {
+      xrDarkRoom = Boolean(on);
+      if (!xrDarkShell && on && THREE) {
+        xrDarkShell = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 24, 16),
+          new THREE.MeshBasicMaterial({ color: XR_VR_BACKGROUND, side: THREE.BackSide, depthTest: false, depthWrite: false })
+        );
+        xrDarkShell.renderOrder = -1000;
+        xrDarkShell.frustumCulled = false;
+        xrDarkShell.raycast = () => {};
+        Graph.camera().add(xrDarkShell);
+      }
+      if (xrDarkShell) xrDarkShell.visible = xrDarkRoom;
+    };
+    // The Board wall's column headers are web page elements, which a headset does not show; there they are 3D labels.
+    const syncXrBoardLabels = () => {
+      const want = xrPresenting() && filterState.flat && boardState && boardState.columns.length ? boardState : null;
+      if (!xrBoardLabels || xrBoardLabels.source !== want) {
+        if (xrBoardLabels) {
+          xrBoardLabels.group.children.forEach(sprite => {
+            sprite.material.map.dispose();
+            sprite.material.dispose();
+          });
+          Graph.scene().remove(xrBoardLabels.group);
+          xrBoardLabels = null;
+        }
+        if (!want || !THREE) return;
+        const group = new THREE.Group();
+        want.columns.forEach(column => {
+          const sprite = makeLabelSprite(column.label, getBoardColumnColor(column.key));
+          sprite.position.set(column.x, column.headerY, 1);
+          sprite.raycast = () => {};
+          group.add(sprite);
+        });
+        Graph.scene().add(group);
+        xrBoardLabels = { group, source: want };
+      }
+      const scale = labelScale() * XR_BOARD_LABEL_BOOST;
+      xrBoardLabels.group.children.forEach(sprite => sprite.scale.set(LABEL_WIDTH * scale, LABEL_HEIGHT * scale, 1));
+    };
+    // The card for the Gallery view: the focused one, else the one a ray is on, else the newest shown.
+    const xrGalleryCard = () => {
+      if (focus.node) return focus.node;
+      const hovered = xrHovered.get(1) || xrHovered.get(0);
+      if (hovered) return hovered;
+      return Graph.graphData().nodes.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null;
+    };
+    const xrDashboardAction = id => {
+      const [kind, value] = id.split(':');
+      if (kind === 'view') {
+        if (value === 'space') {
+          if (gallery || focus.node) resetSelection();
+          setFlat(false);
+          xrPlaceOverview();
+        } else if (value === 'gallery') {
+          const node = xrGalleryCard();
+          setFlat(false);
+          if (!node) return;
+          focusCard(node);
+          if (gallery) {
+            cardField.setGallerySlide(gallery.radius * XR_FOCUS_SLIDE);
+            xrPlaceGallery();
+          }
+        } else {
+          if (gallery || focus.node) resetSelection();
+          const button = boardModeButtons.find(item => item.dataset.boardMode === value);
+          if (button && filterState.boardMode !== value) button.click();
+          setFlat(true);
+          layoutBoard();
+          xrPlaceBoard();
+        }
+      } else if (kind === 'scope') {
+        stepScope(value === 'widen' ? 1 : -1);
+        xrRecenter();
+      } else if (kind === 'depth') {
+        setDepth(value);
+      } else if (kind === 'platform') {
+        const pill = document.querySelector('.platform-pill[data-platform="' + value + '"]');
+        if (pill && !pill.disabled) pill.click();
+      } else if (id === 'back') {
+        if (gallery || focus.node) xrOnBack();
+        else if (filterState.flat) {
+          setFlat(false);
+          xrPlaceOverview();
+        }
+      } else if (id === 'recenter') {
+        xrRecenter();
+      } else if (id === 'zoom-in') {
+        xr.zoomBy(1 / XR_ZOOM_STEP);
+      } else if (id === 'zoom-out') {
+        xr.zoomBy(XR_ZOOM_STEP);
+      } else if (id === 'passthrough') {
+        setDarkRoom(!xrDarkRoom);
+      } else if (id === 'pin') {
+        xrDashboard.setPinned(!xrDashboard.isPinned());
+      } else if (id === 'exit') {
+        xr.end();
+      }
+    };
+
     xrButton.addEventListener('click', event => {
       event.stopPropagation();
       if (!xrBothModes) {
@@ -5584,6 +5770,9 @@ export default {
         const map = spatial.mapLayout(nodes.map(node => String(node.id)), links, size);
         mapMoves.forEach((position, id) => { if (map.slots.has(id)) map.slots.set(id, { ...position }); });
         boardState = { slots: map.slots, columns: [], wires: map.wires, width: map.width, height: map.height };
+      } else if (filterState.boardMode === 'timeline') {
+        const [items, options] = timelineItems(nodes);
+        boardState = spatial.boardLayout(items, { ...size, ...options });
       } else if (filterState.boardMode === 'status') {
         const items = nodes.map(node => ({ id: String(node.id), key: STATUS_KEY_PREFIX + getNodeStatus(node), status: getNodeStatus(node), created: node.created_at }));
         boardState = spatial.boardLayout(items, { ...size, columns: BOARD_COLUMNS.map(column => ({ key: STATUS_KEY_PREFIX + column.status, label: column.icon + ' ' + column.label })) });
@@ -5599,6 +5788,34 @@ export default {
       cardField.setBoard(boardState.slots);
       renderBoardHeaders();
       buildWires();
+    };
+    // Timeline layout: a column per day, week or month (whichever fits the span shown), oldest on the left.
+    const TIMELINE_DAY_SPAN = 14;
+    const TIMELINE_WEEK_SPAN = 120;
+    const pad2 = value => String(value).padStart(2, '0');
+    const isoDay = date => date.getFullYear() + '-' + pad2(date.getMonth() + 1) + '-' + pad2(date.getDate());
+    const timelineItems = nodes => {
+      const times = nodes.map(getNodeTime).filter(Number.isFinite);
+      const span = times.length ? (Math.max(...times) - Math.min(...times)) / DAY_MS : 0;
+      const unit = span <= TIMELINE_DAY_SPAN ? 'day' : span <= TIMELINE_WEEK_SPAN ? 'week' : 'month';
+      const bucket = time => {
+        if (!Number.isFinite(time)) return { key: 'time:~undated', label: 'Undated' };
+        const date = new Date(time);
+        if (unit === 'day') return { key: 'time:' + isoDay(date), label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) };
+        if (unit === 'week') {
+          const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7));
+          return { key: 'time:' + isoDay(start), label: 'Week of ' + start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) };
+        }
+        return { key: 'time:' + date.getFullYear() + '-' + pad2(date.getMonth() + 1), label: date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) };
+      };
+      const columns = new Map();
+      const items = nodes.map(node => {
+        const place = bucket(getNodeTime(node));
+        columns.set(place.key, place.label);
+        return { id: String(node.id), key: place.key, label: place.label, created: node.created_at };
+      });
+      const ordered = [...columns].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([key, label]) => ({ key, label }));
+      return [items, { columns: ordered }];
     };
     const getBoardColumnLabel = key => {
       if (key.startsWith('group:')) {
@@ -5978,6 +6195,8 @@ export default {
         showBoardHint(title + ' moved to ' + column.label + '.', () => moveNodeToStatus(node, previous));
         return;
       }
+      // Dates are facts, not places: the Timeline only shows them.
+      if (column.key.startsWith('time:')) return;
       if (column.key === window.AetherSpatial.primaryGroup(node)) return;
       const previous = { category: getNodeCategory(node), groupId: node.group_id || null };
       const place = column.key.startsWith('group:')

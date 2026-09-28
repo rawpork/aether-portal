@@ -534,7 +534,8 @@ WebXR frames must be rendered from `renderer.setAnimationLoop()` (the XR session
 - **Input (5.4):** controller and hand rays (`renderer.xr.getController`) are one teal ray each, ending at a cursor on the card they hit. They pick through a raycast of the card roots and hover the card. Select (trigger or pinch) on a card opens it; select on nothing, squeeze or B/Y goes back to the overview.
 - **Culling:** three.js builds the headset's culling frustum from both eyes without allowing for a scaled parent, so with the world scaled down whole clusters were culled while in plain view. Frustum culling is switched off while presenting (re-checked every 30 frames for new cards) and restored afterwards.
 - **Tested with IWER** (Meta's Immersive Web Emulation Runtime, a simulated Quest 3 injected into a headless browser): the button, entering MR, the overview in simulated passthrough, real select and squeeze events, pick and hover, the gallery teleport, same-wall focus, back, and leaving. Not yet checked on a physical headset.
-- **Not yet:** the 3D group picker panel (5.4), text entry in the headset, and the 2D board in XR.
+- **Dashboard and board in XR (2026-09-28):** a wrist or pinned panel (`xr-panel.js`, `xr-dashboard.js`) switches views (Space, the Board wall in Groups, Status, Map or the new Timeline layout, Gallery), time span, depth and platforms, and holds Back, Recenter, Zoom, Room on/off (MR), Pin and Exit. The left stick zooms. Board columns get 3D labels in the headset. Sprites (labels, card glows) are sized in metres in XR, because three.js applies sprite sizes in the camera's units. The Quest pointing pose is the default ray; the grip's forward axis runs along the handle.
+- **Not yet:** the 3D group picker panel (5.4), text entry in the headset, and dragging cards on the Board wall in XR.
 
 ## 6. The 180° spatial gallery (D8, Phase 4)
 
