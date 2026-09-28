@@ -1789,6 +1789,47 @@ export default {
       color: #fff;
     }
     #cluster-drawer.open { display: flex; }
+    /* 2D board (Phase 5): a header above each column, placed over the canvas every frame and faded in with the morph. */
+    #board-headers { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
+    #board-headers[hidden], body.collection-mode #board-headers { display: none; }
+    /* The column headers name every column, so the legend would only cover the board. */
+    body.board-mode #legend { display: none !important; }
+    .board-header {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-top: 3px solid var(--accent);
+      border-radius: var(--radius-s);
+      background: var(--bg-panel);
+      color: #dffdf7;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .board-header-label { overflow: hidden; text-overflow: ellipsis; text-transform: capitalize; }
+    .board-header-count { color: #8a93a6; font-weight: 400; }
+    #board-hint {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 25;
+      max-width: min(90vw, 460px);
+      padding: 10px 14px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      color: #dffdf7;
+      font-size: 13px;
+    }
+    #board-hint[hidden] { display: none; }
+    body.board-card-dragging, body.board-card-dragging * { cursor: grabbing !important; }
     /* Gallery arrows: translucent, side by side in the dark space below the wall, centred in the open area between the
        sidebars. The page places them every frame while the gallery is open. */
     #gallery-nav[hidden], body.collection-mode #gallery-nav { display: none; }
@@ -2058,7 +2099,7 @@ export default {
       <button type="button" data-view="board" aria-pressed="false" title="Board view: drag cards between Inbox, Active, Reference and Done"><span class="view-icon">▥</span><span class="view-label">Board</span></button>
       <button type="button" data-view="carousel" aria-pressed="false" title="Carousel view: swipe through cards one at a time"><span class="view-icon">❐</span><span class="view-label">Carousel</span></button>
     </div>
-    <button class="view-toggle bar-btn" id="view-toggle" data-short="2D"><span class="bar-label">2D Canvas</span></button>
+    <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   <div class="settings-wrap">
     <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
@@ -2283,6 +2324,8 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
+  <div id="board-headers" hidden></div>
+  <div id="board-hint" role="status" hidden></div>
   <div id="gallery-nav" hidden>
     <button type="button" id="gallery-prev" title="Previous card in the gallery" aria-label="Previous card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 3.5 8 11 13.5z" fill="currentColor"/></svg></button>
     <button type="button" id="gallery-next" title="Next card in the gallery" aria-label="Next card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 12.5 8 5 13.5z" fill="currentColor"/></svg></button>
@@ -2596,22 +2639,6 @@ export default {
       clusterIndexes.delete(fromKey);
     };
 
-    // In 2D mode categories sit on a flat grid of wide rows, like a node editor canvas.
-    const FLAT_COLUMNS = 4;
-    const FLAT_SPACING_X = 200;
-    const FLAT_SPACING_Y = 150;
-    const getFlatAnchor = key => {
-      const index = getClusterIndex(key);
-      const rows = Math.ceil(getSlotTotal() / FLAT_COLUMNS);
-      const col = index % FLAT_COLUMNS;
-      const row = Math.floor(index / FLAT_COLUMNS);
-      return {
-        x: (col - (FLAT_COLUMNS - 1) / 2) * FLAT_SPACING_X,
-        y: ((rows - 1) / 2 - row) * FLAT_SPACING_Y,
-        z: 0
-      };
-    };
-
     // Fibonacci sphere: unit points spread evenly around the origin.
     const getSpherePoint = (index, total) => {
       const y = 1 - (2 * (index + 0.5)) / total;
@@ -2640,7 +2667,6 @@ export default {
     };
 
     const getClusterAnchor = key => {
-      if (filterState.flat) return getFlatAnchor(key);
       const index = getClusterIndex(key);
       const total = getSlotTotal();
       const point = getSpherePoint(index, total);
@@ -3137,7 +3163,7 @@ export default {
       refreshLinkStyles();
       // Cards ignore nodeColor/nodeOpacity; their targets and faces update in place.
       syncCards();
-      if (territories.group) territories.group.visible = !focus.node && !gallery;
+      if (territories.group) territories.group.visible = !focus.node && !gallery && !filterState.flat;
       syncTerritoryEmphasis();
     };
 
@@ -3404,7 +3430,7 @@ export default {
       }
       const orbit = filterState.flat ? FLAT_ORBIT : getOrbit();
       const distance = getNodeDistance(cover);
-      const point = { x: node.x, y: node.y, z: node.z };
+      const point = (filterState.flat && cardField && cardField.boardSlot(node.id)) || { x: node.x, y: node.y, z: node.z };
       const target = window.AetherSpatial
         ? window.AetherSpatial.uncoveredTarget(point, { ...orbit, distance, vFov: cameraFov(), aspect: Graph.camera().aspect }, cover)
         : point;
@@ -3480,6 +3506,7 @@ export default {
       const camera = Graph.camera();
       const vFov = camera.fov * Math.PI / 180;
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+      if (filterState.flat && boardState) return getBoardFraming(vFov, hFov);
       const bbox = Graph.getGraphBbox();
       let center = { x: 0, y: 0, z: 0 };
       let distance = 600;
@@ -3842,6 +3869,7 @@ export default {
       updateClusters(currentVisibleNodes);
       updateClusterSpacing(currentVisibleNodes);
       syncTerritories(currentVisibleNodes);
+      layoutBoard();
       renderClusterDrawer();
       syncCards();
       refreshGallery();
@@ -4410,9 +4438,9 @@ export default {
       gallery = null;
       cardField.exitGallery();
       syncCards();
-      Graph.linkVisibility(true);
+      Graph.linkVisibility(!filterState.flat);
       lockGalleryControls(false);
-      if (territories.group) territories.group.visible = !focus.node;
+      if (territories.group) territories.group.visible = !focus.node && !filterState.flat;
       if (filterState.view === 'graph') flyToCluster(key);
     };
 
@@ -4488,7 +4516,8 @@ export default {
     };
     // Level of detail per scope (lod.js): short spans always show cards, Groups always shows proxies, All time follows
     // how large each cluster appears.
-    const getLodMode = () => filterState.horizon === 'groups' ? 'groups' : filterState.horizon === 'all' ? 'auto' : 'cards';
+    // The 2D board always shows every card.
+    const getLodMode = () => filterState.flat ? 'cards' : filterState.horizon === 'groups' ? 'groups' : filterState.horizon === 'all' ? 'auto' : 'cards';
     const pickStartupScope = nodes => SCOPES.filter(horizon => horizon !== 'groups')
       .find(horizon => horizon === 'all' || nodes.filter(node => isWithinHorizon(node, horizon)).length >= MIN_STARTUP_CARDS);
     // Changing the span leaves any gallery or open card and reframes what is now shown, again once the new cards settle.
@@ -4509,7 +4538,7 @@ export default {
     scopeWiden.addEventListener('click', () => stepScope(1));
     let scopeZoomTimer = null;
     const checkScopeZoom = () => {
-      if (filterState.view !== 'graph' || gallery || focus.node || (cameraRig && cameraRig.active)) return;
+      if (filterState.view !== 'graph' || filterState.flat || gallery || focus.node || (cameraRig && cameraRig.active)) return;
       const index = SCOPES.indexOf(filterState.horizon);
       if (index < 0 || index >= SCOPES.length - 1) return;
       const distance = Graph.camera().position.distanceTo(Graph.controls().target);
@@ -4695,6 +4724,7 @@ export default {
       if (cardField) cardField.setLodMode(getLodMode());
       if (cardField) cardField.retain(visibleIds);
       refreshGallery();
+      layoutBoard();
       renderActiveView();
     };
 
@@ -4774,28 +4804,241 @@ export default {
     };
 
     // fz is honored by the d3 simulation; null releases the node back into 3D.
+    // The 2D board (Phase 5) shows cards at board slots and never moves the force layout, so nothing is pinned.
     const pinToPlane = nodes => {
-      nodes.forEach(node => {
-        if (filterState.flat) {
-          node.fz = 0;
-          node.z = 0;
-          node.vz = 0;
-        } else {
-          node.fz = null;
-          // Leaving the flat canvas every z is 0; a small nudge lets repulsion work in depth again.
-          if (node.z === 0) node.z = (Math.random() - 0.5) * 10;
-        }
+      nodes.forEach(node => { node.fz = null; });
+    };
+
+    // ---- 2D board (SPATIAL_ARCHITECTURE.md 3, Phase 5). The 2D mode is a morph: the same cards glide from their 3D
+    // positions into a node-editor board, one column per group (layout-2d.js), and turn flat to face the camera. The
+    // force layout is never moved, so going back to 3D returns every card to its island. Dragging a card onto another
+    // column regroups it (the group picker's action); the regrouped card also moves to that group's island in 3D. ----
+    let boardState = null;
+    const boardHeaders = document.getElementById('board-headers');
+    const boardHint = document.getElementById('board-hint');
+    // The smallest a card is framed on screen, in pixels: a bigger board is framed from its top-left corner and panned.
+    const BOARD_MIN_CARD_PX = 56;
+    // Zoom limits on the board: cards between these heights on screen, in pixels.
+    const BOARD_ZOOM_PX = { min: 20, max: 400 };
+    const BOARD_MARGIN = 8;
+    const BOARD_DRAG_PX = 6;
+
+    const layoutBoard = () => {
+      if (!filterState.flat || !cardField || !window.AetherSpatial) return;
+      const spatial = window.AetherSpatial;
+      const items = Graph.graphData().nodes.map(node => {
+        const key = getClusterKey(node);
+        return { id: String(node.id), key, label: (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key), status: node.status, created: node.created_at };
+      });
+      boardState = spatial.boardLayout(items, { cardWidth: spatial.CARD_WIDTH, cardHeight: spatial.CARD_HEIGHT });
+      cardField.setBoard(boardState.slots);
+      renderBoardHeaders();
+    };
+
+    // Share of the canvas height the top bar and filter row cover.
+    const getTopChrome = () => {
+      const canvas = Graph.renderer().domElement.getBoundingClientRect();
+      if (!canvas.height) return 0;
+      const bottoms = [document.getElementById('topbar'), document.getElementById('filter-toolbar')]
+        .map(element => element.getBoundingClientRect()).filter(rect => rect.width && rect.height).map(rect => rect.bottom - canvas.top);
+      return Math.min(0.4, Math.max(0, ...bottoms) / canvas.height);
+    };
+    // Front-on framing of the board below the top chrome; a board too big to read whole starts at its top-left.
+    const getBoardFraming = (vFov, hFov) => {
+      const tanV = Math.tan(vFov / 2);
+      const tanH = Math.tan(hFov / 2);
+      const chrome = getTopChrome();
+      const halfW = boardState.width / 2 + BOARD_MARGIN;
+      const halfH = boardState.height / 2 + BOARD_MARGIN;
+      const fit = Math.max(halfH / ((1 - chrome) * tanV), halfW / tanH);
+      const canvasHeight = Graph.renderer().domElement.clientHeight || window.innerHeight;
+      const readable = (window.AetherSpatial.CARD_HEIGHT * canvasHeight) / (2 * tanV * BOARD_MIN_CARD_PX);
+      if (fit <= readable) return { center: { x: 0, y: chrome * fit * tanV, z: 0 }, distance: fit };
+      const visibleHalfW = readable * tanH;
+      const visibleHalfH = readable * tanV;
+      return {
+        // Its top edge just below the top chrome, and its left edge at the left of the screen (or centred when narrower).
+        center: { x: Math.min(0, -halfW + visibleHalfW), y: halfH - visibleHalfH + 2 * chrome * visibleHalfH, z: 0 },
+        distance: readable
+      };
+    };
+
+    const renderBoardHeaders = () => {
+      boardHeaders.replaceChildren(...(boardState ? boardState.columns : []).map(column => {
+        const header = document.createElement('div');
+        header.className = 'board-header';
+        header.style.borderTopColor = getClusterColor(column.key);
+        const label = document.createElement('span');
+        label.className = 'board-header-label';
+        label.textContent = column.label;
+        const count = document.createElement('span');
+        count.className = 'board-header-count';
+        count.textContent = String(column.count);
+        header.append(label, count);
+        return header;
+      }));
+      startBoardHeaders();
+    };
+    let boardHeaderFrame = 0;
+    const placeBoardHeaders = () => {
+      boardHeaderFrame = 0;
+      const weight = cardField ? cardField.boardWeight() : 0;
+      if (!filterState.flat && weight < 0.02) {
+        boardHeaders.hidden = true;
+        return;
+      }
+      boardHeaderFrame = requestAnimationFrame(placeBoardHeaders);
+      const ready = boardState && weight > 0.02 && filterState.view === 'graph' && typeof THREE !== 'undefined' && THREE;
+      boardHeaders.hidden = !ready;
+      if (!ready) return;
+      const camera = Graph.camera();
+      const rect = Graph.renderer().domElement.getBoundingClientRect();
+      const centre = new THREE.Vector3();
+      const edge = new THREE.Vector3();
+      // The headers arrive with the cards: they fade in over the last part of the morph.
+      boardHeaders.style.opacity = String(Math.max(0, (weight - 0.5) * 2));
+      [...boardHeaders.children].forEach((header, index) => {
+        const column = boardState.columns[index];
+        if (!column) return;
+        centre.set(column.x, column.headerY, 0).project(camera);
+        edge.set(column.right, column.headerY, 0).project(camera);
+        const x = rect.left + ((centre.x + 1) / 2) * rect.width;
+        const y = rect.top + ((1 - centre.y) / 2) * rect.height;
+        header.style.maxWidth = Math.max(36, Math.round(Math.abs(edge.x - centre.x) * rect.width)) + 'px';
+        header.style.transform = 'translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px) translate(-50%, -50%)';
       });
     };
+    const startBoardHeaders = () => {
+      if (!boardHeaderFrame) boardHeaderFrame = requestAnimationFrame(placeBoardHeaders);
+    };
+
+    let boardHintTimer = null;
+    const showBoardHint = text => {
+      boardHint.textContent = text;
+      boardHint.hidden = false;
+      clearTimeout(boardHintTimer);
+      boardHintTimer = setTimeout(() => { boardHint.hidden = true; }, 3500);
+    };
+
+    let savedZoomLimits = null;
+    const setBoardMode = on => {
+      document.body.classList.toggle('board-mode', on);
+      if (!cardField) return;
+      cardField.setLodMode(getLodMode());
+      if (territories.group) territories.group.visible = !on && !focus.node;
+      const controls = Graph.controls();
+      if (on) {
+        Graph.linkVisibility(false);
+        layoutBoard();
+        const tanV = Math.tan(cameraFov() / 2);
+        const canvasHeight = Graph.renderer().domElement.clientHeight || window.innerHeight;
+        const distanceFor = px => (window.AetherSpatial.CARD_HEIGHT * canvasHeight) / (2 * tanV * px);
+        if (!savedZoomLimits) savedZoomLimits = { min: controls.minDistance, max: controls.maxDistance };
+        controls.minDistance = distanceFor(BOARD_ZOOM_PX.max);
+        controls.maxDistance = distanceFor(BOARD_ZOOM_PX.min);
+      } else {
+        cardField.setBoard(null);
+        boardHint.hidden = true;
+        if (savedZoomLimits) {
+          controls.minDistance = savedZoomLimits.min;
+          controls.maxDistance = savedZoomLimits.max;
+          savedZoomLimits = null;
+        }
+        // Links reappear once the cards are most of the way back on their islands.
+        setTimeout(() => { if (!filterState.flat && !gallery) Graph.linkVisibility(true); }, 450);
+      }
+    };
+
+    // Board point (on the z = 0 plane) under a pointer event, and the card whose slot contains it.
+    const boardPointer = event => {
+      if (typeof THREE === 'undefined' || !THREE) return null;
+      const rect = Graph.renderer().domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(ndc, Graph.camera());
+      const hit = new THREE.Vector3();
+      return raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), hit) ? { x: hit.x, y: hit.y } : null;
+    };
+    const boardCardAt = point => {
+      const spatial = window.AetherSpatial;
+      for (const [id, slot] of boardState.slots) {
+        if (Math.abs(point.x - slot.x) <= spatial.CARD_WIDTH / 2 && Math.abs(point.y - slot.y) <= spatial.CARD_HEIGHT / 2) return id;
+      }
+      return null;
+    };
+
+    // A card dropped on another column joins that group. Under "Group by: Group" a column is a group, or the type
+    // (category) of cards that have none, so a card can leave its group only for its own type's column.
+    const dropOnColumn = (node, column) => {
+      if (column.key === getClusterKey(node)) return;
+      if (filterState.groupBy !== 'group') {
+        showBoardHint('Columns follow Group by: ' + filterState.groupBy + '. Switch Group by to Group to move cards between groups.');
+        return;
+      }
+      if (column.key.startsWith('group:')) {
+        assignGroup(node, { groupId: column.key.slice('group:'.length) });
+      } else if (column.key === 'category:' + getNodeCategory(node)) {
+        assignGroup(node, { remove: true });
+      } else {
+        showBoardHint('A card can leave its group only for its own type column (' + getNodeCategory(node).replace(/_/g, ' ') + ').');
+      }
+    };
+
+    let boardCardDrag = null;
+    // Registered after cancelCameraFlight (also a capture listener), so the controls stay off for a card press.
+    graphElement.addEventListener('pointerdown', event => {
+      if (!filterState.flat || !boardState || !cardField || filterState.view !== 'graph' || !event.isPrimary || event.button !== 0) return;
+      if (cardField.boardWeight() < 0.95) return;
+      const point = boardPointer(event);
+      const id = point && boardCardAt(point);
+      if (!id) return;
+      const slot = boardState.slots.get(id);
+      // The press belongs to the card: the orbit controls must not pan with it.
+      Graph.controls().enabled = false;
+      boardCardDrag = { id, x: event.clientX, y: event.clientY, offset: { x: slot.x - point.x, y: slot.y - point.y }, moved: false };
+    }, { capture: true, passive: true });
+    window.addEventListener('pointermove', event => {
+      if (!boardCardDrag) return;
+      if (!boardCardDrag.moved && Math.hypot(event.clientX - boardCardDrag.x, event.clientY - boardCardDrag.y) < BOARD_DRAG_PX) return;
+      const point = boardPointer(event);
+      if (!point) return;
+      boardCardDrag.moved = true;
+      boardCardDrag.point = point;
+      document.body.classList.add('board-card-dragging');
+      // Lifted a little toward the camera so it passes over the other cards.
+      cardField.setBoardSlot(boardCardDrag.id, { x: point.x + boardCardDrag.offset.x, y: point.y + boardCardDrag.offset.y, z: window.AetherSpatial.CARD_WIDTH * 0.25 }, true);
+    }, { passive: true });
+    const endBoardCardDrag = event => {
+      if (!boardCardDrag) return;
+      const drag = boardCardDrag;
+      boardCardDrag = null;
+      document.body.classList.remove('board-card-dragging');
+      if (!(cameraRig && cameraRig.active)) Graph.controls().enabled = true;
+      // A press without a drag is a tap: the graph's own click opens the card.
+      if (!drag.moved) return;
+      ignoreClickUntil = Date.now() + 500;
+      const dropped = cardField.boardSlot(drag.id);
+      if (dropped) cardField.setBoardSlot(drag.id, { ...dropped, z: 0 }, false);
+      const node = Graph.graphData().nodes.find(item => String(item.id) === drag.id);
+      const point = event && event.type === 'pointerup' ? boardPointer(event) || drag.point : drag.point;
+      const column = point && boardState ? window.AetherSpatial.columnAt(boardState, point.x) : null;
+      if (node && column && event && event.type === 'pointerup') dropOnColumn(node, column);
+      // Back to its slot (in its new column, once regrouped), gliding from where it was let go.
+      layoutBoard();
+    };
+    window.addEventListener('pointerup', endBoardCardDrag, { passive: true });
+    window.addEventListener('pointercancel', endBoardCardDrag, { passive: true });
 
     const viewToggle = document.getElementById('view-toggle');
     viewToggle.addEventListener('click', () => {
       if (gallery) closeClusterDrawer();
+      if (focus.node) hideNodeCard();
       filterState.flat = !filterState.flat;
-      viewToggle.querySelector('.bar-label').textContent = filterState.flat ? '3D Graph' : '2D Canvas';
+      viewToggle.querySelector('.bar-label').textContent = filterState.flat ? '3D Space' : '2D Board';
       viewToggle.dataset.short = filterState.flat ? '3D' : '2D';
       viewToggle.classList.toggle('active', filterState.flat);
       pinToPlane(graphData.nodes);
+      setBoardMode(filterState.flat);
 
       const controls = Graph.controls();
       // Trackball controls (the default) use noRotate; orbit controls use enableRotate.
@@ -4807,11 +5050,9 @@ export default {
       if (controls.touches) controls.touches.ONE = filterState.flat ? 1 : 0;
 
       pauseAutoRotate();
-      Graph.d3ReheatSimulation();
-      // resetCameraView squares the camera up (no roll left over from 3D) and fits what is there now;
-      // the second fit frames the layout after it has moved onto the plane or back into depth.
+      // Front-on over the board, or back to the whole 3D cloud (again once regrouped cards have settled).
       resetCameraView();
-      scheduleFit();
+      if (!filterState.flat) scheduleFit();
     });
 
     const typeFilter = document.getElementById('type-filter');
@@ -5322,8 +5563,7 @@ export default {
       const jitter = () => (Math.random() - 0.5) * 30;
       node.x = anchor.x + jitter();
       node.y = anchor.y + jitter();
-      node.z = filterState.flat ? 0 : anchor.z + jitter();
-      if (filterState.flat) node.fz = 0;
+      node.z = anchor.z + jitter();
     };
 
     addNodeForm.addEventListener('submit', async event => {

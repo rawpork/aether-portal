@@ -21,6 +21,11 @@ const FOCUS_SCALE = 0.15;
 const GALLERY_FOCUS_SCALE = 0.075;
 const GALLERY_SLIDE = 0.25;
 const GALLERY_TIME = 0.45;
+// The 2D board morph (section 3.1): one damped weight moves every card between its force-layout position and its board
+// slot, and turns it flat to face +Z. The force layout's own coordinates are never touched, so going back to 3D
+// returns every card to where it was. Cards re-slotted on the board (a new column, a filter change) glide there.
+const BOARD_TIME = 0.5;
+const BOARD_GLIDE = 10;
 const STAGGER_SECONDS = 0.02;
 // Face textures come in resolutions of the same drawing: 'hero' (1536 x 960) for the focused card only, so its text
 // stays sharp when it fills much of the screen on a high-density display; 'near' (512 x 320) for the closest cards,
@@ -126,6 +131,8 @@ export function createCardField({ THREE, reducedMotion = false }) {
   let gallery = null;
   // World units a focused gallery card slides forward; the page lowers it when open panels leave little room.
   let gallerySlide = null;
+  // goal 1 shows the board. slots: Map(id -> { x, y, z }). dragId follows its slot without gliding (the pointer).
+  const board = { goal: 0, weight: 0, velocity: 0, slots: new Map(), dragId: null };
 
   const makeTexture = canvas => {
     const texture = new THREE.CanvasTexture(canvas);
@@ -552,7 +559,8 @@ export function createCardField({ THREE, reducedMotion = false }) {
     up: new THREE.Vector3(0, 1, 0),
     viewer: new THREE.Vector3(),
     at: new THREE.Vector3(),
-    color: new THREE.Color()
+    color: new THREE.Color(),
+    flat: new THREE.Quaternion()
   };
 
   function frame(dt, camera) {
@@ -565,6 +573,12 @@ export function createCardField({ THREE, reducedMotion = false }) {
       const card = drawQueue.shift();
       if (cards.has(card.id)) drawDetailed(card);
     }
+    {
+      const next = smoothDamp(board.weight, board.goal, board.velocity, reducedMotion ? 0.05 : BOARD_TIME, step);
+      board.weight = Math.min(1, Math.max(0, next.value));
+      board.velocity = next.velocity;
+    }
+    const boardBlend = smoothstep(board.weight);
     const heatLambda = reducedMotion ? 40 : 7;
     const dimLambda = reducedMotion ? 40 : 4;
     const turnRate = reducedMotion ? 30 : 2.2;
@@ -594,6 +608,19 @@ export function createCardField({ THREE, reducedMotion = false }) {
       const sim = { x: node.x, y: node.y, z: node.z || 0 };
       const target = g.position || sim;
       const at = temp.at.set(sim.x + (target.x - sim.x) * w, sim.y + (target.y - sim.y) * w, sim.z + (target.z - sim.z) * w);
+      const slot = boardBlend > 0 ? board.slots.get(card.id) : null;
+      if (slot) {
+        if (!card.boardAt) card.boardAt = { ...slot };
+        else if (card.id === board.dragId || reducedMotion) Object.assign(card.boardAt, slot);
+        else {
+          card.boardAt.x = damp(card.boardAt.x, slot.x, BOARD_GLIDE, step);
+          card.boardAt.y = damp(card.boardAt.y, slot.y, BOARD_GLIDE, step);
+          card.boardAt.z = damp(card.boardAt.z, slot.z, BOARD_GLIDE, step);
+        }
+        at.lerp(card.boardAt, boardBlend);
+      } else if (boardBlend === 0) {
+        card.boardAt = null;
+      }
 
       // Hot cards slide toward the viewer: a little in the cloud, toward the standpoint in the gallery.
       const inGallery = Boolean(gallery && gallery.ids.has(card.id) && w > 0.5);
@@ -621,6 +648,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
         temp.wall.setFromEuler(temp.euler.set(0, g.rotationY, 0));
         temp.look.slerp(temp.wall, w);
       }
+      if (slot) temp.look.slerp(temp.flat, boardBlend);
       if (!card.oriented) {
         card.root.quaternion.copy(temp.look);
         card.oriented = true;
@@ -630,7 +658,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
 
       const grow = inGallery ? GALLERY_FOCUS_SCALE : card.heatGoal >= 1 ? FOCUS_SCALE : HOVER_SCALE;
       // Hubs are bigger in the cloud; on the gallery wall every card is the same size so the arc stays even.
-      const hub = 1 + (hubScale(card.weight) - 1) * (1 - w);
+      const hub = 1 + (hubScale(card.weight) - 1) * (1 - w) * (1 - (slot ? boardBlend : 0));
       card.root.scale.setScalar(hub * (1 + card.heat * grow * 2));
       const shade = 1 - card.dim * 0.6;
       const present = 1 - card.lod;
@@ -676,6 +704,25 @@ export function createCardField({ THREE, reducedMotion = false }) {
     exitGallery,
     galleryPosition,
     getGallery: () => gallery,
+    // Board morph: slots (Map id -> { x, y, z }) shows the board, null goes back to 3D.
+    setBoard: slots => {
+      if (slots) {
+        board.slots = slots;
+        board.goal = 1;
+      } else {
+        board.goal = 0;
+      }
+    },
+    // One card's slot while it is dragged (it follows the pointer exactly) or dropped (it glides from there).
+    setBoardSlot: (id, position, dragging = false) => {
+      board.slots.set(String(id), { x: position.x, y: position.y, z: position.z || 0 });
+      board.dragId = dragging ? String(id) : null;
+    },
+    boardSlot: id => {
+      const slot = board.slots.get(String(id));
+      return slot ? { ...slot } : null;
+    },
+    boardWeight: () => board.weight,
     setGallerySlide: units => { gallerySlide = Number.isFinite(units) ? Math.max(0, units) : null; },
     size: () => cards.size,
     proxyRoot,

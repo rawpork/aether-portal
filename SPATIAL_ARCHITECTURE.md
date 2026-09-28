@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phases 1-4 and 7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 7: Agentic Synthesis and Outcome Nodes). Next: Phase 5 (2D morph).** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-5 and 7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 5: the 2D board morph; 7: Agentic Synthesis and Outcome Nodes). Next: Phase 6 (WebXR).** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -383,6 +383,15 @@ wrap:         a group taller than 12 rows continues in an adjacent sub-column
 | Pinch, wheel | Zoom (distance spring), clamped so a card is 40px-400px tall on screen |
 | Tap card | Node state: card opens; camera pans (no rotation) with the card-aware offset |
 | Drag card to another column | Reassign group (live re-cluster) |
+
+### 3.6 As built (Phase 5)
+
+- **The morph:** "2D Board" in the top bar switches modes. The card field damps one board weight (0.5 s) and blends every card from its force-layout position to its board slot (`layout-2d.js`), turning it flat to face +Z. The force layout is never moved or pinned, so "3D Space" returns every card to its island. Links hide on the board and return as the cards arrive back.
+- **No 12° dolly zoom:** every card lies in the z = 0 plane facing the camera, and a plane square to the view has no perspective distortion, so the board already reads as orthographic at the normal field of view. D4's FOV change is not needed.
+- **Board layout:** one column per cluster under the current Group by, largest first, rows by status (Inbox, Active, Reference, Done) then newest, wrapping past 12 rows. DOM column headers (label, count, colour bar) follow their columns every frame and fade in with the morph. The group legend is hidden, since the headers name every column.
+- **Framing and navigation:** front-on, below the top chrome. A board too big to read whole (cards under 56px tall) is framed from its top-left corner at a readable size, which is the usual case on phones. Drag pans, wheel or pinch zooms (cards 20-400px tall), and a tap opens a card with the camera panning to it.
+- **Regrouping (state sync):** dragging a card onto another column is the group picker's action. It joins that group (saved at once, rolled back if the save fails), the board re-slots it with a glide, and in 3D the force layout starts moving it to the new group's island straight away, so it is there on the way back. A card can leave its group only for its own type's column. Other drops are refused with a hint, and under Group by other than Group the columns are read-only.
+- **Not yet:** Bézier connection lines between columns (section 3.4) and renaming a group from its column header.
 
 ## 4. Integration strategy
 

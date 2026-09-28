@@ -10,8 +10,11 @@ import { CARD_HEIGHT, CARD_WIDTH, createCardField, createCollideForce } from './
 import { galleryLayout, slotToWorld, yawToward } from './layout-gallery.js';
 import { OUTCOME_CATEGORY, computeHubWeights, hubScale } from './hub-weights.js';
 import { lodFactor } from './lod.js';
+import { boardLayout, columnAt } from './layout-2d.js';
 
 window.AetherSpatial = {
+  boardLayout,
+  columnAt,
   tokens: readDocumentTokens(),
   GROUP_KEYS,
   buildHierarchy,
