@@ -181,6 +181,7 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
   // restored afterwards.
   const CULL_EVERY = 30;
   let frameCount = 0;
+  let loggedFrameError = false;
   const unculled = new Set();
   const disableCulling = () => {
     if (!scene) return;
@@ -206,10 +207,16 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
       // Fade in from the dark start.
       fade = { phase: 'in', start: null, apply: null };
     }
-    pollInput();
-    stepFade(time);
-    if (posed) updateRays();
-    frame(time, xrFrame);
+    try {
+      pollInput();
+      stepFade(time);
+      if (posed) updateRays();
+      frame(time, xrFrame);
+    } catch (err) {
+      // Logged once: a frame that throws must not take the session down, and must not flood the console at 72-90 Hz.
+      if (!loggedFrameError) console.error('XR frame failed:', err);
+      loggedFrameError = true;
+    }
     posed = true;
   };
 

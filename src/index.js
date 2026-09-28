@@ -1329,8 +1329,11 @@ export default {
       box-shadow: 0 8px 24px rgba(0,0,0,0.45);
       transform-origin: 50% 100%;
       transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.34s ease, border-color 0.15s ease;
-      will-change: transform, opacity;
     }
+    /* Only the top card casts a shadow, and cards are promoted to their own layers only while dragged: five blurred,
+       permanently promoted layers were heavy for a standalone headset's browser. */
+    .item-card.carousel.behind { box-shadow: none; }
+    .deck-stage.dragging .item-card.carousel { will-change: transform, opacity; }
     .item-card.carousel:hover, .item-card.carousel:focus-visible { background: #0e1a27; }
     .item-card.carousel.active { border-color: var(--accent); }
     .item-card.carousel.behind { pointer-events: none; }
@@ -5016,6 +5019,7 @@ export default {
     const xrButton = document.getElementById('xr-button');
     let xr = null;
     let xrMode = null;
+    let xrVrSupported = false;
     let xrSaved = null;
     let xrRaycaster = null;
     const xrHovered = new Map();
@@ -5090,11 +5094,27 @@ export default {
     const xrFrame = time => {
       if (cardField) cardStep(time);
       // One cycle of the graph (layout tick, controls, render); the cycle schedules its own animation frame, which is
-      // cancelled straight away so only the XR loop renders.
+      // cancelled straight away so only the XR loop renders. Its render goes straight to the headset (xrDirectRender).
       Graph._animationCycle();
       Graph.pauseAnimation();
     };
+    // The graph library renders every frame through its post-processing composer, whose last pass draws to the page's
+    // own canvas. In a headset that bypasses the XR layer: the room stays empty and a side-by-side stereo image lands
+    // on the 2D canvas (seen behind the system menu). While presenting, the composer renders the scene directly, which
+    // three.js sends to the XR layer; the original render comes back on exit.
+    const xrDirectRender = on => {
+      const composer = Graph.postProcessingComposer();
+      if (!composer) return;
+      if (on && !xrSaved.composerRender) {
+        xrSaved.composerRender = composer.render;
+        composer.render = () => Graph.renderer().render(Graph.scene(), Graph.camera());
+      } else if (!on && xrSaved && xrSaved.composerRender) {
+        composer.render = xrSaved.composerRender;
+        xrSaved.composerRender = null;
+      }
+    };
     const xrOnEnd = () => {
+      if (xrSaved) xrDirectRender(false);
       viewer.setPresenting(false);
       if (cardField) cardField.setGlobalScale(1);
       document.body.classList.remove('xr-presenting');
@@ -5104,6 +5124,8 @@ export default {
       if (hover.source === 'xr') setHover(null);
       Graph.controls().enabled = true;
       Graph.resumeAnimation();
+      // The window may have changed size while the headset owned the view.
+      scheduleGraphFit();
       resetSelection();
       resetCameraView();
     };
@@ -5118,28 +5140,37 @@ export default {
         cameraRig.cancel();
         finishFlight();
       }
-      xrSaved = { background: Graph.backgroundColor() };
+      xrSaved = { background: Graph.backgroundColor(), composerRender: null };
       viewer.setPresenting(true);
       document.body.classList.add('xr-presenting');
       const controls = Graph.controls();
       controls.autoRotate = false;
       controls.enabled = false;
-      try {
-        // Mixed reality shows the room through the headset: nothing is drawn behind the graph.
-        if (xrMode === 'immersive-ar') Graph.backgroundColor('rgba(0,0,0,0)');
-        Graph.pauseAnimation();
-        await xr.start(xrMode);
-        xrPlaceOverview(true);
-      } catch (err) {
-        console.error('Entering XR failed:', err);
-        xrOnEnd();
-        alert('Could not start the headset view: ' + (err.message || err));
+      xrDirectRender(true);
+      Graph.pauseAnimation();
+      // Mixed reality first; when the headset cannot start it, plain VR.
+      const modes = xrMode === 'immersive-ar' && xrVrSupported ? ['immersive-ar', 'immersive-vr'] : [xrMode];
+      let lastError = null;
+      for (const mode of modes) {
+        try {
+          // Mixed reality shows the room through the headset: nothing is drawn behind the graph.
+          Graph.backgroundColor(mode === 'immersive-ar' ? 'rgba(0,0,0,0)' : xrSaved.background);
+          await xr.start(mode);
+          xrPlaceOverview(true);
+          return;
+        } catch (err) {
+          console.error('Entering ' + mode + ' failed:', err);
+          lastError = err;
+        }
       }
+      xrOnEnd();
+      alert('Could not start the headset view: ' + ((lastError && lastError.message) || lastError));
     };
     const setupXR = async () => {
       if (xr || !THREE || !window.AetherSpatial || !viewer || !viewer.getDolly()) return;
       const support = await window.AetherSpatial.xrSupport();
       xrMode = support.ar ? 'immersive-ar' : support.vr ? 'immersive-vr' : null;
+      xrVrSupported = support.vr;
       if (!xrMode || xr) return;
       xr = window.AetherSpatial.createXR({
         THREE,
@@ -5160,6 +5191,34 @@ export default {
       xrButton.hidden = false;
     };
     xrButton.addEventListener('click', enterXR);
+
+    // ---- Graph size. The library reads window.innerWidth and innerHeight once, when its script loads, and never again;
+    // on the Quest Browser (and any window resized after load) that left the canvas and camera with a stale aspect
+    // ratio, stretching the graph. The graph is sized from its container's real bounds, whenever the window, the
+    // visual viewport or the container changes size; the library then resizes its renderer and camera to match. ----
+    const fitGraphToContainer = () => {
+      if (xrPresenting()) return;
+      const rect = graphElement.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      // Hidden (List, Timeline, Board or Carousel view): keep the last size until the graph is shown again.
+      if (!width || !height) return;
+      if (Graph.width() === width && Graph.height() === height) return;
+      Graph.width(width).height(height);
+    };
+    let fitGraphFrame = 0;
+    const scheduleGraphFit = () => {
+      if (!fitGraphFrame) fitGraphFrame = requestAnimationFrame(() => {
+        fitGraphFrame = 0;
+        fitGraphToContainer();
+      });
+    };
+    window.addEventListener('resize', scheduleGraphFit);
+    window.addEventListener('orientationchange', scheduleGraphFit);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleGraphFit);
+    if (window.ResizeObserver) new ResizeObserver(scheduleGraphFit).observe(graphElement);
+    window.addEventListener('load', scheduleGraphFit);
+    scheduleGraphFit();
 
     // ---- 2D board (SPATIAL_ARCHITECTURE.md 3, Phase 5). The 2D mode is a morph: the same cards glide from their 3D
     // positions into a node-editor board, one column per group (layout-2d.js), and turn flat to face the camera. The
@@ -6749,6 +6808,11 @@ export default {
     const DECK_FADE_STEP = 0.18;
     const DECK_TILT_DEG = 8;
     const DECK_DRAG_START_PX = 8;
+    // A mouse, pen or headset laser pointer jitters and presses deliberately: a drag needs a longer, clearly sideways
+    // move, and a flick a longer one, so a click is never read as a tiny drag (which moved the cards under the pointer
+    // and swallowed the click on the Quest Browser).
+    const DECK_POINTER_DRAG_START_PX = 24;
+    const DECK_POINTER_FLICK_PX = 60;
     const DECK_COMMIT_SHARE = 0.25;
     const DECK_FLICK_PX = 30;
     const DECK_FLICK_SPEED = 0.45;
@@ -6850,10 +6914,11 @@ export default {
       if (!deckDrag || event.pointerId !== deckDrag.pointerId) return;
       const drag = deckDrag;
       deckDrag = null;
+      cancelAnimationFrame(drag.frame);
       if (!drag.active) return;
       deck.stage.classList.remove('dragging');
       deck.suppressClickUntil = performance.now() + DECK_CLICK_GUARD_MS;
-      const flick = Math.abs(drag.dx) > DECK_FLICK_PX && Math.abs(drag.speed) > DECK_FLICK_SPEED && Math.sign(drag.speed) === Math.sign(drag.dx);
+      const flick = Math.abs(drag.dx) > drag.flickPx && Math.abs(drag.speed) > DECK_FLICK_SPEED && Math.sign(drag.speed) === Math.sign(drag.dx);
       if (!cancelled && (flick || Math.abs(drag.dx) > deck.stage.clientWidth * DECK_COMMIT_SHARE)) stepDeck(drag.dx < 0 ? 1 : -1);
       else layoutDeck();
     };
@@ -6900,18 +6965,24 @@ export default {
       // A sideways drag pages the deck; a mostly vertical one is left to the page scroll (touch-action: pan-y).
       stage.addEventListener('pointerdown', event => {
         if (!event.isPrimary || event.button !== 0) return;
-        deckDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, speed: 0, lastX: event.clientX, lastTime: event.timeStamp, active: false };
+        const touch = event.pointerType === 'touch';
+        deckDrag = {
+          pointerId: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, speed: 0, lastX: event.clientX, lastTime: event.timeStamp, active: false,
+          startPx: touch ? DECK_DRAG_START_PX : DECK_POINTER_DRAG_START_PX,
+          flickPx: touch ? DECK_FLICK_PX : DECK_POINTER_FLICK_PX,
+          frame: 0
+        };
       });
       stage.addEventListener('pointermove', event => {
         if (!deckDrag || event.pointerId !== deckDrag.pointerId) return;
         const dx = event.clientX - deckDrag.x;
         const dy = event.clientY - deckDrag.y;
         if (!deckDrag.active) {
-          if (Math.abs(dy) > DECK_DRAG_START_PX && Math.abs(dy) > Math.abs(dx)) {
+          if (Math.abs(dy) > deckDrag.startPx && Math.abs(dy) > Math.abs(dx)) {
             deckDrag = null;
             return;
           }
-          if (Math.abs(dx) < DECK_DRAG_START_PX) return;
+          if (Math.abs(dx) < deckDrag.startPx || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
           deckDrag.active = true;
           stage.setPointerCapture(event.pointerId);
           stage.classList.add('dragging');
@@ -6921,8 +6992,15 @@ export default {
         deckDrag.lastX = event.clientX;
         deckDrag.lastTime = event.timeStamp;
         deckDrag.dx = dx;
-        dragDeck(dx);
+        // At most one restyle per frame: laser pointers report moves far faster than the display refreshes.
+        if (!deckDrag.frame) deckDrag.frame = requestAnimationFrame(() => {
+          if (!deckDrag) return;
+          deckDrag.frame = 0;
+          dragDeck(deckDrag.dx);
+        });
       });
+      // Capture lost without a pointerup (the browser took the pointer): the drag ends where it is.
+      stage.addEventListener('lostpointercapture', event => endDeckDrag(event, true));
       stage.addEventListener('pointerup', event => endDeckDrag(event, false));
       stage.addEventListener('pointercancel', event => endDeckDrag(event, true));
       stage.addEventListener('dragstart', event => event.preventDefault());

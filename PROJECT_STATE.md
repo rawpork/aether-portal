@@ -146,7 +146,14 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
 
 ## 4. Next steps (in order)
 
-1. **First real headset test (Quest 3, "Enter MR").** Check:
+1. **Headset retest after the Quest 2 fixes (2026-09-28).** A first real test on a **Quest 2** (Quest Browser) found three bugs, now fixed and live:
+   - **MR showed empty passthrough, with a side-by-side stereo image on the page canvas.** The graph library renders every frame through its post-processing composer, whose last pass draws to the page canvas instead of the XR layer. The IWER emulator hid this, because there the XR layer is the canvas. While presenting, the composer now renders the scene directly (`xrDirectRender` in `src/index.js`), restored on exit. MR also falls back to VR when a mixed-reality session cannot start, and a frame that throws is logged once without ending the session.
+   - **Stretched graph in the Quest Browser.** The library reads `window.innerWidth`/`innerHeight` once at load and never again, so the canvas and camera kept a stale aspect ratio. The graph is now sized from `#3d-graph`'s bounds on window, visual-viewport and container resizes (`fitGraphToContainer`), and again after leaving XR.
+   - **Carousel: the laser pointer flickered and clicks stopped registering.** The 8px drag threshold turned a jittery laser press into a tiny drag: cards moved under the pointer and the click guard swallowed the click. Non-touch pointers now need a 24px, clearly sideways move to start a drag (60px for a flick), restyles are capped at one per frame, lost pointer capture ends the drag, and only the top card casts a shadow, with layers promoted only while dragging.
+
+   All three were verified in a local browser (IWER for XR, including a forced MR failure falling back to VR). **Retest on the headset**, then continue with the checks below.
+
+   Original checklist (Quest 3, "Enter MR"):
    - overview and gallery sizes and distances, and whether overview cards read at about 15 cm;
    - controller rays and hand pinch;
    - snap turn;
