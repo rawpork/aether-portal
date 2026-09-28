@@ -1790,10 +1790,11 @@ export default {
     }
     #cluster-drawer.open { display: flex; }
     /* 2D board (Phase 5): a header above each column, placed over the canvas every frame and faded in with the morph. */
+    #xr-button[hidden] { display: none; }
     #board-headers { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
     #board-headers[hidden], body.collection-mode #board-headers { display: none; }
     /* The column headers name every column, so the legend would only cover the board. */
-    body.board-mode #legend { display: none !important; }
+    body.flat-board #legend { display: none !important; }
     .board-header {
       position: absolute;
       left: 0;
@@ -1859,7 +1860,7 @@ export default {
       border-radius: var(--radius-m);
       background: var(--bg-panel);
     }
-    body.board-mode:not(.collection-mode) #board-modes { display: flex; }
+    body.flat-board:not(.collection-mode) #board-modes { display: flex; }
     #board-modes button {
       min-height: 44px;
       padding: 0 16px;
@@ -2161,6 +2162,7 @@ export default {
       <button type="button" data-view="carousel" aria-pressed="false" title="Carousel view: swipe through cards one at a time"><span class="view-icon">❐</span><span class="view-label">Carousel</span></button>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
+    <button class="view-toggle bar-btn" id="xr-button" data-short="XR" title="Step into your graph with a headset" hidden><span class="bar-label">Enter XR</span></button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   <div class="settings-wrap">
     <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
@@ -4227,6 +4229,8 @@ export default {
     };
     // goal: { target, distance, theta?, phi?, state, detail?, instant? }; theta/phi default to the current direction.
     const cameraGoTo = goal => {
+      // In a headset the viewer is placed by the XR session (teleports and the gallery), never flown.
+      if (viewer && viewer.isPresenting()) return;
       pauseAutoRotate();
       if (!cameraRig) {
         const camera = Graph.camera().position;
@@ -4275,6 +4279,7 @@ export default {
       cameraRig = new window.AetherSpatial.CameraRig({ reducedMotion: reducedMotion.matches });
       viewer = window.AetherSpatial.createViewer({ camera: Graph.camera(), controls: Graph.controls() });
       if (THREE) viewer.attachDolly(THREE, Graph.scene());
+      setupXR();
     };
     if (window.AetherSpatial) initCameraRig();
     else window.addEventListener('aether-spatial-ready', initCameraRig, { once: true });
@@ -4283,8 +4288,10 @@ export default {
     // the simulated node positions (plus gallery and focus offsets), so the graph's own position writes are skipped.
     let cardFrame = 0;
     let cardLastTime = 0;
-    const cardLoop = time => {
-      const dt = cardLastTime ? (time - cardLastTime) / 1000 : 1 / 60;
+    // One card-field step; the page's own requestAnimationFrame loop runs it on screens and the XR session's frame
+    // loop in a headset (where the window's animation frames stop).
+    const cardStep = time => {
+      const dt = cardLastTime ? Math.min(0.1, (time - cardLastTime) / 1000) : 1 / 60;
       cardLastTime = time;
       if (filterState.view === 'graph') {
         cardField.frame(dt, Graph.camera());
@@ -4297,6 +4304,9 @@ export default {
           entry.label.visible = visible;
         });
       }
+    };
+    const cardLoop = time => {
+      if (!(viewer && viewer.isPresenting())) cardStep(time);
       cardFrame = requestAnimationFrame(cardLoop);
     };
     const initCards = () => {
@@ -4388,7 +4398,8 @@ export default {
       if (!origin || !ids.length) return;
       const camera = Graph.camera().position;
       const yaw = window.AetherSpatial.yawToward(camera, origin);
-      const placed = cardField.enterGallery(ids, { origin, yaw, centerId });
+      // In a headset the arc is wider, so a card on it is a comfortable size rather than filling the view.
+      const placed = cardField.enterGallery(ids, { origin, yaw, centerId, minRadius: xrPresenting() ? XR_GALLERY_MIN_RADIUS : undefined });
       gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids };
       startGalleryNav();
       syncCards();
@@ -4407,7 +4418,7 @@ export default {
         exitGallery();
         return;
       }
-      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId });
+      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId, minRadius: xrPresenting() ? XR_GALLERY_MIN_RADIUS : undefined });
       gallery.ids = placed.ids;
       gallery.radius = placed.radius;
       syncCards();
@@ -4638,6 +4649,7 @@ export default {
       .then(module => {
         THREE = module;
         if (viewer) viewer.attachDolly(THREE, Graph.scene());
+        setupXR();
         territories.group = new THREE.Group();
         Graph.scene().add(territories.group);
         refreshGraphStyles();
@@ -4880,6 +4892,160 @@ export default {
     const pinToPlane = nodes => {
       nodes.forEach(node => { node.fz = null; });
     };
+
+    // ---- WebXR (SPATIAL_ARCHITECTURE.md 5, Phase 6). In a headset the portal opens as mixed reality where the device
+    // has passthrough (immersive-ar), else VR. The whole graph floats in front of the user; pointing at a card and
+    // selecting it (trigger or pinch) opens its 180-degree gallery around the user, who is moved to its centre behind a
+    // short fade; squeeze, B/Y or selecting empty space goes back to the whole graph. The thumbstick snap-turns 30
+    // degrees. The graph library's own animation loop is paused and one cycle of it (layout tick and render) runs per
+    // XR frame. ----
+    const xrButton = document.getElementById('xr-button');
+    let xr = null;
+    let xrMode = null;
+    let xrSaved = null;
+    let xrRaycaster = null;
+    const xrHovered = new Map();
+    const xrPresenting = () => Boolean(xr && xr.isActive());
+    // A gallery's arc radius in a headset (graph units; 18 on screens) and the size cards are drawn at in the overview:
+    // about XR_OVERVIEW_CARD_M wide, at most XR_OVERVIEW_CARD_MAX times their graph size.
+    const XR_GALLERY_MIN_RADIUS = 36;
+    // How far a focused card slides toward the viewer in a headset, as a share of the arc's radius.
+    const XR_FOCUS_SLIDE = 0.1;
+    const XR_OVERVIEW_CARD_M = 0.15;
+    const XR_OVERVIEW_CARD_MAX = 6;
+
+    const xrPick = ray => {
+      if (!xrRaycaster) xrRaycaster = new THREE.Raycaster();
+      xrRaycaster.set(ray.origin, ray.direction);
+      xrRaycaster.camera = Graph.camera();
+      const roots = Graph.graphData().nodes.map(node => node.__threeObj).filter(Boolean);
+      const hit = xrRaycaster.intersectObjects(roots, true)[0];
+      if (!hit) return null;
+      let object = hit.object;
+      while (object && !object.__data) object = object.parent;
+      return object ? { distance: hit.distance, node: object.__data } : null;
+    };
+    const xrOnHover = (hand, hit) => {
+      if (hit) xrHovered.set(hand, hit.node);
+      else xrHovered.delete(hand);
+      const node = xrHovered.get(1) || xrHovered.get(0) || null;
+      if (node) {
+        if (hover.id !== node.id) setHover(node, 'xr');
+      } else if (hover.source === 'xr') {
+        setHover(null);
+      }
+    };
+    const xrPlaceOverview = (instant = false) => {
+      const bbox = Graph.getGraphBbox();
+      if (!bbox) return;
+      const center = { x: (bbox.x[0] + bbox.x[1]) / 2, y: (bbox.y[0] + bbox.y[1]) / 2, z: (bbox.z[0] + bbox.z[1]) / 2 };
+      const radius = Math.max(30, Math.hypot(bbox.x[1] - bbox.x[0], bbox.y[1] - bbox.y[0], bbox.z[1] - bbox.z[0]) / 2);
+      xr.place(head => {
+        const next = window.AetherSpatial.overviewPlacement({ center, radius, head });
+        const cardMetres = window.AetherSpatial.CARD_WIDTH / next.scale;
+        if (cardField) cardField.setGlobalScale(Math.min(XR_OVERVIEW_CARD_MAX, Math.max(1, XR_OVERVIEW_CARD_M / cardMetres)));
+        return next;
+      }, { instant });
+    };
+    const xrPlaceGallery = () => {
+      if (!gallery) return;
+      const { origin, yaw, radius } = gallery;
+      xr.place(head => {
+        if (cardField) cardField.setGlobalScale(1);
+        return window.AetherSpatial.galleryPlacement({ origin, yaw, radius, head });
+      });
+    };
+    const xrOnSelect = ray => {
+      const hit = xrPick(ray);
+      if (!hit) {
+        xrOnBack();
+        return;
+      }
+      const before = gallery ? gallery.key : null;
+      focusCard(hit.node);
+      // The focused card comes only a little way forward: it is already at a comfortable size on the headset's arc.
+      if (gallery) cardField.setGallerySlide(gallery.radius * XR_FOCUS_SLIDE);
+      // A new gallery: stand at its centre. A card on the wall already around the user just slides forward.
+      if (gallery && gallery.key !== before) xrPlaceGallery();
+    };
+    const xrOnBack = () => {
+      if (!gallery && !focus.node) return;
+      resetSelection();
+      xrPlaceOverview();
+    };
+    const xrFrame = time => {
+      if (cardField) cardStep(time);
+      // One cycle of the graph (layout tick, controls, render); the cycle schedules its own animation frame, which is
+      // cancelled straight away so only the XR loop renders.
+      Graph._animationCycle();
+      Graph.pauseAnimation();
+    };
+    const xrOnEnd = () => {
+      viewer.setPresenting(false);
+      if (cardField) cardField.setGlobalScale(1);
+      document.body.classList.remove('xr-presenting');
+      if (xrSaved) Graph.backgroundColor(xrSaved.background);
+      xrSaved = null;
+      xrHovered.clear();
+      if (hover.source === 'xr') setHover(null);
+      Graph.controls().enabled = true;
+      Graph.resumeAnimation();
+      resetSelection();
+      resetCameraView();
+    };
+    const enterXR = async () => {
+      if (!xr || xrPresenting()) return;
+      // XR starts from the 3D space with nothing open.
+      if (filterState.flat) viewToggle.click();
+      if (filterState.view !== 'graph') setView('graph');
+      resetSelection();
+      cancelPendingFit();
+      if (cameraRig && cameraRig.active) {
+        cameraRig.cancel();
+        finishFlight();
+      }
+      xrSaved = { background: Graph.backgroundColor() };
+      viewer.setPresenting(true);
+      document.body.classList.add('xr-presenting');
+      const controls = Graph.controls();
+      controls.autoRotate = false;
+      controls.enabled = false;
+      try {
+        // Mixed reality shows the room through the headset: nothing is drawn behind the graph.
+        if (xrMode === 'immersive-ar') Graph.backgroundColor('rgba(0,0,0,0)');
+        Graph.pauseAnimation();
+        await xr.start(xrMode);
+        xrPlaceOverview(true);
+      } catch (err) {
+        console.error('Entering XR failed:', err);
+        xrOnEnd();
+        alert('Could not start the headset view: ' + (err.message || err));
+      }
+    };
+    const setupXR = async () => {
+      if (xr || !THREE || !window.AetherSpatial || !viewer || !viewer.getDolly()) return;
+      const support = await window.AetherSpatial.xrSupport();
+      xrMode = support.ar ? 'immersive-ar' : support.vr ? 'immersive-vr' : null;
+      if (!xrMode || xr) return;
+      xr = window.AetherSpatial.createXR({
+        THREE,
+        renderer: Graph.renderer(),
+        scene: Graph.scene(),
+        camera: Graph.camera(),
+        dolly: viewer.getDolly(),
+        frame: xrFrame,
+        pick: xrPick,
+        onHover: xrOnHover,
+        onSelect: xrOnSelect,
+        onBack: xrOnBack,
+        onEnd: xrOnEnd
+      });
+      xrButton.querySelector('.bar-label').textContent = support.ar ? 'Enter MR' : 'Enter VR';
+      xrButton.dataset.short = support.ar ? 'MR' : 'VR';
+      xrButton.title = support.ar ? 'Step into your graph in mixed reality' : 'Step into your graph in VR';
+      xrButton.hidden = false;
+    };
+    xrButton.addEventListener('click', enterXR);
 
     // ---- 2D board (SPATIAL_ARCHITECTURE.md 3, Phase 5). The 2D mode is a morph: the same cards glide from their 3D
     // positions into a node-editor board, one column per group (layout-2d.js), and turn flat to face the camera. The
@@ -5196,7 +5362,8 @@ export default {
 
     let savedZoomLimits = null;
     const setBoardMode = on => {
-      document.body.classList.toggle('board-mode', on);
+      // Not 'board-mode', which is the status Board view's own class.
+      document.body.classList.toggle('flat-board', on);
       if (!cardField) return;
       cardField.setLodMode(getLodMode());
       if (territories.group) territories.group.visible = !on && !focus.node;

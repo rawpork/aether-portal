@@ -12,12 +12,18 @@ import { OUTCOME_CATEGORY, computeHubWeights, hubScale } from './hub-weights.js'
 import { lodFactor } from './lod.js';
 import { boardLayout, columnAt } from './layout-2d.js';
 import { mapLayout, wirePoints } from './layout-map.js';
+import { galleryPlacement, overviewPlacement } from './xr-math.js';
+import { createXR, xrSupport } from './xr.js';
 
 window.AetherSpatial = {
   boardLayout,
   columnAt,
   mapLayout,
   wirePoints,
+  xrSupport,
+  createXR,
+  galleryPlacement,
+  overviewPlacement,
   tokens: readDocumentTokens(),
   GROUP_KEYS,
   buildHierarchy,

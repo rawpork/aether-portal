@@ -133,6 +133,9 @@ export function createCardField({ THREE, reducedMotion = false }) {
   let gallerySlide = null;
   // goal 1 shows the board. slots: Map(id -> { x, y, z }). dragId follows its slot without gliding (the pointer).
   const board = { goal: 0, weight: 0, velocity: 0, slots: new Map(), dragId: null };
+  // Every card drawn this many times its size: 1 on screens; larger in a headset's overview, where the whole graph
+  // is shrunk to arm's length and cards would otherwise be specks.
+  let globalScale = 1;
 
   const makeTexture = canvas => {
     const texture = new THREE.CanvasTexture(canvas);
@@ -659,7 +662,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
       const grow = inGallery ? GALLERY_FOCUS_SCALE : card.heatGoal >= 1 ? FOCUS_SCALE : HOVER_SCALE;
       // Hubs are bigger in the cloud; on the gallery wall every card is the same size so the arc stays even.
       const hub = 1 + (hubScale(card.weight) - 1) * (1 - w) * (1 - (slot ? boardBlend : 0));
-      card.root.scale.setScalar(hub * (1 + card.heat * grow * 2));
+      card.root.scale.setScalar(globalScale * hub * (1 + card.heat * grow * 2));
       const shade = 1 - card.dim * 0.6;
       const present = 1 - card.lod;
       card.faceMaterial.color.setScalar(shade);
@@ -723,6 +726,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
       return slot ? { ...slot } : null;
     },
     boardWeight: () => board.weight,
+    setGlobalScale: value => { globalScale = Number.isFinite(value) && value > 0 ? value : 1; },
     // Where a card is drawn this frame (after every blend), for things drawn between cards such as map wires.
     displayPosition: id => {
       const card = cards.get(String(id));

@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phases 1-5 and 7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 5: the 2D board morph; 7: Agentic Synthesis and Outcome Nodes). Next: Phase 6 (WebXR).** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 5: the 2D board morph; 6: WebXR mixed reality; 7: Agentic Synthesis and Outcome Nodes). Next: hands-on tuning on a headset.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -523,6 +523,18 @@ WebXR frames must be rendered from `renderer.setAnimationLoop()` (the XR session
 - **World scale:** graph units are arbitrary (clusters are hundreds of units apart). In XR, one scale factor on the scene content maps a focused card to about 0.6 m wide at a 2 m radius. The rig's distances are defined per mode, so screen framing is unaffected.
 - **Legibility:** the focused card's face is re-rendered at 1024×640 in XR; cards in the gallery use 512×320.
 - **Entering VR:** show "Enter VR" only when `navigator.xr.isSessionSupported('immersive-vr')` resolves true. The portal stays fully usable without it.
+
+### 5.5 As built (Phase 6)
+
+- **Entering:** "Enter MR" (or "Enter VR") appears in the top bar only when `navigator.xr.isSessionSupported` says so. Mixed reality (`immersive-ar`, the headset's passthrough) is preferred, with VR as the fallback. The session uses `local-floor` and optional `hand-tracking`; in MR nothing is drawn behind the graph. The board and any open panels close first, and leaving the session (the headset's own menu) restores the screen view, controls and background.
+- **Frame loop (5.3):** the spike's answer is yes. The library's `requestAnimationFrame` loop is paused, and each XR frame (`renderer.setAnimationLoop`) steps the card field, then runs one `_animationCycle` of the library (layout tick and render) and cancels the frame it schedules. The page's own card loop stands down while presenting, since the window's animation frames stop in a session.
+- **Placement (`xr-math.js`, pure, tested):** every move is made on the viewer dolly (position, yaw, scale), never the camera. `placement()` cancels the head's horizontal offset so the head lands on the standpoint and keeps its height, so the dolly's y is the real floor. The dolly's scale is the world scale (graph units per metre). Overview: the graph's radius spans 1.1 m, centred 1.9 m ahead at eye height. Gallery: the user stands at the gallery's centre with its arc 1.6 m away.
+- **Comfort (5.2):** placements are teleports behind a 150 ms fade, and the very first waits, dark, until the headset has reported a pose. The thumbstick snap-turns 30° about the head. There is no smooth rotation or forced glide.
+- **Content comes to the user:** selecting a card opens its 180° gallery around the viewer. In a headset the arc's minimum radius is 36 units (not 18), so a card is about 0.5 m wide and the focused card slides only 10% of the radius forward. Cards on the same wall come forward without moving the viewer. In the overview the whole graph is at arm's length, so cards are drawn larger than their graph size (about 15 cm, at most 6×); inside a gallery they are true size.
+- **Input (5.4):** controller and hand rays (`renderer.xr.getController`) are one teal ray each, ending at a cursor on the card they hit. They pick through a raycast of the card roots and hover the card. Select (trigger or pinch) on a card opens it; select on nothing, squeeze or B/Y goes back to the overview.
+- **Culling:** three.js builds the headset's culling frustum from both eyes without allowing for a scaled parent, so with the world scaled down whole clusters were culled while in plain view. Frustum culling is switched off while presenting (re-checked every 30 frames for new cards) and restored afterwards.
+- **Tested with IWER** (Meta's Immersive Web Emulation Runtime, a simulated Quest 3 injected into a headless browser): the button, entering MR, the overview in simulated passthrough, real select and squeeze events, pick and hover, the gallery teleport, same-wall focus, back, and leaving. Not yet checked on a physical headset.
+- **Not yet:** the 3D group picker panel (5.4), text entry in the headset, and the 2D board in XR.
 
 ## 6. The 180° spatial gallery (D8, Phase 4)
 
