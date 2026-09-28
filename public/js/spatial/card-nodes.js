@@ -136,6 +136,10 @@ export function createCardField({ THREE, reducedMotion = false }) {
   // Every card drawn this many times its size: 1 on screens; larger in a headset's overview, where the whole graph
   // is shrunk to arm's length and cards would otherwise be specks.
   let globalScale = 1;
+  // In a headset, graph units per metre: group proxies then have a fixed physical width instead of growing with the
+  // viewing distance (which is tuned for the screen camera and made them huge in the headset).
+  let unitsPerMetre = null;
+  const PROXY_WIDTH_M = 0.1;
 
   const makeTexture = canvas => {
     const texture = new THREE.CanvasTexture(canvas);
@@ -534,7 +538,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
       }
       proxy.group.visible = true;
       // Legible from afar: grows with viewing distance (roughly constant on screen), never smaller than two cards.
-      const size = Math.min(6, Math.max(2.2, distance / 150));
+      const size = unitsPerMetre ? (PROXY_WIDTH_M * unitsPerMetre) / CARD_WIDTH : Math.min(6, Math.max(2.2, distance / 150));
       proxy.group.scale.setScalar(size);
       proxy.group.position.set(cluster.center.x, cluster.center.y, cluster.center.z);
       temp.matrix.lookAt(viewer, proxy.group.position, temp.up);
@@ -727,6 +731,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     },
     boardWeight: () => board.weight,
     setGlobalScale: value => { globalScale = Number.isFinite(value) && value > 0 ? value : 1; },
+    setUnitsPerMetre: value => { unitsPerMetre = Number.isFinite(value) && value > 0 ? value : null; },
     // Where a card is drawn this frame (after every blend), for things drawn between cards such as map wires.
     displayPosition: id => {
       const card = cards.get(String(id));

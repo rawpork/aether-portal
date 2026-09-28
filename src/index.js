@@ -1870,6 +1870,40 @@ export default {
     #cluster-drawer.open { display: flex; }
     /* 2D board (Phase 5): a header above each column, placed over the canvas every frame and faded in with the morph. */
     #xr-button[hidden] { display: none; }
+    .xr-wrap { position: relative; display: inline-flex; }
+    .xr-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 240px;
+      padding: 6px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+    }
+    .xr-menu[hidden] { display: none; }
+    .xr-menu button {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+      min-height: 44px;
+      padding: 8px 12px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-s);
+      background: none;
+      color: #dffdf7;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .xr-menu button:hover, .xr-menu button:focus-visible { border-color: var(--accent-line); background: var(--accent-soft); outline: none; }
+    .xr-menu strong { font-size: 13px; }
+    .xr-menu span { font-size: 11px; color: #8a93a6; }
     #board-headers { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
     #board-headers[hidden], body.collection-mode #board-headers { display: none; }
     /* The column headers name every column, so the legend would only cover the board. */
@@ -2251,7 +2285,13 @@ export default {
       <div class="depth-stops" aria-hidden="true"><span data-depth="obvious">Obvious</span><span data-depth="logical">Logical</span><span data-depth="abstract">Abstract</span></div>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
-    <button class="view-toggle bar-btn" id="xr-button" data-short="XR" title="Step into your graph with a headset" hidden><span class="bar-label">Enter XR</span></button>
+    <div class="xr-wrap">
+      <button class="view-toggle bar-btn" id="xr-button" data-short="XR" title="Step into your graph with a headset" aria-haspopup="menu" hidden><span class="bar-label">Enter XR</span></button>
+      <div id="xr-menu" class="xr-menu" role="menu" hidden>
+        <button type="button" role="menuitem" data-xr-mode="immersive-ar"><strong>Mixed reality</strong><span>See your room around the graph</span></button>
+        <button type="button" role="menuitem" data-xr-mode="immersive-vr"><strong>Virtual reality</strong><span>Dark space, no passthrough</span></button>
+      </div>
+    </div>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   <div class="settings-wrap">
     <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
@@ -3336,6 +3376,11 @@ export default {
     // gone (D5); group proxies replace them in Phase 4b.
     const territories = { group: null, entries: new Map(), visibleNodes: [] };
 
+    const LABEL_WIDTH = 48;
+    const LABEL_HEIGHT = 12;
+    // In a headset, group labels are this tall (metres) whatever the world scale, instead of 12 graph units, which
+    // made them tower over the shrunken cards.
+    const XR_LABEL_HEIGHT_M = 0.025;
     const makeLabelSprite = (text, color) => {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -3348,7 +3393,7 @@ export default {
       ctx.fillText(text, 256, 64);
       const texture = new THREE.CanvasTexture(canvas);
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.75, depthWrite: false }));
-      sprite.scale.set(48, 12, 1);
+      sprite.scale.set(LABEL_WIDTH, LABEL_HEIGHT, 1);
       return sprite;
     };
 
@@ -4394,8 +4439,15 @@ export default {
           // Hidden labels must also stop taking clicks (raycasts ignore visibility), or they swallow taps on cards.
           if (entry.label.visible !== visible) entry.label.layers.set(visible ? 0 : cardField.hiddenLayer);
           entry.label.visible = visible;
+          const scale = labelScale();
+          if (entry.label.scale.y !== LABEL_HEIGHT * scale) entry.label.scale.set(LABEL_WIDTH * scale, LABEL_HEIGHT * scale, 1);
         });
       }
+    };
+    // 1 on screens; in a headset, whatever makes a label XR_LABEL_HEIGHT_M tall at the current world scale.
+    const labelScale = () => {
+      if (!(viewer && viewer.isPresenting() && viewer.getDolly())) return 1;
+      return (XR_LABEL_HEIGHT_M * viewer.getDolly().scale.x) / LABEL_HEIGHT;
     };
     const cardLoop = time => {
       if (!(viewer && viewer.isPresenting())) cardStep(time);
@@ -5058,6 +5110,16 @@ export default {
     let xrRaycaster = null;
     const xrHovered = new Map();
     const xrPresenting = () => Boolean(xr && xr.isActive());
+    // Where the headset rays come from ('grip' or 'pointer'), remembered per browser; the left or right thumbstick
+    // press switches it in the headset.
+    const XR_RAY_MODE_KEY = 'aetherXrRayMode';
+    const readXrRayMode = () => {
+      try {
+        return localStorage.getItem(XR_RAY_MODE_KEY) || 'grip';
+      } catch (err) {
+        return 'grip';
+      }
+    };
     // A gallery's arc radius in a headset (graph units; 18 on screens) and the size cards are drawn at in the overview:
     // about XR_OVERVIEW_CARD_M wide, at most XR_OVERVIEW_CARD_MAX times their graph size.
     const XR_GALLERY_MIN_RADIUS = 36;
@@ -5095,7 +5157,10 @@ export default {
       xr.place(head => {
         const next = window.AetherSpatial.overviewPlacement({ center, radius, head });
         const cardMetres = window.AetherSpatial.CARD_WIDTH / next.scale;
-        if (cardField) cardField.setGlobalScale(Math.min(XR_OVERVIEW_CARD_MAX, Math.max(1, XR_OVERVIEW_CARD_M / cardMetres)));
+        if (cardField) {
+          cardField.setGlobalScale(Math.min(XR_OVERVIEW_CARD_MAX, Math.max(1, XR_OVERVIEW_CARD_M / cardMetres)));
+          cardField.setUnitsPerMetre(next.scale);
+        }
         return next;
       }, { instant });
     };
@@ -5103,8 +5168,12 @@ export default {
       if (!gallery) return;
       const { origin, yaw, radius } = gallery;
       xr.place(head => {
-        if (cardField) cardField.setGlobalScale(1);
-        return window.AetherSpatial.galleryPlacement({ origin, yaw, radius, head });
+        const next = window.AetherSpatial.galleryPlacement({ origin, yaw, radius, head });
+        if (cardField) {
+          cardField.setGlobalScale(1);
+          cardField.setUnitsPerMetre(next.scale);
+        }
+        return next;
       });
     };
     const xrOnSelect = ray => {
@@ -5150,7 +5219,10 @@ export default {
     const xrOnEnd = () => {
       if (xrSaved) xrDirectRender(false);
       viewer.setPresenting(false);
-      if (cardField) cardField.setGlobalScale(1);
+      if (cardField) {
+        cardField.setGlobalScale(1);
+        cardField.setUnitsPerMetre(null);
+      }
       document.body.classList.remove('xr-presenting');
       if (xrSaved) Graph.backgroundColor(xrSaved.background);
       xrSaved = null;
@@ -5163,8 +5235,11 @@ export default {
       resetSelection();
       resetCameraView();
     };
-    const enterXR = async () => {
+    // The dark space shown around the graph in VR (the page's own navy).
+    const XR_VR_BACKGROUND = '#05080f';
+    const enterXR = async (requested = xrMode) => {
       if (!xr || xrPresenting()) return;
+      xrMenu.hidden = true;
       // XR starts from the 3D space with nothing open.
       if (filterState.flat) viewToggle.click();
       if (filterState.view !== 'graph') setView('graph');
@@ -5182,13 +5257,13 @@ export default {
       controls.enabled = false;
       xrDirectRender(true);
       Graph.pauseAnimation();
-      // Mixed reality first; when the headset cannot start it, plain VR.
-      const modes = xrMode === 'immersive-ar' && xrVrSupported ? ['immersive-ar', 'immersive-vr'] : [xrMode];
+      // The chosen mode; mixed reality falls back to VR when the headset cannot start it.
+      const modes = requested === 'immersive-ar' && xrVrSupported ? ['immersive-ar', 'immersive-vr'] : [requested];
       let lastError = null;
       for (const mode of modes) {
         try {
           // Mixed reality shows the room through the headset: nothing is drawn behind the graph.
-          Graph.backgroundColor(mode === 'immersive-ar' ? 'rgba(0,0,0,0)' : xrSaved.background);
+          Graph.backgroundColor(mode === 'immersive-ar' ? 'rgba(0,0,0,0)' : XR_VR_BACKGROUND);
           await xr.start(mode);
           xrPlaceOverview(true);
           return;
@@ -5217,14 +5292,36 @@ export default {
         onHover: xrOnHover,
         onSelect: xrOnSelect,
         onBack: xrOnBack,
-        onEnd: xrOnEnd
+        onEnd: xrOnEnd,
+        rayMode: readXrRayMode(),
+        onRayMode: mode => {
+          try { localStorage.setItem(XR_RAY_MODE_KEY, mode); } catch (err) {}
+        }
       });
-      xrButton.querySelector('.bar-label').textContent = support.ar ? 'Enter MR' : 'Enter VR';
-      xrButton.dataset.short = support.ar ? 'MR' : 'VR';
-      xrButton.title = support.ar ? 'Step into your graph in mixed reality' : 'Step into your graph in VR';
+      xrBothModes = support.ar && support.vr;
+      xrButton.querySelector('.bar-label').textContent = xrBothModes ? 'Enter XR' : support.ar ? 'Enter MR' : 'Enter VR';
+      xrButton.dataset.short = xrBothModes ? 'XR' : support.ar ? 'MR' : 'VR';
+      xrButton.title = xrBothModes ? 'Step into your graph: mixed reality or VR' : support.ar ? 'Step into your graph in mixed reality' : 'Step into your graph in VR';
       xrButton.hidden = false;
     };
-    xrButton.addEventListener('click', enterXR);
+    // With both modes available the button offers a choice (mixed reality or VR); otherwise it enters the one there is.
+    const xrMenu = document.getElementById('xr-menu');
+    let xrBothModes = false;
+    xrButton.addEventListener('click', event => {
+      event.stopPropagation();
+      if (!xrBothModes) {
+        enterXR();
+        return;
+      }
+      xrMenu.hidden = !xrMenu.hidden;
+    });
+    xrMenu.addEventListener('click', event => {
+      const choice = event.target.closest('[data-xr-mode]');
+      if (choice) enterXR(choice.dataset.xrMode);
+    });
+    document.addEventListener('click', event => {
+      if (!xrMenu.hidden && !event.target.closest('.xr-wrap')) xrMenu.hidden = true;
+    });
 
     // ---- Graph size. The library reads window.innerWidth and innerHeight once, when its script loads, and never again;
     // on the Quest Browser (and any window resized after load) that left the canvas and camera with a stale aspect

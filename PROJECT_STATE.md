@@ -155,6 +155,12 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
 
    All three were verified in a local browser (IWER for XR, including a forced MR failure falling back to VR). **Retest on the headset**, then continue with the checks below.
 
+   **Quest 2 retest (2026-09-28): MR passthrough works.** Four more headset issues came out of it:
+   - **Fixed:** an **AR vs VR choice** (the button reads "Enter XR" and offers Mixed reality or Virtual reality; VR is a real immersive-vr session on a dark navy space `#05080f`).
+   - **Fixed:** **rays follow the controller's grip** by default instead of the Quest pointing pose, which felt off-angle. Pressing a thumbstick in switches between the two, and the choice is remembered (`aetherXrRayMode`); tracked hands keep their pointing pose.
+   - **Fixed:** **physical label sizes**: group labels are 2.5 cm tall and group proxies 10 cm wide in the headset, whatever the world scale.
+   - **Planned:** the **spatial dashboard**. It will be a canvas-drawn panel on the left wrist (palm toward the face, or X), with a pin button that detaches it into a floating panel at waist height. It carries views (as spatial versions: 3D, Board wall, Carousel gallery, a Timeline wall; List and Grid map to the Board), the 2D/3D morph, filters, the depth slider, back, a passthrough switch and exit. Build order agreed: headset fixes, then video phase 1, then the dashboard.
+
    Original checklist (Quest 3, "Enter MR"):
    - overview and gallery sizes and distances, and whether overview cards read at about 15 cm;
    - controller rays and hand pinch;
