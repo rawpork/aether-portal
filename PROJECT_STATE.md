@@ -5,8 +5,8 @@
 ## 1. What is live
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
-- **Latest code commit:** `5286f31` "feat: Connection Depth slider (Obvious, Logical, Abstract)", pushed to `main`.
-- **Live version:** `efb940a1-b9e3-4531-a2e3-6dce57228fea` (deployed 2026-09-28).
+- **Latest code commit:** `a8dd679` "fix: Quest headset rendering, graph aspect ratio, Carousel pointer jitter", pushed to `main`.
+- **Live version:** `a1eff263-0ec5-4307-8de0-f91c9e53ec6a` (deployed 2026-09-28).
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
 
@@ -26,6 +26,7 @@
 | `657fae9` | **Phase 6: WebXR mixed reality.** |
 | `fec3f1d`, `fb51385` | Docs: this handoff file and the Connection Depth spec. |
 | `5286f31` | **Connection Depth slider** (migration 0015, labelled mining, depth rules, synthesis levels, slider). |
+| `a8dd679` | Quest 2 fixes: XR renders past the post-processing composer (with MR-to-VR fallback), the graph is fitted to its container (aspect ratio), Carousel ignores laser jitter. |
 
 ## 2. Codebase configuration
 
