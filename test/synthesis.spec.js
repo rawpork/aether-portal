@@ -25,6 +25,45 @@ const links = [
 	{ source: "old", target: "s1", type: "ai" }, { source: "o1", target: "v1", type: "synthesis" }, { source: "v1", target: "l1", type: "category" },
 ];
 
+describe("findCandidateBundles with Connection Depth", () => {
+	// Two groups, each internally wired, joined by a keyword link, a logical AI link and an abstract leap.
+	const depthNodes = [node("a1", "gA"), node("a2", "gA"), node("a3", "gA"), node("b1", "gB"), node("b2", "gB")];
+	const inside = [
+		{ source: "a1", target: "a2", type: "ai", depth: "obvious" },
+		{ source: "a2", target: "a3", type: "ai", depth: "obvious" },
+		{ source: "b1", target: "b2", type: "ai", depth: "obvious" },
+	];
+	const across = { source: "a3", target: "b1", type: "ai", depth: "logical" };
+	const leap = { source: "a1", target: "b2", type: "ai", depth: "abstract", relation: "same pattern", confidence: 0.9 };
+
+	it("Obvious keeps bundles inside one group", () => {
+		const bundles = findCandidateBundles(depthNodes, [...inside, across, leap], { now: NOW, depth: "obvious" });
+		expect(bundles.length).toBeGreaterThan(0);
+		bundles.forEach(bundle => expect(new Set(bundle.ids.map(id => id[0])).size).toBe(1));
+	});
+
+	it("Logical crosses groups along direct links", () => {
+		const bundles = findCandidateBundles(depthNodes, [...inside, across], { now: NOW, depth: "logical" });
+		expect(new Set(bundles[0].ids)).toEqual(new Set(["a1", "a2", "a3", "b1", "b2"]));
+	});
+
+	it("Abstract needs a leap between groups", () => {
+		expect(findCandidateBundles(depthNodes, [...inside, across], { now: NOW, depth: "abstract" })).toEqual([]);
+		const bundles = findCandidateBundles(depthNodes, [...inside, leap], { now: NOW, depth: "abstract" });
+		expect(bundles.length).toBeGreaterThan(0);
+		expect(bundles[0].ids).toContain("a1");
+		expect(bundles[0].ids).toContain("b2");
+	});
+
+	it("leaves the prompt's daring to the level", () => {
+		const bundle = { ids: ["a1"], families: ["group:gA"] };
+		const byId = new Map([["a1", { title: "A" }]]);
+		expect(buildSynthesisPrompt([bundle], byId, key => key, "abstract")).toContain("Connection depth: ABSTRACT");
+		expect(buildSynthesisPrompt([bundle], byId, key => key, "obvious")).toContain("within one theme");
+		expect(buildSynthesisPrompt([bundle], byId)).not.toContain("Connection depth:");
+	});
+});
+
 describe("fingerprint", () => {
 	it("ignores order and duplicates", () => {
 		expect(fingerprint(["b", "a", "a"])).toBe(fingerprint(["a", "b"]));

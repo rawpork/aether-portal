@@ -14,6 +14,7 @@ import { boardLayout, columnAt } from './layout-2d.js';
 import { mapLayout, wirePoints } from './layout-map.js';
 import { galleryPlacement, overviewPlacement } from './xr-math.js';
 import { createXR, xrSupport } from './xr.js';
+import { DEPTHS, primaryGroup, visibleLinks } from './depth.js';
 
 window.AetherSpatial = {
   boardLayout,
@@ -22,6 +23,9 @@ window.AetherSpatial = {
   wirePoints,
   xrSupport,
   createXR,
+  DEPTHS,
+  primaryGroup,
+  visibleLinks,
   galleryPlacement,
   overviewPlacement,
   tokens: readDocumentTokens(),

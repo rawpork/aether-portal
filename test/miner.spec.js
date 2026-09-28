@@ -36,6 +36,15 @@ describe("buildMinerPrompt tags and groups", () => {
 		expect(prompt).toContain('"group":"..."');
 	});
 
+	it("asks for labelled edges and shows items' current groups", () => {
+		const prompt = buildMinerPrompt([{ title: "A", url: "a", category: "note", group_name: "Memory" }], [{ title: "B", url: "b", category: "link" }], CATEGORIES);
+		expect(prompt).toContain('"depth":"logical"');
+		expect(prompt).toContain('"abstract"');
+		expect(prompt).toContain("Only between items in DIFFERENT groups");
+		expect(prompt).toContain("[0] (note) {Memory} A | a");
+		expect(prompt).toContain("[1] (link) B | b");
+	});
+
 	it("says to leave group empty when there are no groups yet", () => {
 		expect(buildMinerPrompt([{ title: "A", url: "a" }], [], CATEGORIES)).toContain("leave group empty");
 	});
@@ -64,7 +73,7 @@ describe("parseMinerResponse", () => {
 			},
 			2, 4, normalize
 		);
-		expect(edges).toEqual([{ a: 0, b: 2, relation: "same project" }]);
+		expect(edges).toEqual([{ a: 0, b: 2, relation: "same project", depth: "logical", confidence: 0.5 }]);
 	});
 
 	it("caps edges per new item", () => {
@@ -103,6 +112,52 @@ describe("parseMinerResponse", () => {
 			5, 5, normalize, ["Memory & Learning"]
 		);
 		expect([...groups]).toEqual([[0, "Memory & Learning"], [1, "3D Printing"], [2, "3d printing"]]);
+	});
+
+	it("labels edges by depth and confidence, and keeps the most confident within each cap", () => {
+		const { edges } = parseMinerResponse(
+			{
+				edges: [
+					{ a: 0, b: 1, depth: "obvious", relation: "same tool", confidence: 0.2 },
+					{ a: 0, b: 2, depth: "logical", confidence: 0.9 },
+					{ a: 0, b: 3, depth: "logical", confidence: 0.7 },
+					{ a: 0, b: 4, depth: "odd", confidence: 3 },
+					{ a: 0, b: 5, depth: "abstract", relation: "both use spaced repetition, one for memory, one for marketing", confidence: 0.6 },
+				],
+			},
+			1, 6, normalize, [], [null, "A", "B", "C", "D", "E"]
+		);
+		expect(edges.map(edge => [edge.b, edge.depth, edge.confidence])).toEqual([
+			[4, "logical", 1],
+			[2, "logical", 0.9],
+			[3, "logical", 0.7],
+			[5, "abstract", 0.6],
+		]);
+	});
+
+	it("requires a relation on abstract edges and drops them inside one group", () => {
+		const { edges } = parseMinerResponse(
+			{
+				nodes: [{ i: 0, group: "Memory" }],
+				edges: [
+					{ a: 0, b: 1, depth: "abstract", confidence: 0.9 },
+					{ a: 0, b: 2, depth: "abstract", relation: "same group leap", confidence: 0.9 },
+					{ a: 0, b: 3, depth: "abstract", relation: "x".repeat(300), confidence: 0.4 },
+				],
+			},
+			1, 4, normalize, ["Memory"], [null, "Other", "memory", "Marketing"]
+		);
+		expect(edges.map(edge => edge.b)).toEqual([3]);
+		expect(edges[0].relation).toHaveLength(140);
+	});
+
+	it("caps abstract edges separately from direct ones", () => {
+		const { edges } = parseMinerResponse(
+			{ edges: [1, 2, 3, 4, 5, 6, 7, 8].map(b => ({ a: 0, b, depth: b <= 4 ? "logical" : "abstract", relation: "leap " + b })) },
+			1, 9, normalize
+		);
+		expect(edges.filter(edge => edge.depth === "logical")).toHaveLength(3);
+		expect(edges.filter(edge => edge.depth === "abstract")).toHaveLength(3);
 	});
 
 	it("tolerates a malformed response", () => {

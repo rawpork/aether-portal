@@ -2,6 +2,8 @@
 // recent saves and turns the best into Outcome Nodes, cited step-by-step plans (Input A + Input B -> Outcome C).
 // Everything here is pure; src/index.js does the D1 reads and writes and the Gemini call.
 
+import { DEFAULT_DEPTH, linkDepth, normalizeDepth, primaryGroup, visibleLinks } from "../public/js/spatial/depth.js";
+
 export const OUTCOME_CATEGORY = "outcome";
 export const OUTCOME_STATUSES = ["proposed", "accepted", "dismissed", "sent"];
 // Blueprint template types (TODO.md "Blueprint Clusters"); the synthesis call must pick one.
@@ -24,6 +26,15 @@ const RECENCY_HALF_LIFE_DAYS = 14;
 const NOVELTY_OVERLAP = 0.6;
 export const MIN_CANDIDATE_SCORE = 0.08;
 const LINK_WEIGHTS = { ai: 1, concept: 0.6, semantic: 0.5 };
+// An abstract leap counts a little less than a direct AI link, so leaps only carry bundles at the Abstract level.
+const ABSTRACT_LINK_WEIGHT = 0.8;
+// Connection Depth (PROJECT_STATE.md step 2): Obvious bundles stay inside one group, so they need no spread of topics;
+// Abstract bundles must be joined across groups by at least one leap.
+const DEPTH_RULES = {
+  obvious: { minFamilies: 1, rewardDiversity: false, needsLeap: false },
+  logical: { minFamilies: MIN_FAMILIES, rewardDiversity: true, needsLeap: false },
+  abstract: { minFamilies: MIN_FAMILIES, rewardDiversity: true, needsLeap: true }
+};
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEXT_LIMITS = { title: 120, why: 300, goal: 300, effort: 60, stepTitle: 120, stepDetail: 600 };
 const STEPS_MIN = 3;
@@ -61,9 +72,15 @@ const overlap = (a, b) => {
 
 // Candidate bundles for synthesis: connected sets of 3-12 recent saves (over ai, concept and semantic links) that span
 // at least two topic families, scored by diversity x strength x recency x novelty; top 8 above the minimum score.
-// nodes: [{ id, created_at, category, group_id, tags }]; links: [{ source, target, type }]; previous: arrays of
-// input ids of existing or dismissed outcomes.
-export function findCandidateBundles(nodes, links, { now = Date.now(), previous = [] } = {}) {
+// nodes: [{ id, created_at, category, group_id, tags }]; links: [{ source, target, type, depth? }]; previous: arrays of
+// input ids of existing or dismissed outcomes. depth (Connection Depth), when given, limits the links to those shown
+// at that level (depth.js) and applies its bundle rules; without it the Logical rules apply to every link.
+export function findCandidateBundles(nodes, links, { now = Date.now(), previous = [], depth } = {}) {
+  const rules = DEPTH_RULES[normalizeDepth(depth)];
+  const byId = new Map(nodes.map(node => [String(node.id), node]));
+  const usable = depth === undefined ? links : visibleLinks(links, depth, id => primaryGroup(byId.get(id)));
+  const pairKey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+  const leaps = new Set();
   const recent = new Map(nodes
     .filter(node => String(node.category) !== OUTCOME_CATEGORY)
     .filter(node => {
@@ -72,12 +89,14 @@ export function findCandidateBundles(nodes, links, { now = Date.now(), previous 
     })
     .map(node => [String(node.id), node]));
   const adjacency = new Map();
-  for (const link of links) {
-    const weight = LINK_WEIGHTS[link.type];
+  for (const link of usable) {
+    const leap = link.type === "ai" && linkDepth(link) === "abstract";
+    const weight = leap ? ABSTRACT_LINK_WEIGHT : LINK_WEIGHTS[link.type];
     if (!weight) continue;
     const a = endId(link.source);
     const b = endId(link.target);
     if (a === b || !recent.has(a) || !recent.has(b)) continue;
+    if (leap) leaps.add(pairKey(a, b));
     for (const [from, to] of [[a, b], [b, a]]) {
       if (!adjacency.has(from)) adjacency.set(from, new Map());
       adjacency.get(from).set(to, Math.max(weight, adjacency.get(from).get(to) || 0));
@@ -108,13 +127,18 @@ export function findCandidateBundles(nodes, links, { now = Date.now(), previous 
     if (seen.has(key)) continue;
     seen.add(key);
     const families = new Set(members.map(id => topicFamily(recent.get(id))));
-    if (families.size < MIN_FAMILIES) continue;
+    if (families.size < rules.minFamilies) continue;
+    if (rules.needsLeap) {
+      const groups = new Set(members.map(id => primaryGroup(recent.get(id))));
+      const hasLeap = members.some((a, i) => members.slice(i + 1).some(b => leaps.has(pairKey(a, b))));
+      if (groups.size < 2 || !hasLeap) continue;
+    }
     const weights = [];
     members.forEach(a => members.forEach(b => { if (a < b && adjacency.get(a)?.has(b)) weights.push(adjacency.get(a).get(b)); }));
     const strength = weights.reduce((sum, w) => sum + w, 0) / Math.max(1, weights.length);
     const fresh = members.reduce((sum, id) => sum + recency(id), 0) / members.length;
     const novelty = previous.some(ids => overlap(members, ids.map(String)) > NOVELTY_OVERLAP) ? 0 : 1;
-    const diversity = Math.min(families.size, MAX_FAMILIES_COUNTED) / MAX_FAMILIES_COUNTED;
+    const diversity = rules.rewardDiversity ? Math.min(families.size, MAX_FAMILIES_COUNTED) / MAX_FAMILIES_COUNTED : 1;
     const score = diversity * strength * fresh * novelty;
     if (score < MIN_CANDIDATE_SCORE) continue;
     candidates.push({ ids: members, families: [...families], score: Math.round(score * 1000) / 1000, fingerprint: key });
@@ -122,9 +146,18 @@ export function findCandidateBundles(nodes, links, { now = Date.now(), previous 
   return candidates.sort((a, b) => b.score - a.score || a.fingerprint.localeCompare(b.fingerprint)).slice(0, MAX_CANDIDATES);
 }
 
+// How daring the plans are at each Connection Depth.
+const DEPTH_INSTRUCTIONS = {
+  obvious: "Connection depth: OBVIOUS. Each bundle's saves share one theme. Propose practical, direct next steps that build on what they have in common.",
+  logical: "",
+  abstract: "Connection depth: ABSTRACT. The bundles join different fields through non-obvious, cross-disciplinary leaps. Be bold: propose a highly creative outcome that uses the leap, while still citing the saves and keeping every step executable."
+};
+
 // One prompt for all candidate bundles. Items are numbered within each bundle so Gemini cites by index, never by id.
 // nodeById maps an id to { title, url, category, snippet, tags }; familyLabel turns a family key into a readable name.
-export function buildSynthesisPrompt(bundles, nodeById, familyLabel = key => key) {
+// depth is the user's Connection Depth.
+export function buildSynthesisPrompt(bundles, nodeById, familyLabel = key => key, depth = DEFAULT_DEPTH) {
+  const level = normalizeDepth(depth);
   const lines = [];
   bundles.forEach((bundle, b) => {
     lines.push("", `Bundle ${b} (spans: ${bundle.families.map(familyLabel).join(", ")}):`);
@@ -138,7 +171,10 @@ export function buildSynthesisPrompt(bundles, nodeById, familyLabel = key => key
     });
   });
   return [
-    "You are the synthesis layer of a personal knowledge graph. Each bundle below is a set of the user's own recent saves that are connected but come from different topics.",
+    level === "obvious"
+      ? "You are the synthesis layer of a personal knowledge graph. Each bundle below is a set of the user's own recent saves that are connected within one theme."
+      : "You are the synthesis layer of a personal knowledge graph. Each bundle below is a set of the user's own recent saves that are connected but come from different topics.",
+    ...(DEPTH_INSTRUCTIONS[level] ? [DEPTH_INSTRUCTIONS[level]] : []),
     `Find at most ${MAX_OUTCOMES_PER_DAY} bundles where the saves genuinely combine into something the user could DO: a concrete, executable workflow or action plan (Input A + Input B -> Outcome C). Skip bundles that only share a theme; return no outcome at all rather than a weak one.`,
     `For each outcome pick one template: ${Object.entries(OUTCOME_TEMPLATES).map(([key, label]) => key + " (" + label + ")").join(", ")}.`,
     `Write ${STEPS_MIN}-${STEPS_MAX} steps. Every step must cite the numbers of the saves in that bundle it relies on. Use only what the saves say; do not invent tools, facts or numbers.`,

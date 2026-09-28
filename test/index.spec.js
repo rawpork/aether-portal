@@ -388,6 +388,14 @@ describe("Aether Portal worker", () => {
 		expect(response.status).toBe(401);
 	});
 
+	it("only accepts signed-in PATCHes on /api/settings", async () => {
+		const wrongMethod = await SELF.fetch("http://example.com/api/settings");
+		expect(wrongMethod.status).toBe(405);
+		expect(wrongMethod.headers.get("Allow")).toBe("PATCH");
+		const signedOut = await SELF.fetch("http://example.com/api/settings", { method: "PATCH", body: JSON.stringify({ connection_depth: "abstract" }) });
+		expect(signedOut.status).toBe(401);
+	});
+
 	it("routes outcome regenerate and blueprint requests, signed in only", async () => {
 		expect((await SELF.fetch("http://example.com/api/outcome/node_1/unknown")).status).toBe(404);
 		const wrongMethod = await SELF.fetch("http://example.com/api/outcome/node_1/regenerate");

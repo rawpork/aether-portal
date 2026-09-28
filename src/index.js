@@ -6,6 +6,7 @@ import { buildTranscriptSynopsisPrompt, buildVideoSynopsisPrompt, fetchYouTubeTr
 import { WebFetchError, fetchWebContent } from "./webfetch.js";
 import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
 import { renderSharePage } from "./share-page.js";
+import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
 import { OAUTH_COOKIE, OAUTH_COOKIE_TTL_SECONDS, buildGoogleAuthUrl, createOAuthState, createPkcePair, exchangeGoogleCode, isAllowedGoogleEmail, readOAuthCookie, safeNextPath, signOAuthCookie, usernameFromEmail, verifyGoogleIdToken } from "./google-auth.js";
 
 const VIDEO_URL_PATTERN = /(youtube\.com|youtu\.be|facebook\.com\/(reel|watch|share\/[rv]\/)|fb\.watch|instagram\.com\/(reel|tv)|tiktok\.com|vimeo\.com|x\.com\/i\/status|twitter\.com\/i\/status|\.mp4(\?|$)|\.webm(\?|$)|\.mov(\?|$)|\.m4v(\?|$))/i;
@@ -95,6 +96,24 @@ export default {
       return handleAuthRoute(request, env, url);
     }
 
+    // Endpoint 0b: The signed-in user's settings. PATCH { connection_depth: "obvious" | "logical" | "abstract" } sets
+    // how far the engine reaches when it relates saves (wires on the page, and the next synthesis run).
+    if (url.pathname === "/api/settings") {
+      if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "PATCH" });
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const body = await request.json().catch(() => null);
+      const depth = body?.connection_depth;
+      if (!DEPTHS.includes(depth)) return jsonResponse({ error: "connection_depth must be obvious, logical or abstract." }, 400);
+      try {
+        await env.DB.prepare("UPDATE users SET connection_depth = ? WHERE id = ?").bind(depth, auth.user.id).run();
+        return jsonResponse({ connection_depth: depth });
+      } catch (err) {
+        console.error("Settings update failed:", err);
+        return jsonResponse({ error: "Saving the setting failed." }, 500);
+      }
+    }
+
     // Endpoint 1: API returning the signed-in user's JSON graph data
     if (url.pathname === "/api/graph" && request.method === "GET") {
       const auth = await authenticateUser(request, env, url);
@@ -156,7 +175,7 @@ export default {
         links.push(...buildConceptLinks(nodes.map(node => node.id), tagsByNode, links));
         links.push(...buildSynthesisLinks(nodes));
         mergeMinedEdges(links, nodes, await loadMinedEdges(env, auth.user.id));
-        return jsonResponse({ nodes, links, groups });
+        return jsonResponse({ nodes, links, groups, connection_depth: await loadConnectionDepth(env, auth.user.id) });
       } catch (e) {
         console.error("D1 Graph Fetch Error:", e);
         return jsonResponse({ nodes: [], links: [] });
@@ -273,7 +292,7 @@ export default {
       try {
         const cursor = Number.parseInt(url.searchParams.get("cursor") || "0", 10) || 0;
         const { results } = await env.DB.prepare(
-          "SELECT rowid AS row_id, id, user_id, title, url, category, user_note, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id IS NOT NULL AND (category IS NULL OR category != 'outcome') AND rowid > ? ORDER BY rowid LIMIT ?"
+          "SELECT rowid AS row_id, id, user_id, title, url, category, user_note, group_id, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id IS NOT NULL AND (category IS NULL OR category != 'outcome') AND rowid > ? ORDER BY rowid LIMIT ?"
         ).bind(cursor, REMINE_BATCH_SIZE).all();
         const rows = results || [];
         const byUser = new Map();
@@ -1196,6 +1215,29 @@ export default {
     }
     #view-switch button[aria-pressed="true"] { background: var(--active-fill); border-color: var(--accent-line); color: #fff; font-weight: 600; }
     #view-switch .view-icon { font-size: 13px; line-height: 1; }
+    /* Connection depth: a compact three-stop slider in the top bar (Obvious, Logical, Abstract). */
+    .depth-control {
+      display: inline-flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1px;
+      height: 30px;
+      box-sizing: border-box;
+      padding: 0 10px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+    }
+    .depth-control input[type="range"] {
+      width: 150px;
+      height: 12px;
+      margin: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .depth-stops { display: flex; justify-content: space-between; width: 150px; font-size: 9px; line-height: 1; color: #8a93a6; }
+    .depth-stops span.active { color: var(--accent); font-weight: 700; }
+    body.collection-mode .depth-control,
     body.collection-mode #view-toggle,
     body.collection-mode #legend { display: none !important; }
     body.collection-mode [id="3d-graph"] { display: none; }
@@ -2131,6 +2173,12 @@ export default {
       #telegram-help-button { display: none; }
       .settings-option.phone-only { display: block; }
       #view-toggle .bar-label { display: none; }
+      /* Phones: the slider moves to the filter row (the top bar has no room), with a shorter track and only the chosen
+         stop's name. */
+      .depth-control { flex: none; padding: 0 8px; }
+      .depth-control input[type="range"], .depth-stops { width: 64px; }
+      .depth-stops { justify-content: center; }
+      .depth-stops span:not(.active) { display: none; }
       #view-toggle::after { content: attr(data-short); }
       #view-toggle { padding: 0 10px; }
       .command-row { grid-template-columns: 1fr; gap: 2px; }
@@ -2160,6 +2208,10 @@ export default {
       <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
       <button type="button" data-view="board" aria-pressed="false" title="Board view: drag cards between Inbox, Active, Reference and Done"><span class="view-icon">▥</span><span class="view-label">Board</span></button>
       <button type="button" data-view="carousel" aria-pressed="false" title="Carousel view: swipe through cards one at a time"><span class="view-icon">❐</span><span class="view-label">Carousel</span></button>
+    </div>
+    <div class="depth-control" id="depth-control" title="Connection depth: how far Aether reaches when it links your saves. It shapes the wires, and the Outcomes synthesis proposes.">
+      <input type="range" id="depth-slider" min="0" max="2" step="1" value="1" aria-label="Connection depth" aria-valuetext="Logical">
+      <div class="depth-stops" aria-hidden="true"><span data-depth="obvious">Obvious</span><span data-depth="logical">Logical</span><span data-depth="abstract">Abstract</span></div>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
     <button class="view-toggle bar-btn" id="xr-button" data-short="XR" title="Step into your graph with a headset" hidden><span class="bar-label">Enter XR</span></button>
@@ -2430,6 +2482,9 @@ export default {
       // How the board lays the cards out: 'groups' (a column per group), 'status' (Inbox, Active, Reference, Done) or
       // 'map' (a node-editor map wired along the links); remembered per browser.
       boardMode: 'groups',
+      // Connection Depth: 'obvious', 'logical' or 'abstract'. Saved on the server (the nightly synthesis reads it) and
+      // loaded with the graph.
+      depth: 'logical',
       // Hide nodes with no edges among the currently visible nodes.
       hideOrphans: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
@@ -4751,12 +4806,66 @@ export default {
       legend.style.visibility = categories.length ? 'visible' : 'hidden';
     };
 
+    // ---- Connection Depth slider (PROJECT_STATE.md step 2). Moving it re-filters the wires at once (3D, gallery and the
+    // board's Map); the level is saved shortly after, for the nightly synthesis. ----
+    const DEPTH_LEVELS = ['obvious', 'logical', 'abstract'];
+    const DEPTH_LABELS = { obvious: 'Obvious', logical: 'Logical', abstract: 'Abstract' };
+    const DEPTH_SAVE_DELAY_MS = 500;
+    const depthSlider = document.getElementById('depth-slider');
+    const depthStops = [...document.querySelectorAll('.depth-stops [data-depth]')];
+    // The top bar has no room for it on phones, so there it sits in the filter row, after the time span.
+    const depthControl = document.getElementById('depth-control');
+    const phoneBar = window.matchMedia('(max-width: 600px)');
+    const placeDepthControl = () => {
+      if (phoneBar.matches) document.getElementById('scope-stepper').after(depthControl);
+      else document.getElementById('view-toggle').before(depthControl);
+    };
+    placeDepthControl();
+    phoneBar.addEventListener('change', placeDepthControl);
+    const renderDepth = () => {
+      depthSlider.value = String(DEPTH_LEVELS.indexOf(filterState.depth));
+      depthSlider.setAttribute('aria-valuetext', DEPTH_LABELS[filterState.depth]);
+      depthStops.forEach(stop => stop.classList.toggle('active', stop.dataset.depth === filterState.depth));
+    };
+    renderDepth();
+    const linksAtDepth = links => {
+      const spatial = window.AetherSpatial;
+      if (!spatial) return links;
+      const byId = new Map(graphData.nodes.map(node => [String(node.id), node]));
+      return spatial.visibleLinks(links, filterState.depth, id => spatial.primaryGroup(byId.get(id)));
+    };
+    let depthSaveTimer = null;
+    const saveDepth = () => {
+      clearTimeout(depthSaveTimer);
+      depthSaveTimer = setTimeout(async () => {
+        try {
+          await apiFetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connection_depth: filterState.depth })
+          });
+        } catch (err) {
+          console.error('Saving the connection depth failed:', err);
+        }
+      }, DEPTH_SAVE_DELAY_MS);
+    };
+    depthSlider.addEventListener('input', () => {
+      const level = DEPTH_LEVELS[Number(depthSlider.value)] || 'logical';
+      if (level === filterState.depth) return;
+      filterState.depth = level;
+      renderDepth();
+      applyGraphFilters();
+      saveDepth();
+    });
+
     const applyGraphFilters = () => {
       // Proposed Outcome Nodes always show, whatever the time scope, so a fresh synthesis is never missed.
       const isFreshOutcome = node => getNodeCategory(node) === 'outcome' && node.outcome_status === 'proposed';
       let filteredNodes = graphData.nodes.filter(node => matchesTypeFilter(node) && (matchesTimeFilter(node) || isFreshOutcome(node)) && matchesSearch(node));
       let visibleIds = new Set(filteredNodes.map(node => node.id));
-      const filteredLinks = graphData.links.filter(link => visibleIds.has(linkEndId(link.source)) && visibleIds.has(linkEndId(link.target)));
+      const inScopeLinks = graphData.links.filter(link => visibleIds.has(linkEndId(link.source)) && visibleIds.has(linkEndId(link.target)));
+      // Connection Depth decides which wires cross groups (public/js/spatial/depth.js).
+      const filteredLinks = linksAtDepth(inScopeLinks);
 
       // Orphans are judged against what survives the other filters, so a node whose only neighbours were filtered out hides too.
       const orphanButton = document.getElementById('orphan-toggle');
@@ -4820,7 +4929,12 @@ export default {
       }
       if (!res.ok) throw new Error('Graph request failed: ' + res.status);
       const previous = new Map(graphData.nodes.map(node => [node.id, node]));
-      graphData = normalizeGraphData(await res.json());
+      const payload = await res.json();
+      graphData = normalizeGraphData(payload);
+      if (payload && DEPTH_LEVELS.includes(payload.connection_depth)) {
+        filterState.depth = payload.connection_depth;
+        renderDepth();
+      }
       const firstLoad = !graphLoaded;
       if (!firstLoad) keepLayout(previous, graphData.nodes);
       // First load opens on a short, recent time span (the shortest with enough cards) instead of everything; a deep
@@ -8292,11 +8406,13 @@ async function synthesizeForUser(env, userId, { manual = false } = {}) {
 
   const { nodes, links, familyLabel } = await loadSynthesisGraph(env, userId);
   const previous = [...(await loadOutcomeInputs(env, userId)).values()];
-  const bundles = findCandidateBundles(nodes, links, { previous });
+  // Connection Depth decides which links bundles may follow across groups, and how daring the plans are.
+  const depth = await loadConnectionDepth(env, userId);
+  const bundles = findCandidateBundles(nodes, links, { previous, depth });
   if (!bundles.length) return { user: userId, candidates: 0, created: 0, reason: "no cross-topic pattern strong enough" };
 
   const byId = new Map(nodes.map(node => [node.id, node]));
-  const parsed = await callGeminiJson(env.GEMINI_API_KEY, buildSynthesisPrompt(bundles, byId, familyLabel), 8192);
+  const parsed = await callGeminiJson(env.GEMINI_API_KEY, buildSynthesisPrompt(bundles, byId, familyLabel, depth), 8192);
   const outcomes = parseSynthesisResponse(parsed, bundles).slice(0, budget);
   if (!outcomes.length) return { user: userId, candidates: bundles.length, created: 0, reason: "no outcome passed validation" };
 
@@ -8326,7 +8442,8 @@ async function regenerateOutcome(env, userId, outcome) {
   const ids = inputs.filter(id => byId.has(id));
   if (ids.length < 2) return null;
   const bundle = { ids, families: [...new Set(ids.map(id => topicFamily(byId.get(id))))], fingerprint: outcome.outcome_fingerprint };
-  const parsed = await callGeminiJson(env.GEMINI_API_KEY, buildSynthesisPrompt([bundle], byId, familyLabel) + "\nWrite one outcome for Bundle 0, and make it different from: " + JSON.stringify(outcome.title), 8192);
+  const depth = await loadConnectionDepth(env, userId);
+  const parsed = await callGeminiJson(env.GEMINI_API_KEY, buildSynthesisPrompt([bundle], byId, familyLabel, depth) + "\nWrite one outcome for Bundle 0, and make it different from: " + JSON.stringify(outcome.title), 8192);
   const [fresh] = parseSynthesisResponse(parsed, [bundle]);
   if (!fresh) return null;
   await env.DB.prepare(
@@ -8337,7 +8454,7 @@ async function regenerateOutcome(env, userId, outcome) {
 
 async function mineUserConnections(env, userId) {
   const { results: newRows } = await env.DB.prepare(
-    "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
+    "SELECT id, title, url, category, group_id, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NULL ORDER BY rowid LIMIT ?"
   ).bind(userId, MINER_BATCH_SIZE).all();
   if (newRows?.length) await mineNodes(env, userId, newRows, { retag: true });
 }
@@ -8349,22 +8466,27 @@ async function mineUserConnections(env, userId) {
 async function mineNodes(env, userId, newNodes, { retag }) {
   const batchIds = new Set(newNodes.map(node => node.id));
   const { results: contextRows } = await env.DB.prepare(
-    "SELECT id, title, url, category, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL AND (category IS NULL OR category != 'outcome') ORDER BY ai_processed_at DESC LIMIT ?"
+    "SELECT id, title, url, category, group_id, COALESCE(synopsis, substr(content, 1, 300)) AS snippet FROM saved_nodes WHERE user_id = ? AND ai_processed_at IS NOT NULL AND (category IS NULL OR category != 'outcome') ORDER BY ai_processed_at DESC LIMIT ?"
   ).bind(userId, MINER_CONTEXT_SIZE + newNodes.length).all();
   const contextNodes = (contextRows || []).filter(row => !batchIds.has(row.id)).slice(0, MINER_CONTEXT_SIZE);
   const allNodes = [...newNodes, ...contextNodes];
-  let groupNames = [];
+  let groupList = [];
   try {
-    groupNames = (await listGroups(env, userId)).map(group => group.name);
+    groupList = await listGroups(env, userId);
   } catch (err) {
     console.error("Miner group lookup failed:", err);
   }
+  const groupNames = groupList.map(group => group.name);
+  // Items show their current group in the prompt, so abstract leaps can be asked for between different groups.
+  const groupNameById = new Map(groupList.map(group => [group.id, group.name]));
+  const describedNodes = allNodes.map(node => ({ ...node, group_name: groupNameById.get(node.group_id) || null }));
+  const itemGroups = describedNodes.map(node => node.group_name);
 
   let mined;
   try {
-    const prompt = buildMinerPrompt(newNodes, contextNodes, RECLUSTER_CATEGORIES, groupNames);
+    const prompt = buildMinerPrompt(describedNodes.slice(0, newNodes.length), describedNodes.slice(newNodes.length), RECLUSTER_CATEGORIES, groupNames);
     const parsed = await callGeminiJson(env.GEMINI_API_KEY, prompt, 16384);
-    mined = parseMinerResponse(parsed, newNodes.length, allNodes.length, normalizeCategory, groupNames);
+    mined = parseMinerResponse(parsed, newNodes.length, allNodes.length, normalizeCategory, groupNames, itemGroups);
   } catch (err) {
     console.error("Connection miner Gemini call failed:", err);
     return null;
@@ -8391,11 +8513,12 @@ async function mineNodes(env, userId, newNodes, { retag }) {
       ).bind(category, node.id));
     });
   }
-  for (const { a, b, relation } of mined.edges) {
+  // Each edge keeps the depth it was first found at (Connection Depth); re-mining never relabels an edge.
+  for (const { a, b, relation, depth, confidence } of mined.edges) {
     const [sourceId, targetId] = [String(allNodes[a].id), String(allNodes[b].id)].sort();
     statements.push(env.DB.prepare(
-      "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, user_id) VALUES (?, ?, ?, ?)"
-    ).bind(sourceId, targetId, relation, userId));
+      "INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, user_id, depth, confidence) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(sourceId, targetId, relation, userId, depth, confidence));
   }
   // A node's miner tags are replaced as a set; a user tag with the same name stays a user tag.
   mined.tags.forEach((tags, i) => {
@@ -8424,10 +8547,21 @@ async function mineNodes(env, userId, newNodes, { retag }) {
   return counts;
 }
 
+// The user's Connection Depth; the default when it is unset or the column is missing (migration 0015 not applied).
+async function loadConnectionDepth(env, userId) {
+  try {
+    const row = await env.DB.prepare("SELECT connection_depth FROM users WHERE id = ?").bind(userId).first();
+    return normalizeDepth(row?.connection_depth);
+  } catch (err) {
+    console.error("Connection depth lookup failed:", err);
+    return DEFAULT_DEPTH;
+  }
+}
+
 // Missing table (migration not applied yet) just means no mined edges.
 async function loadMinedEdges(env, userId) {
   try {
-    const { results } = await env.DB.prepare("SELECT source_id, target_id, relation FROM node_edges WHERE user_id = ?").bind(userId).all();
+    const { results } = await env.DB.prepare("SELECT source_id, target_id, relation, depth, confidence FROM node_edges WHERE user_id = ?").bind(userId).all();
     return results || [];
   } catch (err) {
     console.error("Mined edge lookup failed:", err);
@@ -8443,7 +8577,15 @@ function mergeMinedEdges(links, nodes, edges) {
 
   for (const edge of edges) {
     if (!nodeIds.has(edge.source_id) || !nodeIds.has(edge.target_id)) continue;
-    const mined = { source: edge.source_id, target: edge.target_id, value: 2, type: "ai", relation: edge.relation || null };
+    const mined = {
+      source: edge.source_id,
+      target: edge.target_id,
+      value: 2,
+      type: "ai",
+      relation: edge.relation || null,
+      depth: normalizeDepth(edge.depth),
+      confidence: Number.isFinite(Number(edge.confidence)) && edge.confidence !== null ? Number(edge.confidence) : null
+    };
     const existing = linkByPair.get(pairKey(edge.source_id, edge.target_id));
     if (existing) Object.assign(existing, mined);
     else links.push(mined);
