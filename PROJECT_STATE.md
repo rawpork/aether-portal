@@ -1,13 +1,13 @@
 # Project State
 
-> **Handoff snapshot, 2026-09-28.** Read this first when resuming. It covers what is live, how the codebase is configured, what was just built (Phase 6), and exactly what comes next. Design detail lives in [SPATIAL_ARCHITECTURE.md](SPATIAL_ARCHITECTURE.md) (the "As built" notes in sections 3.6, 5.5, 6.6 and 8.7), and visual rules in [DESIGN.md](DESIGN.md).
+> **Handoff snapshot, updated 2026-09-28 (Connection Depth slider shipped).** Read this first when resuming. It covers what is live, how the codebase is configured, what was built, and exactly what comes next. Design detail lives in [SPATIAL_ARCHITECTURE.md](SPATIAL_ARCHITECTURE.md) (the "As built" notes in sections 3.6, 5.5, 6.6 and 8.7), and visual rules in [DESIGN.md](DESIGN.md).
 
 ## 1. What is live
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
-- **Latest commit:** `657fae9` "feat: WebXR mixed reality (Phase 6)", pushed to `main`. The working tree was clean at handoff.
-- **Live version:** `a40b1a94-a395-482f-9f06-4bcff8cb1971` (deployed 2026-09-28).
-- **Remote D1:** migrations `0001` to `0014` applied (`0014_outcomes.sql` on 2026-09-27). No migration is pending.
+- **Latest code commit:** `5286f31` "feat: Connection Depth slider (Obvious, Logical, Abstract)", pushed to `main`.
+- **Live version:** `efb940a1-b9e3-4531-a2e3-6dce57228fea` (deployed 2026-09-28).
+- **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
 
 ### Commits this cycle (2026-09-27 to 2026-09-28), oldest first
@@ -24,6 +24,8 @@
 | `154fe56` | **Phase 5: 2D board morph** with drag-to-regroup. |
 | `21c17b4` | Board layouts (Groups / Status / Map), node-editor wires, hold-to-drag, Undo toast, rename from the column header. |
 | `657fae9` | **Phase 6: WebXR mixed reality.** |
+| `fec3f1d`, `fb51385` | Docs: this handoff file and the Connection Depth spec. |
+| `5286f31` | **Connection Depth slider** (migration 0015, labelled mining, depth rules, synthesis levels, slider). |
 
 ## 2. Codebase configuration
 
@@ -73,14 +75,15 @@
 | `layout-map.js` | Node-editor map layout and Bézier `wirePoints`. |
 | `xr-math.js` | Pure WebXR placement: `placement`, `overviewPlacement`, `galleryPlacement`, `snapTurn`, `isTeleport`. |
 | `xr.js` | WebXR session, rays, fade, snap turn, frustum-culling workaround. |
+| `depth.js` | Connection Depth rules (pure; also imported by `src/synthesis.js` and `src/index.js`): `visibleLinks`, `primaryGroup`, `linkDepth`, `normalizeDepth`. |
 
 - **Client script rules:** the page script sits inside a template literal. No backslashes, backticks or `${}` in it, and no duplicate top-level names. The status Board view already owns `boardDrag`, `endBoardDrag` and the body class `board-mode`, so the 2D board uses `boardCardDrag`, `endBoardCardDrag` and `flat-board`. The worker test "serves the graph UI with a client script that parses" enforces this.
-- **Browser storage:** `localStorage` key `aetherViewPrefs` holds `{ view, listLayout, listSort, groupBy, boardMode }`. The admin token is stored under `aetherAdminToken`.
+- **Browser storage:** `localStorage` key `aetherViewPrefs` holds `{ view, listLayout, listSort, groupBy, boardMode }`. The admin token is stored under `aetherAdminToken`. The Connection Depth is **not** in browser storage: it is `users.connection_depth` on the server, loaded with `/api/graph`.
 
 ### Tests
 
 - `npm test` runs `vitest run --no-file-parallelism` with two projects: `worker` (workerd) and `spatial` (node).
-- At `657fae9`: **201 tests in 19 files, all passing.** Nineteen tests are new this cycle, for `layout-2d`, `layout-map` and `xr-math`.
+- At `5286f31`: **217 tests in 20 files, all passing.** New this cycle: `layout-2d`, `layout-map`, `xr-math`, `depth` (spatial), plus depth cases in the miner, synthesis and route tests.
 
 ### Local development
 
@@ -151,56 +154,33 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
    - frame rate on a large graph with culling disabled.
 
    Tune the constants in `src/index.js` (`XR_*`) and `public/js/spatial/xr-math.js`.
-2. **Connection Depth Slider (specced 2026-09-28; not built).** A core backend parameter for the AI and clustering engine, not a visual highlight. It sets how far the engine reaches when it relates saves, on three cumulative levels:
+2. **Connection Depth Slider: shipped in `5286f31` (2026-09-28).** A core backend parameter for the AI and clustering engine, with three cumulative levels. It shapes the wires, the synthesis bundles and the Outcome prompts; a card's primary group (`group_id`, or its category) never moves with it.
 
-   | Level | Meaning | Wires | Outcomes |
-   | --- | --- | --- | --- |
-   | **Obvious** | Surface-level and keyword connections. | Only between cards in the **same group**. | Bundles stay **within one group**; plans are practical next steps. |
-   | **Logical** (default) | Standard semantic relatedness. | Obvious and logical edges, now also **across groups** between closely related cards. | Today's behaviour: bundles span at least 2 topic families (`MIN_FAMILIES`). |
-   | **Abstract** | Distant, cross-disciplinary leaps. | Adds abstract edges, **between different groups**, preferring groups with no other link: the "wild" cross-map wires. | Bundles must span at least 2 groups joined by at least one abstract edge; the prompt asks for highly creative, non-obvious combinations. |
+   | Level | Wires shown | Outcomes |
+   | --- | --- | --- |
+   | **Obvious** | Only inside a primary group (keyword, shared-tag, category-chain and obvious AI links). | Bundles stay inside one group (`minFamilies` 1, no diversity reward); the prompt asks for practical next steps. |
+   | **Logical** (default) | Plus logical AI links; across groups: AI links, shared-tag links, and keyword links with 2 or more shared keywords (`STRONG_KEYWORD_LINK`). Weak keyword and category-chain links stay inside groups. | Today's rules: at least 2 topic families. |
+   | **Abstract** | Every link, across any groups, plus abstract leaps, at most 3 per card by confidence (`ABSTRACT_LINKS_PER_NODE`). | Bundles must span 2 or more groups joined by at least one leap; the prompt asks for bold, cross-disciplinary plans. Leaps weigh 0.8 in bundle strength. |
 
-   **Groups never move with the slider.** A card's primary group is always assigned at the Logical level, which is today's miner granularity ("a short concept name for the theme"). The slider governs **cross-group traversal**: which wires may cross group boundaries, and which bundles synthesis may form. Its "same group" means the card's primary group: `group_id`, or its category while it has none.
+   Outcome provenance links and a user's own manual links are always shown.
 
-   **Edge labelling (miner).** One pass, no extra Gemini calls:
-   - `buildMinerPrompt` asks for every edge to carry `depth`:
-     - `obvious`: same keyword, tool, product or explicit reference;
-     - `logical`: same topic or project, or one builds on the other;
-     - `abstract`: a shared principle or analogy across fields.
-   - The JSON edge becomes `{ "a", "b", "relation", "depth" }`.
-   - Abstract edges **must** include a `relation` explaining the leap, for the wire hover later. `parseMinerResponse` drops abstract edges without one. It also drops abstract edges whose endpoints share a group, since the prompt lists each item's group.
-   - Per-item caps: today `MAX_EDGES_PER_NEW_NODE` is 3 in total. Proposal: keep 3 for obvious plus logical, and allow up to 2 abstract.
-   - `mineNodes` (`src/index.js`) stores the label: `INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, depth, user_id)`. Re-mining never relabels an existing edge, because `INSERT OR IGNORE` keeps the first label.
+   **How it is built:**
+   - **Migration 0015:** `users.connection_depth` and `node_edges.depth` (both `TEXT NOT NULL DEFAULT 'logical'`), plus `node_edges.confidence REAL`. The confidence column was added beyond the original spec, so abstract leaps can be ranked.
+   - **Miner (`src/miner.js`, called from `mineNodes` in `src/index.js`):** items show their current group in braces, and every edge comes back as `{ a, b, depth, relation, confidence }` in the same single Gemini call.
+     - The parser drops abstract edges without a relation (up to 140 characters) and abstract edges inside one group.
+     - Unknown depths become `logical`, and confidence defaults to 0.5.
+     - Per new item it keeps at most 3 obvious or logical edges and at most 3 abstract edges, most confident first.
+     - Edges are stored with `INSERT OR IGNORE`, so the first label sticks.
+   - **Rules (`public/js/spatial/depth.js`):** pure, and shared by the page (wire filter) and the worker (synthesis).
+   - **API:** `/api/graph` returns every edge with `depth` and `confidence`, plus `connection_depth`. `PATCH /api/settings { connection_depth }` saves the level: session only, 405 for other methods, 400 for bad values. The cron's `synthesizeForUser` and Regenerate read the saved level.
+   - **UI:** a three-stop range slider ("Obvious | Logical | Abstract") next to 2D Board. It filters wires instantly in 3D, the gallery and the board's Map, and saves after 500 ms. On phones (600px or narrower) it moves to the filter row after the time span and shows only the chosen stop's name.
+   - **Checked:** in a local browser with seeded groups and edges, 5 wires at Obvious, 6 at Logical and 14 at Abstract, exactly as the table says. The level persists across a reload, and the Map follows it. The top bar fits on a 390px phone.
 
-   **Non-mined links get a fixed depth:**
-   - keyword links (`semantic`, from `buildGraphLinks` in `src/index.js`, which counts shared title and URL keywords, max 5 per card) are `obvious`;
-   - shared-tag links (`concept`, `src/groups.js`, max 3 per card) are `obvious`;
-   - Outcome `synthesis` links are always shown, whatever the depth.
+   **Follow-ups:**
+   - Show an edge's `relation` (the abstract leap's explanation) on wire hover, in 3D and on the Map.
+   - Existing live edges are all `logical`. Abstract leaps appear as the nightly miner labels new saves; older saves only get them after a re-mine, and even then `INSERT OR IGNORE` keeps existing pairs' labels. Consider a re-label pass.
+   - The miner prompt is unit-tested but has not yet run live against Gemini with the new instructions. Check the first nightly run's `edges` and their depths.
 
-   **Migration 0015:**
-   - `ALTER TABLE users ADD COLUMN connection_depth TEXT NOT NULL DEFAULT 'logical'`
-   - `ALTER TABLE node_edges ADD COLUMN depth TEXT NOT NULL DEFAULT 'logical'`
-
-   Every existing edge becomes `logical`, which is what today's prompt produced. Values are validated in code (`obvious` | `logical` | `abstract`).
-
-   **API:**
-   - `/api/graph` returns every edge with its `depth`, plus the user's `connection_depth`.
-   - The client filters wires by level and group, so dragging the slider is **instant**, with no refetch and no re-mining. The same filter feeds the 3D view, the 2D board's Map wires and the gallery.
-   - A small authenticated endpoint (proposed: `PATCH /api/settings { connection_depth }`) saves the level, because the cron reads it for synthesis.
-
-   **Synthesis (`src/synthesis.js`):**
-   - `findCandidateBundles` is given only the edges visible at the user's level, plus that level's bundle rule from the table above.
-   - `buildSynthesisPrompt` gets a level-specific instruction.
-   - Link weights: `ai` 1, `concept` 0.6, `semantic` 0.5 today. Proposal: abstract edges weigh 0.8, so a bundle joined only by abstract leaps is not favoured over strong direct links unless the level is Abstract.
-   - Novelty, fingerprints and the daily limit are unchanged.
-
-   **Old saves:** abstract edges for saves mined before this change appear only after they are re-mined. Plan to extend the admin "Mine Tags & Groups for Old Nodes" pass (`/api/remine`) to write labelled edges.
-
-   **Still to decide:**
-   - Where the slider sits in the UI. Recommendation: a three-stop Obvious · Logical · Abstract control in the Filters popover, since it shapes the graph.
-   - The abstract edge cap.
-   - Whether keyword (`obvious`) links should cross groups at the Logical level, as this spec allows ("closely adjacent").
-
-   **Tests to add:** prompt and parser (labels, required relation, the same-group rejection), the client wire filter per level, and synthesis bundle rules per level.
 3. **Node Editor view (Map mode): shipped in `21c17b4`.** Possible follow-ups:
    - save dragged map positions (today they are session-only, in `mapMoves`, and lost on reload);
    - highlight the focused card's wires and dim the others;
