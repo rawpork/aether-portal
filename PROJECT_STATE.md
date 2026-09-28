@@ -151,24 +151,56 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
    - frame rate on a large graph with culling disabled.
 
    Tune the constants in `src/index.js` (`XR_*`) and `public/js/spatial/xr-math.js`.
-2. **Connection Depth Slider (defined by the user 2026-09-28; not built).** This is **not** a visual highlight control. It is a core backend parameter for the AI and clustering engine. It sets how far the engine reaches when it decides that two saves are related, on a spectrum:
-   1. **Obvious:** surface-level and keyword connections.
-   2. **Logical:** standard semantic similarity.
-   3. **Abstract:** distant, cross-disciplinary conceptual leaps by the AI.
+2. **Connection Depth Slider (specced 2026-09-28; not built).** A core backend parameter for the AI and clustering engine, not a visual highlight. It sets how far the engine reaches when it relates saves, on three cumulative levels:
 
-   The setting dictates three things: how the engine **draws node wires** (links), how it **forms groups**, and how it **generates Outcome blueprints**.
+   | Level | Meaning | Wires | Outcomes |
+   | --- | --- | --- | --- |
+   | **Obvious** | Surface-level and keyword connections. | Only between cards in the **same group**. | Bundles stay **within one group**; plans are practical next steps. |
+   | **Logical** (default) | Standard semantic relatedness. | Obvious and logical edges, now also **across groups** between closely related cards. | Today's behaviour: bundles span at least 2 topic families (`MIN_FAMILIES`). |
+   | **Abstract** | Distant, cross-disciplinary leaps. | Adds abstract edges, **between different groups**, preferring groups with no other link: the "wild" cross-map wires. | Bundles must span at least 2 groups joined by at least one abstract edge; the prompt asks for highly creative, non-obvious combinations. |
 
-   Where it plugs in today, for orientation only (the design is still to be done):
-   - The daily miner writes the `ai` links, tags and AI concept groups. Its Gemini prompt and response parser are `buildMinerPrompt` and `parseMinerResponse` in `src/miner.js`, called from `mineNodes` in `src/index.js`.
-   - `concept` links (cards that share a tag) are built in `src/groups.js`, and `semantic` links (text similarity) in `src/index.js`.
-   - Synthesis in `src/synthesis.js` weighs links in `findCandidateBundles` (`ai` 1, `concept` 0.6, `semantic` 0.5), filters with `MIN_CANDIDATE_SCORE`, and sends the result to `buildSynthesisPrompt`.
+   **Groups never move with the slider.** A card's primary group is always assigned at the Logical level, which is today's miner granularity ("a short concept name for the theme"). The slider governs **cross-group traversal**: which wires may cross group boundaries, and which bundles synthesis may form. Its "same group" means the card's primary group: `group_id`, or its category while it has none.
 
-   Open questions to settle first:
-   - Is the setting per user, or per group or view?
-   - Where is it stored? It would need a new column or settings table, so a migration.
-   - Does changing it re-mine existing saves (through the `/api/remine` and `/api/recluster` admin passes), or only affect new mining?
-   - How is each level expressed: prompt instructions, similarity thresholds, link-type weights?
-   - Where does the slider live in the UI?
+   **Edge labelling (miner).** One pass, no extra Gemini calls:
+   - `buildMinerPrompt` asks for every edge to carry `depth`:
+     - `obvious`: same keyword, tool, product or explicit reference;
+     - `logical`: same topic or project, or one builds on the other;
+     - `abstract`: a shared principle or analogy across fields.
+   - The JSON edge becomes `{ "a", "b", "relation", "depth" }`.
+   - Abstract edges **must** include a `relation` explaining the leap, for the wire hover later. `parseMinerResponse` drops abstract edges without one. It also drops abstract edges whose endpoints share a group, since the prompt lists each item's group.
+   - Per-item caps: today `MAX_EDGES_PER_NEW_NODE` is 3 in total. Proposal: keep 3 for obvious plus logical, and allow up to 2 abstract.
+   - `mineNodes` (`src/index.js`) stores the label: `INSERT OR IGNORE INTO node_edges (source_id, target_id, relation, depth, user_id)`. Re-mining never relabels an existing edge, because `INSERT OR IGNORE` keeps the first label.
+
+   **Non-mined links get a fixed depth:**
+   - keyword links (`semantic`, from `buildGraphLinks` in `src/index.js`, which counts shared title and URL keywords, max 5 per card) are `obvious`;
+   - shared-tag links (`concept`, `src/groups.js`, max 3 per card) are `obvious`;
+   - Outcome `synthesis` links are always shown, whatever the depth.
+
+   **Migration 0015:**
+   - `ALTER TABLE users ADD COLUMN connection_depth TEXT NOT NULL DEFAULT 'logical'`
+   - `ALTER TABLE node_edges ADD COLUMN depth TEXT NOT NULL DEFAULT 'logical'`
+
+   Every existing edge becomes `logical`, which is what today's prompt produced. Values are validated in code (`obvious` | `logical` | `abstract`).
+
+   **API:**
+   - `/api/graph` returns every edge with its `depth`, plus the user's `connection_depth`.
+   - The client filters wires by level and group, so dragging the slider is **instant**, with no refetch and no re-mining. The same filter feeds the 3D view, the 2D board's Map wires and the gallery.
+   - A small authenticated endpoint (proposed: `PATCH /api/settings { connection_depth }`) saves the level, because the cron reads it for synthesis.
+
+   **Synthesis (`src/synthesis.js`):**
+   - `findCandidateBundles` is given only the edges visible at the user's level, plus that level's bundle rule from the table above.
+   - `buildSynthesisPrompt` gets a level-specific instruction.
+   - Link weights: `ai` 1, `concept` 0.6, `semantic` 0.5 today. Proposal: abstract edges weigh 0.8, so a bundle joined only by abstract leaps is not favoured over strong direct links unless the level is Abstract.
+   - Novelty, fingerprints and the daily limit are unchanged.
+
+   **Old saves:** abstract edges for saves mined before this change appear only after they are re-mined. Plan to extend the admin "Mine Tags & Groups for Old Nodes" pass (`/api/remine`) to write labelled edges.
+
+   **Still to decide:**
+   - Where the slider sits in the UI. Recommendation: a three-stop Obvious · Logical · Abstract control in the Filters popover, since it shapes the graph.
+   - The abstract edge cap.
+   - Whether keyword (`obvious`) links should cross groups at the Logical level, as this spec allows ("closely adjacent").
+
+   **Tests to add:** prompt and parser (labels, required relation, the same-group rejection), the client wire filter per level, and synthesis bundle rules per level.
 3. **Node Editor view (Map mode): shipped in `21c17b4`.** Possible follow-ups:
    - save dragged map positions (today they are session-only, in `mapMoves`, and lost on reload);
    - highlight the focused card's wires and dim the others;
