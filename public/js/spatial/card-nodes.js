@@ -22,15 +22,16 @@ const GALLERY_FOCUS_SCALE = 0.075;
 const GALLERY_SLIDE = 0.25;
 const GALLERY_TIME = 0.45;
 const STAGGER_SECONDS = 0.02;
-// Face textures come in two resolutions of the same drawing: 'near' (512 x 320) for the closest and focused cards,
-// 'far' (256 x 160) for the next ones, and only past both budgets the shared plain face. Moving between near and far
-// shows the same content, so re-ranking as the camera moves is invisible; a margin on each budget stops cards at a
-// cutoff from flipping back and forth. About 32 x 0.65 MB + 192 x 0.16 MB = 52 MB of GPU memory at most.
+// Face textures come in resolutions of the same drawing: 'hero' (1536 x 960) for the focused card only, so its text
+// stays sharp when it fills much of the screen on a high-density display; 'near' (512 x 320) for the closest cards,
+// 'far' (256 x 160) for the next ones, and only past those budgets the shared plain face. Moving between tiers shows
+// the same content, so re-ranking as the camera moves is invisible; a margin on each budget stops cards at a cutoff
+// from flipping back and forth. About 5.9 MB + 32 x 0.65 MB + 192 x 0.16 MB = 58 MB of GPU memory at most.
 const NEAR_BUDGET = 32;
 const FAR_BUDGET = 192;
 const NEAR_MARGIN = 8;
 const FAR_MARGIN = 24;
-const TIER_SCALE = { near: 1, far: 0.5 };
+const TIER_SCALE = { hero: 3, near: 1, far: 0.5 };
 // Faces are re-ranked every this many frames; at most this many faces are drawn per frame.
 const RANK_EVERY = 20;
 const DRAWS_PER_FRAME = 3;
@@ -129,7 +130,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
   const makeTexture = canvas => {
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
+    texture.anisotropy = 8;
     return texture;
   };
 
@@ -157,6 +158,9 @@ export function createCardField({ THREE, reducedMotion = false }) {
     const sprite = new THREE.Sprite(material);
     sprite.position.z = -CARD_DEPTH;
     sprite.renderOrder = -1;
+    // The halo is decoration and reaches well past the card: it must never take a click, or taps on the empty space
+    // around a glowing card (a double tap to leave the gallery, for one) land on that card instead.
+    sprite.raycast = () => {};
     card.root.add(sprite);
     card.glow = sprite;
     return sprite;
@@ -322,6 +326,11 @@ export function createCardField({ THREE, reducedMotion = false }) {
       return { card, score: boost - distance };
     }).sort((a, b) => b.score - a.score);
     ranked.forEach(({ card }, index) => {
+      // heat 1 is the focused card (at most one).
+      if (card.heatGoal >= 1) {
+        setTier(card, 'hero');
+        return;
+      }
       let tier = index < NEAR_BUDGET ? 'near' : index < NEAR_BUDGET + FAR_BUDGET ? 'far' : 'plain';
       if (card.tier === 'near' && tier !== 'near' && index < NEAR_BUDGET + NEAR_MARGIN) tier = 'near';
       if (card.tier === 'far' && tier === 'plain' && index < NEAR_BUDGET + FAR_BUDGET + FAR_MARGIN) tier = 'far';
@@ -677,7 +686,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
     clusterLod: key => lodState.get(key) || 0,
     has: id => cards.has(String(id)),
     stats: () => {
-      const tiers = { near: 0, far: 0, plain: 0 };
+      const tiers = { hero: 0, near: 0, far: 0, plain: 0 };
       cards.forEach(card => { tiers[card.tier]++; });
       return { ...stats, cards: cards.size, ...tiers };
     }

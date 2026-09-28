@@ -574,6 +574,14 @@ Dimming in the gallery follows the arc, not graph links:
 - **Depth:** the graph camera's far plane is 125000, so the face (0.02 in front of the body) and the outline could not be separated by the depth buffer at a distance and flickered. The face and body use polygon offsets (face 1/4, body 2/8) so outline over face over body holds at any distance.
 - **Dragging:** the library's node dragging is off. It grabbed any press on a card and switched the orbit controls off, which froze gallery swipes; cards are placed by the card field every frame anyway. Board view's own drag is unaffected.
 
+### 6.6 As built (gallery polish, 2026-09-27)
+
+- **Clear centre stage:** on wide screens the group list is a left sidebar and the node card a right sidebar. The camera frames the focused card in the free strip between them (`getCardCover` reports `{ side: 'sides', left, right }`). On phones the card sheet sits at the top and the drawer at the bottom, and the camera frames the band between them (`{ side: 'band', top, bottom }`).
+- **Comfortable focus distance:** a focused card fills at most 58% of the free width and 50% of the free height (`FOCUS_FILL`). When a small group's wall is nearer than that, the camera steps further back behind the standpoint instead of sliding the card. Cards on the wall and the focused card show no hover tooltip, since they are read in place.
+- **Sharp text:** the focused card alone gets a 'hero' face texture at 3× (1536 × 960), with anisotropy 8.
+- **Gallery arrows:** translucent ◀ ▶ buttons flank the focused card inside the free area and step through the wall in display order (row by row, left to right).
+- **Double tap:** the halo sprites no longer take clicks, and the second tap is recognised from the raw pointer release. So a double tap inside the gallery closes the panels, leaves the gallery and zooms out to the whole graph even while the camera is still flying out.
+
 ## 8. Agentic Synthesis Engine (D10)
 
 Aether's core value is not the map; it is what the map lets an AI notice. The background miner acts as a subconscious "big brain". It keeps reading everything the user saves, and when saves from different areas add up to something actionable, it writes that action down as an **Outcome Node**.

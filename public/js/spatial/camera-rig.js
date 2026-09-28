@@ -58,8 +58,10 @@ export function fitRectDistance(halfWidth, halfHeight, vFov, aspect, margin = 1.
   return margin * Math.max(halfHeight / Math.tan(vFov / 2), halfWidth / Math.tan(horizontalFov(vFov, aspect) / 2));
 }
 
-// Shifts the look-at target so `point` lands in the middle of the part of the screen a panel does not cover.
-// cover: { side: 'right' | 'bottom', fraction } is the share of the viewport width (right) or height (bottom) covered.
+// Shifts the look-at target so `point` lands in the middle of the part of the screen the panels do not cover.
+// cover: { side: 'right' | 'bottom', fraction } is the share of the viewport width (right) or height (bottom) covered;
+// { side: 'sides', left, right } is a sidebar on each edge, as shares of the width; { side: 'band', top, bottom } is a
+// sheet across the top and bottom, as shares of the height.
 export function uncoveredTarget(point, { theta, phi, distance, vFov, aspect }, cover) {
   if (!cover || !(cover.fraction > 0)) return { ...point };
   const { right, up } = cameraBasis(theta, phi);
@@ -68,7 +70,11 @@ export function uncoveredTarget(point, { theta, phi, distance, vFov, aspect }, c
   const fraction = Math.min(cover.fraction, 0.9);
   const [axis, amount] = cover.side === 'bottom'
     ? [up, -(fraction / 2) * visibleHeight]
-    : [right, (fraction / 2) * visibleWidth];
+    : cover.side === 'band'
+      ? [up, ((cover.top - cover.bottom) / 2) * visibleHeight]
+      : cover.side === 'sides'
+      ? [right, ((cover.right - cover.left) / 2) * visibleWidth]
+      : [right, (fraction / 2) * visibleWidth];
   return { x: point.x + axis.x * amount, y: point.y + axis.y * amount, z: point.z + axis.z * amount };
 }
 

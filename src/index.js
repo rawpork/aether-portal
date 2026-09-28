@@ -1633,6 +1633,11 @@ export default {
       overflow-wrap: anywhere;
     }
     .ask-answer.error { border-left-color: #ff4d6d; color: #ffb3c1; }
+    .ask-turn + .ask-turn { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
+    .ask-q { margin-bottom: 4px; color: #8a93a6; font-weight: 600; }
+    .ask-q::before { content: 'You: '; color: var(--accent); }
+    .ask-a.pending { color: #8a93a6; }
+    .ask-a.error { color: #ffb3c1; }
     .spawn-button {
       display: none;
       align-self: flex-start;
@@ -1764,12 +1769,14 @@ export default {
       font-weight: bold;
       font-size: 12px;
     }
+    /* The group list is the left sidebar and the node card the right one, so the centre of the screen stays open for
+       the focused 3D card (and the gallery arrows between them). */
     #cluster-drawer {
       position: absolute;
       top: 102px;
-      right: 12px;
+      left: 12px;
       bottom: 20px;
-      width: 340px;
+      width: 320px;
       box-sizing: border-box;
       z-index: 11;
       display: none;
@@ -1782,6 +1789,27 @@ export default {
       color: #fff;
     }
     #cluster-drawer.open { display: flex; }
+    /* Gallery arrows: translucent, flanking the focused card inside the open centre between the sidebars. The page
+       places them every frame while the gallery is open. */
+    #gallery-nav[hidden], body.collection-mode #gallery-nav { display: none; }
+    #gallery-nav button {
+      position: fixed;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: var(--radius-m);
+      background: rgba(8,12,20,0.45);
+      color: rgba(223,253,247,0.85);
+      cursor: pointer;
+      transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1), background 300ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    #gallery-nav button:hover, #gallery-nav button:focus-visible { background: rgba(8,12,20,0.7); border-color: var(--accent-line); color: #fff; outline: none; }
+    #gallery-nav button:active { transform: scale(0.98); transition-duration: 0s; }
     #cluster-drawer .drawer-head { display: flex; align-items: center; gap: 8px; padding-right: 24px; }
     #cluster-drawer .drawer-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
     #cluster-drawer h3 { margin: 0; font-size: 15px; color: var(--accent); text-transform: capitalize; }
@@ -1848,15 +1876,12 @@ export default {
     .carousel-btn:hover, .carousel-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
     .card-counter { font-size: 11px; color: #aab3c5; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .card-handle { display: none; }
-    /* Desktop / laptop: a floating side panel, so the graph stays visible. */
+    /* Desktop / laptop: the node card is the right sidebar, full height below the toolbars. */
     @media (min-width: 768px) {
-      #node-card { left: auto; right: 15px; top: 106px; bottom: auto; width: clamp(440px, 34vw, 480px); max-height: 80vh; }
-      /* Beside an open drawer: 12px edge + 340px drawer + 16px gap; narrows on small desktops instead of
-         sliding off the left edge (15px margin there). */
-      body.drawer-open #node-card { right: 368px; width: min(clamp(440px, 34vw, 480px), calc(100vw - 383px)); }
+      #node-card { left: auto; right: 12px; top: 102px; bottom: auto; width: clamp(340px, 27vw, 420px); max-height: calc(100vh - 122px); }
     }
     @media (min-width: 1100px) {
-      body.collection-mode.card-open #collection-view { padding-right: 510px; padding-bottom: 24px; }
+      body.collection-mode.card-open #collection-view { padding-right: 450px; padding-bottom: 24px; }
     }
     /* Phones: a bottom sheet with a drag handle (swipe down to close, left/right to page the cluster). */
     @media (max-width: 767px) {
@@ -2247,6 +2272,10 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
+  <div id="gallery-nav" hidden>
+    <button type="button" id="gallery-prev" title="Previous card in the gallery" aria-label="Previous card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 3.5 8 11 13.5z" fill="currentColor"/></svg></button>
+    <button type="button" id="gallery-next" title="Next card in the gallery" aria-label="Next card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 12.5 8 5 13.5z" fill="currentColor"/></svg></button>
+  </div>
   <main id="collection-view" aria-label="Node collection">
     <div class="collection-inner">
       <div id="collection-toolbar">
@@ -2771,6 +2800,24 @@ export default {
       output.textContent = text || '';
       output.classList.toggle('error', Boolean(isError));
       output.style.display = text ? 'block' : 'none';
+    };
+    // Each question is logged above its answer, so the box reads as a conversation. Returns the answer element.
+    const addAskTurn = (output, question) => {
+      if (output.classList.contains('error') || !output.querySelector('.ask-turn')) output.textContent = '';
+      output.classList.remove('error');
+      const turn = document.createElement('div');
+      turn.className = 'ask-turn';
+      const asked = document.createElement('div');
+      asked.className = 'ask-q';
+      asked.textContent = question;
+      const answer = document.createElement('div');
+      answer.className = 'ask-a pending';
+      answer.textContent = 'Elarion is thinking…';
+      turn.append(asked, answer);
+      output.append(turn);
+      output.style.display = 'block';
+      output.scrollTop = output.scrollHeight;
+      return answer;
     };
 
     const NEWLINE = String.fromCharCode(10);
@@ -3321,21 +3368,24 @@ export default {
         const slot = cardField.galleryPosition(node.id);
         if (slot) {
           // The focused card grows 1.15 and slides up to 0.25 R toward the standpoint, but no closer than where it
-          // still fits the part of the screen the panels leave free.
+          // fills FOCUS_FILL of the part of the screen the panels leave free, so it is read on the card itself with
+          // room around it.
           const spatial = window.AetherSpatial;
           const yaw = spatial.yawToward(gallery.origin, slot);
           const vFov = cameraFov();
           const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
-          const freeWidth = cover && cover.side === 'right' ? 1 - Math.min(cover.fraction, 0.9) : 1;
-          const freeHeight = cover && cover.side === 'bottom' ? 1 - Math.min(cover.fraction, 0.9) : 1;
+          const free = getFreeView(cover);
           const fits = Math.max(
-            (spatial.CARD_WIDTH * 1.15) / (0.8 * freeWidth * 2 * Math.tan(hFov / 2)),
-            (spatial.CARD_HEIGHT * 1.15) / (0.8 * freeHeight * 2 * Math.tan(vFov / 2))
+            (spatial.CARD_WIDTH * 1.15) / (FOCUS_FILL.width * free.width * 2 * Math.tan(hFov / 2)),
+            (spatial.CARD_HEIGHT * 1.15) / (FOCUS_FILL.height * free.height * 2 * Math.tan(vFov / 2))
           );
-          const far = (1 + GALLERY_STANDOFF) * gallery.radius;
+          // A small group's wall can be nearer than that even without the slide: then the camera steps further back
+          // behind the standpoint instead, so the card never fills the free area.
+          const standoff = Math.max(GALLERY_STANDOFF * gallery.radius, fits - gallery.radius);
+          const far = gallery.radius + standoff;
           const slide = Math.max(0, Math.min(0.25 * gallery.radius, far - fits));
           cardField.setGallerySlide(slide);
-          cameraGoTo({ ...galleryPose(yaw, far - slide), state: 'node', detail: node.id });
+          cameraGoTo({ ...galleryPose(yaw, far - slide, standoff), state: 'node', detail: node.id });
           return;
         }
       }
@@ -3537,29 +3587,49 @@ export default {
     const DOUBLE_TAP_PX = 30;
     let lastBackgroundTap = null;
 
+    // The graph library only reports a click for whatever its throttled hover raycast last saw, and while the camera
+    // flies out of a gallery (after the first tap) that can be a card sliding past, or nothing at all. So the second
+    // tap is recognised here from the raw pointer release, and the library's own click for it is ignored.
+    let lastTapUp = { time: 0, point: null };
+    let ignoreClickUntil = 0;
+    const isSecondTap = point => {
+      const previous = lastBackgroundTap;
+      return Boolean(previous && point && previous.point && Date.now() - previous.time <= DOUBLE_TAP_MS
+        && Math.hypot(point.x - previous.point.x, point.y - previous.point.y) <= DOUBLE_TAP_PX);
+    };
+    const ignoringClick = () => {
+      if (Date.now() >= ignoreClickUntil) return false;
+      ignoreClickUntil = 0;
+      return true;
+    };
+    // The first tap already closed the panels and left any gallery (resetSelection); the second zooms out to the
+    // whole graph.
+    const finishDoubleTap = () => {
+      const previous = lastBackgroundTap;
+      lastBackgroundTap = null;
+      // A card may have opened under the second tap; close everything again.
+      if (gallery || focus.node) resetSelection();
+      // The first click cleared the legend highlight; a double-click only moves the camera, so restore it.
+      if (previous.highlighted.size && !filterState.highlighted.size) {
+        filterState.highlighted = previous.highlighted;
+        applyGraphFilters();
+      }
+      resetCameraView();
+    };
+
     const handleBackgroundClick = () => {
-      const cluster = pickLabel();
+      if (ignoringClick()) return;
+      // Group labels and proxies are hidden in the gallery, so there a tap on the background is only a tap.
+      const cluster = gallery ? null : pickLabel();
       if (cluster) {
         lastBackgroundTap = null;
         flyToCluster(cluster);
         openClusterDrawer(cluster);
         return;
       }
-      const now = Date.now();
-      const point = lastPointer ? { x: lastPointer.x, y: lastPointer.y } : null;
-      const previous = lastBackgroundTap;
-      if (previous && point && previous.point && now - previous.time <= DOUBLE_TAP_MS
-        && Math.hypot(point.x - previous.point.x, point.y - previous.point.y) <= DOUBLE_TAP_PX) {
-        lastBackgroundTap = null;
-        // The first click cleared the legend highlight; a double-click only moves the camera, so restore it.
-        if (previous.highlighted.size && !filterState.highlighted.size) {
-          filterState.highlighted = previous.highlighted;
-          applyGraphFilters();
-        }
-        resetCameraView();
-        return;
-      }
-      lastBackgroundTap = { time: now, point, highlighted: new Set(filterState.highlighted) };
+      // Timed from the release, not from this (animation-frame delayed) callback.
+      const point = lastTapUp.point || (lastPointer ? { x: lastPointer.x, y: lastPointer.y } : null);
+      lastBackgroundTap = { time: lastTapUp.time || Date.now(), point, highlighted: new Set(filterState.highlighted) };
       resetSelection();
     };
 
@@ -3835,6 +3905,8 @@ export default {
 
     const Graph = ForceGraph3D({ controlType: 'orbit' })(document.getElementById('3d-graph'))
       .nodeLabel(node => {
+        // The focused card and the gallery wall are read on the cards themselves; a tooltip would only cover them.
+        if (focus.node === node || (gallery && gallery.ids.has(String(node.id)))) return '';
         const title = node.title || node.name || 'Saved Entry';
         const key = getClusterKey(node);
         const cluster = key.startsWith('category:') ? '' : ' · ' + getClusterLabel(key);
@@ -3847,6 +3919,8 @@ export default {
       .linkDirectionalParticleWidth(0.6)
       .linkDirectionalParticleColor(() => particleColor)
       .onNodeClick(node => {
+        // The second tap of a double tap (handled on release) may land on a card sliding past.
+        if (ignoringClick()) return;
         lastBackgroundTap = null;
         focusCard(node);
       })
@@ -3935,17 +4009,19 @@ export default {
     // the camera straight back to the orbit controls. Until the spatial modules load, moves use the library's tween.
     const NODE_DISTANCE = 90;
     const GROUP_MIN_DISTANCE = 60;
-    // Focused card size on screen: about 36% of the uncovered height, and at most 80% of the uncovered width.
+    // A focused card fills at most this share of the free part of the screen (width and height): big enough to read on
+    // the card, with the arc around it still in view.
+    const FOCUS_FILL = { width: 0.58, height: 0.5 };
+    // Focused card size on screen: about 36% of the uncovered height, and at most FOCUS_FILL of the uncovered width.
     const getNodeDistance = cover => {
       if (!cardField) return NODE_DISTANCE;
       const spatial = window.AetherSpatial;
       const vFov = cameraFov();
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
-      const freeHeight = cover && cover.side === 'bottom' ? 1 - cover.fraction : 1;
-      const freeWidth = cover && cover.side === 'right' ? 1 - cover.fraction : 1;
+      const free = getFreeView(cover);
       const grown = 1.3;
-      const byHeight = (spatial.CARD_HEIGHT * grown) / (2 * Math.tan(vFov / 2) * 0.36 * Math.max(freeHeight, 0.2));
-      const byWidth = (spatial.CARD_WIDTH * grown) / (2 * Math.tan(hFov / 2) * 0.8 * Math.max(freeWidth, 0.2));
+      const byHeight = (spatial.CARD_HEIGHT * grown) / (2 * Math.tan(vFov / 2) * 0.36 * Math.max(free.height, 0.2));
+      const byWidth = (spatial.CARD_WIDTH * grown) / (2 * Math.tan(hFov / 2) * FOCUS_FILL.width * Math.max(free.width, 0.2));
       return Math.max(byHeight, byWidth);
     };
     const FLAT_ORBIT = { theta: 0, phi: Math.PI / 2 };
@@ -3966,8 +4042,9 @@ export default {
       const radius = Math.hypot(offset.x, offset.y, offset.z) || 1;
       return { theta: Math.atan2(offset.x, offset.z), phi: Math.acos(Math.min(1, Math.max(-1, offset.y / radius))) };
     };
-    // Share of the canvas the open panels (node card, cluster drawer) cover: from the right on wide screens, from the
-    // bottom on phones where both are sheets.
+    // Share of the canvas the open panels (node card, cluster drawer) cover: sidebars on the left and right edges on
+    // wide screens ({ side: 'sides', left, right } as shares of the width); on phones, sheets across the top and bottom
+    // ({ side: 'band', top, bottom } as shares of the height), leaving the band between them for the 3D view.
     const getCardCover = () => {
       const canvas = Graph.renderer().domElement.getBoundingClientRect();
       if (!canvas.width || !canvas.height) return null;
@@ -3975,8 +4052,31 @@ export default {
         .filter(Boolean).map(panel => panel.getBoundingClientRect()).filter(rect => rect.width && rect.height);
       if (!panels.length) return null;
       return compactLayout.matches
-        ? { side: 'bottom', fraction: Math.max(0, canvas.bottom - Math.min(...panels.map(rect => rect.top))) / canvas.height }
-        : { side: 'right', fraction: Math.max(0, canvas.right - Math.min(...panels.map(rect => rect.left))) / canvas.width };
+        ? (() => {
+          // Only sheets that span the screen count; a narrow side panel on a small tablet leaves the band open.
+          const sheets = panels.filter(rect => rect.width >= 0.6 * canvas.width);
+          const middle = canvas.top + canvas.height / 2;
+          const top = Math.max(0, ...sheets.filter(rect => rect.top + rect.height / 2 < middle).map(rect => rect.bottom - canvas.top)) / canvas.height;
+          const bottom = Math.max(0, ...sheets.filter(rect => rect.top + rect.height / 2 >= middle).map(rect => canvas.bottom - rect.top)) / canvas.height;
+          return { side: 'band', top, bottom, fraction: top + bottom };
+        })()
+        : (() => {
+          const middle = canvas.left + canvas.width / 2;
+          const left = Math.max(0, ...panels.filter(rect => rect.left + rect.width / 2 < middle).map(rect => rect.right - canvas.left)) / canvas.width;
+          const right = Math.max(0, ...panels.filter(rect => rect.left + rect.width / 2 >= middle).map(rect => canvas.right - rect.left)) / canvas.width;
+          return { side: 'sides', left, right, fraction: left + right };
+        })();
+    };
+    // Share of the width and height the panels leave free, and where the free area's centre sits in normalised device
+    // coordinates (centreX: -1 left edge to 1 right edge; centreY: -1 bottom to 1 top).
+    const getFreeView = cover => {
+      if (!cover) return { width: 1, height: 1, centreX: 0, centreY: 0 };
+      if (cover.side === 'band') return { width: 1, height: Math.max(0.1, 1 - cover.top - cover.bottom), centreX: 0, centreY: cover.bottom - cover.top };
+      if (cover.side === 'sides') return { width: Math.max(0.1, 1 - cover.left - cover.right), height: 1, centreX: cover.left - cover.right, centreY: 0 };
+      const fraction = Math.min(cover.fraction, 0.9);
+      return cover.side === 'bottom'
+        ? { width: 1, height: Math.max(0.1, 1 - fraction), centreX: 0, centreY: fraction }
+        : { width: Math.max(0.1, 1 - fraction), height: 1, centreX: -fraction, centreY: 0 };
     };
 
     const finishFlight = () => {
@@ -4027,6 +4127,17 @@ export default {
     };
     // Capture phase: runs before the orbit controls see the press, so they take over in the same gesture.
     graphElement.addEventListener('pointerdown', cancelCameraFlight, { capture: true, passive: true });
+    graphElement.addEventListener('pointerup', event => {
+      if (event.button !== 0) return;
+      const point = { x: event.clientX, y: event.clientY };
+      if (isSecondTap(point)) {
+        ignoreClickUntil = Date.now() + 500;
+        lastTapUp = { time: 0, point: null };
+        finishDoubleTap();
+        return;
+      }
+      lastTapUp = { time: Date.now(), point };
+    }, { capture: true, passive: true });
     graphElement.addEventListener('wheel', cancelCameraFlight, { capture: true, passive: true });
 
     const initCameraRig = () => {
@@ -4105,19 +4216,21 @@ export default {
       }
     };
     // Camera pose in the gallery: at the standpoint, level, facing yaw. Open panels are cleared without moving the
-    // pivot the drag turns around: a right-hand panel turns the view so what it faces sits mid-way across the free
-    // part of the screen; bottom sheets lower the eye so it sits mid-way up the free part. lookDistance is how far
+    // pivot the drag turns around: sidebars turn the view so what it faces sits mid-way across the free part of the
+    // screen; phone sheets shift the eye so it sits mid-way up the band they leave. lookDistance is how far
     // away the thing being looked at is.
-    const galleryPose = (yaw, lookDistance) => {
+    const galleryPose = (yaw, lookDistance, standoff = GALLERY_STANDOFF * gallery.radius) => {
       const cover = getCardCover();
-      const fraction = cover ? Math.min(cover.fraction, 0.9) : 0;
+      const free = getFreeView(cover);
       const vFov = cameraFov();
       const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
-      const turn = cover && cover.side === 'right' ? Math.atan(fraction * Math.tan(hFov / 2)) : 0;
-      const drop = cover && cover.side === 'bottom' ? fraction * lookDistance * Math.tan(vFov / 2) : 0;
+      // Turn so what is straight ahead lands mid-way across the free part of the screen (between the sidebars), and
+      // on phones lower or raise the eye so it sits mid-way up the band between the sheets.
+      const turn = Math.atan(-free.centreX * Math.tan(hFov / 2));
+      const drop = free.centreY * lookDistance * Math.tan(vFov / 2);
       return {
         target: { x: gallery.origin.x, y: gallery.origin.y - drop, z: gallery.origin.z },
-        distance: GALLERY_STANDOFF * gallery.radius,
+        distance: standoff,
         theta: -(yaw + turn),
         phi: Math.PI / 2
       };
@@ -4143,6 +4256,7 @@ export default {
       const yaw = window.AetherSpatial.yawToward(camera, origin);
       const placed = cardField.enterGallery(ids, { origin, yaw, centerId });
       gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids };
+      startGalleryNav();
       syncCards();
       Graph.linkVisibility(link => !gallery || !(gallery.ids.has(linkEndId(link.source)) || gallery.ids.has(linkEndId(link.target))));
       if (territories.group) territories.group.visible = false;
@@ -4164,6 +4278,74 @@ export default {
       gallery.radius = placed.radius;
       syncCards();
     };
+    // ---- Gallery arrows: step to the previous or next card along the wall (its display order runs row by row, left to
+    // right). With no card focused yet, the first press focuses the card straight ahead. ----
+    const galleryNav = document.getElementById('gallery-nav');
+    const galleryPrevButton = document.getElementById('gallery-prev');
+    const galleryNextButton = document.getElementById('gallery-next');
+    const GALLERY_NAV_INSET = 12;
+    const GALLERY_NAV_SIZE = 44;
+    // Clear of the top bar and filter toolbar.
+    const GALLERY_NAV_MIN_TOP = 130;
+    const aheadGalleryIndex = ids => {
+      const camera = Graph.camera().position;
+      const target = Graph.controls().target;
+      const look = { x: target.x - camera.x, y: target.y - camera.y, z: target.z - camera.z };
+      let best = 0;
+      let bestScore = -Infinity;
+      ids.forEach((id, index) => {
+        const slot = cardField.galleryPosition(id);
+        if (!slot) return;
+        const to = { x: slot.x - camera.x, y: slot.y - camera.y, z: slot.z - camera.z };
+        const score = (look.x * to.x + look.y * to.y + look.z * to.z) / (Math.hypot(to.x, to.y, to.z) || 1);
+        if (score > bestScore) {
+          bestScore = score;
+          best = index;
+        }
+      });
+      return best;
+    };
+    const stepGallery = delta => {
+      if (!gallery || !cardField) return;
+      const ids = [...gallery.ids];
+      const count = ids.length;
+      if (!count) return;
+      const current = focus.node && gallery.ids.has(String(focus.node.id)) ? String(focus.node.id) : null;
+      const index = current ? ids.indexOf(current) : aheadGalleryIndex(ids);
+      const visible = new Map(Graph.graphData().nodes.map(item => [String(item.id), item]));
+      for (let step = current ? 1 : 0; step < count; step++) {
+        const next = visible.get(ids[((index + delta * step) % count + count) % count]);
+        if (next) {
+          focusCard(next);
+          return;
+        }
+      }
+    };
+    galleryPrevButton.addEventListener('click', () => stepGallery(-1));
+    galleryNextButton.addEventListener('click', () => stepGallery(1));
+    let galleryNavFrame = 0;
+    const placeGalleryNav = () => {
+      galleryNavFrame = 0;
+      const canvas = Graph.renderer().domElement.getBoundingClientRect();
+      const show = Boolean(gallery) && gallery.ids.size > 1 && filterState.view === 'graph' && canvas.width > 0;
+      galleryNav.hidden = !show;
+      if (!show) return;
+      const free = getFreeView(getCardCover());
+      const left = canvas.left + canvas.width * (1 + free.centreX - free.width) / 2;
+      const right = left + canvas.width * free.width;
+      // The focused card sits in the middle of the free part of the screen (galleryPose), below the toolbars.
+      const middle = Math.max(canvas.top + GALLERY_NAV_MIN_TOP, canvas.top + canvas.height * (1 - free.centreY) / 2);
+      const top = Math.round(middle - GALLERY_NAV_SIZE / 2) + 'px';
+      galleryPrevButton.style.top = top;
+      galleryNextButton.style.top = top;
+      galleryPrevButton.style.left = Math.round(left + GALLERY_NAV_INSET) + 'px';
+      galleryNextButton.style.left = Math.round(right - GALLERY_NAV_INSET - GALLERY_NAV_SIZE) + 'px';
+      galleryNavFrame = requestAnimationFrame(placeGalleryNav);
+    };
+    const startGalleryNav = () => {
+      if (!galleryNavFrame) galleryNavFrame = requestAnimationFrame(placeGalleryNav);
+    };
+
     const exitGallery = () => {
       if (!gallery) return;
       const key = gallery.key;
@@ -4694,19 +4876,24 @@ export default {
         return;
       }
       button.disabled = true;
-      setAskAnswer(output, 'Elarion is thinking…');
+      input.value = '';
+      const answer = addAskTurn(output, question);
       try {
         const body = await apiFetch('/api/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question, label, focusId, nodeIds: nodeIds.slice(0, ASK_MAX_NODES) })
         });
-        setAskAnswer(output, formatAnswer(body.answer, body.sources));
+        answer.textContent = formatAnswer(body.answer, body.sources);
+        answer.classList.remove('pending');
         return { ...body, question };
       } catch (err) {
-        setAskAnswer(output, err.message || 'Elarion could not answer.', true);
+        answer.textContent = err.message || 'Elarion could not answer.';
+        answer.classList.remove('pending');
+        answer.classList.add('error');
         return null;
       } finally {
+        output.scrollTop = output.scrollHeight;
         button.disabled = false;
       }
     };

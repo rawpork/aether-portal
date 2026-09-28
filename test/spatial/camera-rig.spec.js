@@ -86,6 +86,12 @@ describe("framing", () => {
 		const bottom = uncoveredTarget({ x: 0, y: 0, z: 0 }, view, { side: "bottom", fraction: 0.5 });
 		close(bottom.y, -0.25 * visible, 3);
 		expect(uncoveredTarget({ x: 1, y: 2, z: 3 }, view, null)).toEqual({ x: 1, y: 2, z: 3 });
+		const sides = uncoveredTarget({ x: 0, y: 0, z: 0 }, view, { side: "sides", left: 0.25, right: 0.35, fraction: 0.6 });
+		close(sides.x, 0.05 * visible, 3);
+		const even = uncoveredTarget({ x: 0, y: 0, z: 0 }, view, { side: "sides", left: 0.3, right: 0.3, fraction: 0.6 });
+		close(even.x, 0, 6);
+		const band = uncoveredTarget({ x: 0, y: 0, z: 0 }, view, { side: "band", top: 0.4, bottom: 0.2, fraction: 0.6 });
+		close(band.y, 0.1 * visible, 3);
 	});
 });
 
