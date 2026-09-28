@@ -5,8 +5,8 @@
 ## 1. What is live
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
-- **Latest code commit:** `cc75296` "feat: inline video phase 1 - play/launch buttons and pinned player", pushed to `main`.
-- **Live version:** `44c9bb10-c7f7-4b51-a40c-3defab26b8c8` (deployed 2026-09-28).
+- **Latest code commit:** `975d63a` "feat: headset spatial dashboard, Board and Timeline walls in XR, pointer rays", pushed to `main`.
+- **Live version:** `d4045b89-ecc6-4bc8-9cd5-16fd12428921` (deployed 2026-09-28).
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
 
@@ -30,6 +30,7 @@
 | `9843dc9` | 2D board: cards drag freely between any columns (group columns regroup; type columns change the card's type). |
 | `c9933b7` | Headset: AR/VR choice, grip-aligned rays (thumbstick press switches), physical label and proxy sizes; `media.js`. |
 | `cc75296` | Inline video phase 1: play/launch icon buttons and the pinned player on screens. |
+| `975d63a` | Headset spatial dashboard (wrist or pinned panel), Board and Timeline walls in XR, pointer rays back as default, sprite sizes in metres. |
 
 ## 2. Codebase configuration
 
@@ -87,7 +88,7 @@
 ### Tests
 
 - `npm test` runs `vitest run --no-file-parallelism` with two projects: `worker` (workerd) and `spatial` (node).
-- At `cc75296`: **222 tests in 21 files, all passing.** New this cycle: `layout-2d`, `layout-map`, `xr-math`, `depth` (spatial), plus depth cases in the miner, synthesis and route tests.
+- At `975d63a`: **228 tests in 22 files, all passing.** New this cycle: `layout-2d`, `layout-map`, `xr-math`, `depth` (spatial), plus depth cases in the miner, synthesis and route tests.
 
 ### Local development
 
