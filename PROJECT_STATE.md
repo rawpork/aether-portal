@@ -120,7 +120,7 @@
 
 - **The morph:** "2D Board" in the top bar morphs the same cards onto a flat board; "3D Space" morphs them back. The force layout is never moved.
 - **Layout switcher:** Groups · Status · Map at the bottom of the board, remembered per browser.
-  - **Groups:** a column per cluster under the current Group by. Dropping a card on another column regroups it (saved optimistically, with a 6 s Undo toast). A card can leave its group only for its own type's column, and columns are read-only when Group by isn't Group. Tapping a group header renames the group through `PATCH /api/groups/<id>`.
+  - **Groups:** a column per primary group (a card's group, or its type while it has none), whatever Group by says. Cards drag freely between any columns (2026-09-28, the old lock is removed): onto a group's column a card joins that group; onto a type's column it takes that type (`PATCH /api/node { category, group_id }`) and leaves its group. Every move saves optimistically, with a 6 s Undo toast that restores both type and group. The only refusals are physical: a video link is re-detected as a video from its URL, and Outcome cards keep their type. Tapping a group header renames the group through `PATCH /api/groups/<id>`.
   - **Status:** Inbox, Active, Reference and Done, empty columns included. A drop changes the status, with Undo.
   - **Map (the Node Editor view):** a left-to-right node-editor layout of linked cards with Bézier ribbon wires coloured by link type. Unlinked cards sit in a grid below. Dragged cards stay where they are put for the session.
 - **Touch guardrail:** a card lifts only after a 280 ms hold; moving sooner pans.
@@ -201,7 +201,7 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
 
 ## 5. Known issues and caveats
 
-- **Board, empty type column:** a card that is the only ungrouped card of its type has no type column to return to once it joins a group, because the column vanishes when empty. Use Undo or the group picker's "remove" instead.
+- **Board, empty type column:** a type's column only exists while some ungrouped card has that type, so a card whose own type has no column can't be dragged "home" to it. Use Undo, or the group picker's "remove".
 - **Map positions** are not persisted.
 - **WebXR:** not yet run on hardware. Frustum culling is off while presenting, so performance on large graphs is unknown. IWER's controller aiming in tests is unresolved; this is a test-harness issue only.
 - **Small tablets (600-767px):** the phone "band" framing ignores side panels narrower than 60% of the width, so the drawer on the left can overlap the framed card.

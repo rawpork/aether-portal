@@ -601,6 +601,40 @@ export default {
             return jsonResponse({ error: "Update failed." }, 500);
           }
         }
+        // Type changes from the 2D board: { category, group_id? } moves a card into another type's column, optionally
+        // setting or clearing its group in the same write. Outcome Nodes keep their type, and a video link stays a video
+        // (the graph re-detects it from the link on every load).
+        if (body && Object.hasOwn(body, "category")) {
+          const category = String(body.category || "").trim().toLowerCase();
+          if (!VALID_CATEGORIES.includes(category)) {
+            return jsonResponse({ error: `category must be one of: ${VALID_CATEGORIES.join(", ")}.` }, 400);
+          }
+          try {
+            const row = await env.DB.prepare("SELECT category, url FROM saved_nodes WHERE id = ? AND user_id = ?").bind(id, userId).first();
+            if (!row) return jsonResponse({ error: "Node not found." }, 404);
+            if (String(row.category || "").toLowerCase() === OUTCOME_CATEGORY) return jsonResponse({ error: "Outcome cards keep their type." }, 400);
+            if (VIDEO_URL_PATTERN.test(String(row.url || "")) && category !== "video") {
+              return jsonResponse({ error: "A video link is always a video, so it stays in the video column." }, 400);
+            }
+            let group;
+            if (Object.hasOwn(body, "group_id")) {
+              group = null;
+              if (body.group_id !== null) {
+                const groupId = typeof body.group_id === "string" ? body.group_id.trim() : "";
+                group = groupId ? await env.DB.prepare("SELECT id, name, source FROM node_groups WHERE id = ? AND user_id = ?").bind(groupId, userId).first() : null;
+                if (!group) return jsonResponse({ error: "Group not found." }, 404);
+              }
+            }
+            const statement = group === undefined
+              ? env.DB.prepare("UPDATE saved_nodes SET category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(category, id, userId)
+              : env.DB.prepare("UPDATE saved_nodes SET category = ?, group_id = ?, group_source = 'user', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(category, group ? group.id : null, id, userId);
+            await statement.run();
+            return jsonResponse({ id, category, ...(group === undefined ? {} : { group, group_source: "user" }) });
+          } catch (err) {
+            console.error("Node Category Error:", err);
+            return jsonResponse({ error: "Update failed." }, 500);
+          }
+        }
         // Group changes: { group_id: "<id>" }, { new_group: "Name" } (created if new) or { group_id: null } (no group).
         // Any of them marks the choice as the user's, which the miner never overrides.
         if (body && (Object.hasOwn(body, "group_id") || Object.hasOwn(body, "new_group"))) {
@@ -5251,15 +5285,24 @@ export default {
         const items = nodes.map(node => ({ id: String(node.id), key: STATUS_KEY_PREFIX + getNodeStatus(node), status: getNodeStatus(node), created: node.created_at }));
         boardState = spatial.boardLayout(items, { ...size, columns: BOARD_COLUMNS.map(column => ({ key: STATUS_KEY_PREFIX + column.status, label: column.icon + ' ' + column.label })) });
       } else {
+        // A column per primary group (its group, or its type while it has none), whatever Group by says, so every
+        // column is a place a card can be dropped.
         const items = nodes.map(node => {
-          const key = getClusterKey(node);
-          return { id: String(node.id), key, label: (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key), status: node.status, created: node.created_at };
+          const key = spatial.primaryGroup(node);
+          return { id: String(node.id), key, label: getBoardColumnLabel(key), status: node.status, created: node.created_at };
         });
         boardState = spatial.boardLayout(items, size);
       }
       cardField.setBoard(boardState.slots);
       renderBoardHeaders();
       buildWires();
+    };
+    const getBoardColumnLabel = key => {
+      if (key.startsWith('group:')) {
+        const group = (graphData.groups || []).find(item => 'group:' + item.id === key);
+        return group ? (group.source === 'ai' ? '✦ ' : '') + group.name : 'Group';
+      }
+      return key.slice(key.indexOf(':') + 1).replace(/_/g, ' ');
     };
     const getBoardColumnColor = key => {
       if (!key.startsWith(STATUS_KEY_PREFIX)) return getClusterColor(key);
@@ -5584,7 +5627,45 @@ export default {
 
     // A card dropped on another column joins that group. Under "Group by: Group" a column is a group, or the type
     // (category) of cards that have none, so a card can leave its group only for its own type's column.
-    const dropOnColumn = (node, column) => {
+    // Moves a card to a place on the board: { groupId } (a group id, or null for none) and/or { category }. Optimistic:
+    // the card moves at once and moves back, with the server's reason, if the save fails (a video link stays a video;
+    // Outcome cards keep their type). Returns whether it was saved.
+    const setCardPlace = async (node, place) => {
+      const before = { category: node.category, type: node.type, group: node.group, group_id: node.group_id, group_source: node.group_source };
+      const body = {};
+      if (place.category !== undefined && place.category !== getNodeCategory(node)) {
+        body.category = place.category;
+        node.category = place.category;
+        node.type = place.category;
+        node.group = place.category;
+      }
+      if (place.groupId !== undefined && place.groupId !== (node.group_id || null)) {
+        body.group_id = place.groupId;
+        node.group_id = place.groupId;
+        node.group_source = 'user';
+      }
+      if (!Object.keys(body).length) return true;
+      reclusterLive();
+      try {
+        await apiFetch('/api/node/' + encodeURIComponent(node.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        return true;
+      } catch (err) {
+        console.error('Moving the card failed:', err);
+        Object.assign(node, before);
+        reclusterLive();
+        showBoardHint(err.message || 'Moving the card failed.');
+        return false;
+      }
+    };
+
+    // A card dropped on a column goes there, whichever column it is: onto a group's column it joins that group; onto a
+    // type's column it takes that type and leaves its group; onto a status column it takes that status. Every move
+    // offers Undo.
+    const dropOnColumn = async (node, column) => {
       const title = node.title || 'Card';
       if (column.key.startsWith(STATUS_KEY_PREFIX)) {
         const status = column.key.slice(STATUS_KEY_PREFIX.length);
@@ -5594,21 +5675,14 @@ export default {
         showBoardHint(title + ' moved to ' + column.label + '.', () => moveNodeToStatus(node, previous));
         return;
       }
-      if (column.key === getClusterKey(node)) return;
-      if (filterState.groupBy !== 'group') {
-        showBoardHint('Columns follow Group by: ' + filterState.groupBy + '. Switch Group by to Group to move cards between groups.');
-        return;
+      if (column.key === window.AetherSpatial.primaryGroup(node)) return;
+      const previous = { category: getNodeCategory(node), groupId: node.group_id || null };
+      const place = column.key.startsWith('group:')
+        ? { groupId: column.key.slice('group:'.length) }
+        : { category: column.key.slice(column.key.indexOf(':') + 1), groupId: null };
+      if (await setCardPlace(node, place)) {
+        showBoardHint(title + ' moved to ' + column.label + '.', () => setCardPlace(node, previous));
       }
-      const previous = node.group_id ? { groupId: node.group_id } : { remove: true };
-      if (column.key.startsWith('group:')) {
-        assignGroup(node, { groupId: column.key.slice('group:'.length) });
-      } else if (column.key === 'category:' + getNodeCategory(node)) {
-        assignGroup(node, { remove: true });
-      } else {
-        showBoardHint('A card can leave its group only for its own type column (' + getNodeCategory(node).replace(/_/g, ' ') + ').');
-        return;
-      }
-      showBoardHint(title + ' moved to ' + column.label + '.', () => assignGroup(node, previous));
     };
 
     // Touch has to hold a card still for BOARD_HOLD_MS before it lifts (with a short buzz where supported), so a pan
