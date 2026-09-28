@@ -2,6 +2,8 @@
 // text stays crisp. The layout follows mockups/mockup-cards-3d.html. faceFromNode() is pure; drawFace() needs a 2D
 // canvas context.
 
+import { isPlayable } from './media.js';
+
 export const FACE_WIDTH = 512;
 export const FACE_HEIGHT = 320;
 const PAD = 24;
@@ -49,6 +51,8 @@ export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', 
     site: isLink ? (node.site_name || hostOf(url)) : '',
     date: created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
     thumbUrl: typeof node.image_url === 'string' && (/^https?:/i.test(node.image_url) || node.image_url.startsWith('/api/node-image/')) ? node.image_url : null,
+    // Plays inside Aether (YouTube, Vimeo, a video file): the face shows a play badge.
+    playable: type === 'video' && isPlayable(url),
     color: categoryColor,
     label: String(categoryLabel || category).replace(/_/g, ' ').toUpperCase(),
     group: group ? { name: group.name, color: group.color, source: group.source } : null,
@@ -65,7 +69,7 @@ export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', 
 // A cheap fingerprint of what the face shows, so textures are only redrawn when something visible changed.
 export function faceKey(face, imageReady) {
   const outcome = face.outcome ? [face.outcome.steps, face.outcome.effort, face.outcome.template, face.outcome.status, face.outcome.sources.join(',')].join('/') : '';
-  return [face.type, face.title, face.text, face.site, face.date, face.color, face.label, face.group ? face.group.name + face.group.color : '', outcome, imageReady ? 1 : 0].join('|');
+  return [face.type, face.title, face.text, face.site, face.date, face.color, face.label, face.group ? face.group.name + face.group.color : '', outcome, face.playable ? 1 : 0, imageReady ? 1 : 0].join('|');
 }
 
 // Word-wraps into at most maxLines, ending with an ellipsis when text is cut.
@@ -191,12 +195,13 @@ function drawTitle(ctx, face, y, maxLines, size) {
   return y;
 }
 
+// The thumbnail band across the top of video and image faces, in face pixels (origin top-left). Tapping it on a focused
+// playable card plays the video.
+export const MEDIA_BAND = { x: 24, y: 24, w: 512 - 48, h: 150 };
+
 function drawMedia(ctx, face, image) {
-  // Thumbnail band across the top, with a play badge on videos.
-  const x = PAD;
-  const y = PAD;
-  const w = FACE_WIDTH - PAD * 2;
-  const h = 150;
+  // Thumbnail band across the top, with a play badge on videos that play inside Aether.
+  const { x, y, w, h } = MEDIA_BAND;
   ctx.save();
   roundRect(ctx, x, y, w, h, 8);
   ctx.clip();
@@ -208,7 +213,7 @@ function drawMedia(ctx, face, image) {
   ctx.fillStyle = shade;
   ctx.fillRect(x, y, w, h);
   ctx.restore();
-  if (face.type === 'video') {
+  if (face.playable) {
     const cx = x + w / 2;
     const cy = y + h / 2;
     ctx.beginPath();

@@ -196,7 +196,18 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
    - Existing live edges are all `logical`. Abstract leaps appear as the nightly miner labels new saves; older saves only get them after a re-mine, and even then `INSERT OR IGNORE` keeps existing pairs' labels. Consider a re-label pass.
    - The miner prompt is unit-tested but has not yet run live against Gemini with the new instructions. Check the first nightly run's `edges` and their depths.
 
-3. **Node Editor view (Map mode): shipped in `21c17b4`.** Possible follow-ups:
+3. **Inline video, phase 1 (screens): shipped 2026-09-28.** Phases 2 and 3 are still to build.
+   - **Which links play:** `public/js/spatial/media.js` (pure, tested) decides. YouTube (watch, youtu.be, shorts, embed, live; start time kept) plays through the `youtube-nocookie.com` embed, Vimeo (public and unlisted) through `player.vimeo.com`, and direct `.mp4/.webm/.m4v/.mov` files through a `<video>`. TikTok, X, Facebook, Instagram and web pages launch in a new tab.
+   - **Link buttons:** one compact icon button in all four link spots (node card, reader, group drawer, List/Grid/Board/Carousel cards). **▶ Play** is teal for playable videos; **↗ Launch** is a quiet outline for everything else. The icons are SVG, 36px (32px in lists), with a 44pt hit area. 3D card faces show the play badge only on playable videos.
+   - **Pinned player:** YouTube embeds need a referrer (`strict-origin-when-cross-origin`).
+     - In the graph (3D gallery or 2D board), it is pinned over the playing card's face and follows it every frame, always kept on screen. Tapping the thumbnail band of the focused card's 3D face plays it, found from the ray's surface position (`MEDIA_BAND` in `card-faces.js`).
+     - With no card on screen (List, Timeline, Board, Carousel views), it floats centred at 16:9.
+     - It stops when its card loses focus, the view changes, Esc or × is pressed, or a headset session starts. One video plays at a time.
+   - **Still to build:**
+     - phase 2 polish, if needed;
+     - phase 3: direct files as a `VideoTexture` on the card (including in XR), and "Watch outside VR" (or a hand-off to the Quest Browser's player) for YouTube and Vimeo and for files blocked by CORS in the headset. There is no Worker proxy (decided 2026-09-28).
+4. **Spatial dashboard (next, after video phase 1).** The design agreed on 2026-09-28 is in next step 1 above.
+5. **Node Editor view (Map mode): shipped in `21c17b4`.** Possible follow-ups:
    - save dragged map positions (today they are session-only, in `mapMoves`, and lost on reload);
    - highlight the focused card's wires and dim the others;
    - direction arrows on wires;

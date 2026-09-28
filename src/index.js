@@ -2166,6 +2166,61 @@ export default {
       font-weight: bold;
       font-size: 12px;
     }
+    /* Link buttons (video pipeline phase 1): a compact play button for videos that play inside Aether, a quiet launch
+       arrow for everything else. 36px visible, 44pt hit area. */
+    .link-action {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: var(--radius-s);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .link-action::after { content: ''; position: absolute; inset: -4px; }
+    .link-action.play { border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); }
+    .link-action.launch { border: 1px solid rgba(255,255,255,0.12); background: var(--bg-raised); color: #8a93a6; }
+    .link-action.launch:hover, .link-action.launch:focus-visible { border-color: var(--accent-line); color: var(--accent); outline: none; }
+    #node-card a.link-action, .mini-card a.link-action, .item-foot a.link-action { display: inline-flex; padding: 0; border-radius: var(--radius-s); }
+    #node-card a.link-action.play { background: var(--accent); color: var(--on-accent); }
+    #node-card a.link-action.launch { background: var(--bg-raised); color: #8a93a6; }
+    .link-action svg { width: 14px; height: 14px; }
+    .mini-card .link-action, .item-foot .link-action { width: 32px; height: 32px; margin-top: 6px; }
+    .item-foot .link-action { margin: 0 0 0 auto; }
+    /* The inline player, pinned over the focused card (or centred when there is no card on screen). */
+    #media-player {
+      position: fixed;
+      left: 0;
+      top: 0;
+      z-index: 12;
+      overflow: hidden;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-m);
+      background: #000;
+    }
+    #media-player[hidden] { display: none; }
+    #media-frame, #media-frame iframe, #media-frame video { display: block; width: 100%; height: 100%; border: 0; background: #000; }
+    #media-frame video { object-fit: contain; }
+    #media-close {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 36px;
+      height: 36px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: var(--radius-s);
+      background: rgba(8,12,20,0.75);
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+    }
     #legend {
       position: absolute;
       bottom: 20px;
@@ -2516,6 +2571,10 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
+  <div id="media-player" hidden>
+    <div id="media-frame"></div>
+    <button type="button" id="media-close" title="Close video" aria-label="Close video">×</button>
+  </div>
   <div id="board-headers" hidden></div>
   <div id="board-hint" role="status" hidden><span id="board-hint-text"></span><button type="button" id="board-hint-undo" hidden>Undo</button></div>
   <div id="board-modes" role="group" aria-label="Board layout">
@@ -3174,7 +3233,7 @@ export default {
         return;
       }
       cardLink.href = isLink ? node.url : node.image_url;
-      cardLink.textContent = isLink ? '🔗 Open Original Source' : '🔍 Open Full Image';
+      styleLinkAction(cardLink, isLink ? node.url : node.image_url, isLink && isPlayableLink(node.url));
       cardSite.textContent = isPhoto ? '📸 Telegram photo' : (node.site_name || getHostname(node.source_url || node.url));
       const favicon = isLink ? getFaviconUrl(node) : null;
       if (favicon) {
@@ -3547,15 +3606,7 @@ export default {
       const detail = document.createElement('span');
       detail.textContent = [isLink ? getHostname(node.url) : '', truncate(getFullText(node, isLink), 110)].filter(Boolean).join(' · ');
       card.append(title, detail);
-      if (isLink) {
-        const open = document.createElement('a');
-        open.href = node.url;
-        open.target = '_blank';
-        open.rel = 'noopener noreferrer';
-        open.textContent = 'Open ↗';
-        open.addEventListener('click', event => event.stopPropagation());
-        card.append(open);
-      }
+      if (isLink) card.append(buildLinkAction(node));
       // The drawer stays open: the card lights up, the canvas focuses and flies to the node.
       card.addEventListener('click', () => selectNode(node, { fly: true }));
       // Touch screens emulate mouseenter on tap and never leave, so hover sync is mouse-only.
@@ -4173,6 +4224,7 @@ export default {
         // The second tap of a double tap (handled on release) may land on a card sliding past.
         if (ignoringClick()) return;
         lastBackgroundTap = null;
+        if (playFromFace(node)) return;
         focusCard(node);
       })
       .onNodeHover(node => setHover(node, 'canvas'))
@@ -5240,6 +5292,7 @@ export default {
     const enterXR = async (requested = xrMode) => {
       if (!xr || xrPresenting()) return;
       xrMenu.hidden = true;
+      stopMedia();
       // XR starts from the 3D space with nothing open.
       if (filterState.flat) viewToggle.click();
       if (filterState.view !== 'graph') setView('graph');
@@ -5307,6 +5360,159 @@ export default {
     // With both modes available the button offers a choice (mixed reality or VR); otherwise it enters the one there is.
     const xrMenu = document.getElementById('xr-menu');
     let xrBothModes = false;
+    // ---- Inline video (video pipeline phase 1, on screens). YouTube and Vimeo play in their official embed players,
+    // video files in a <video>; anything else launches in a new tab. The player is pinned over the playing card's face
+    // in the graph (3D and the 2D board) and follows it every frame; with no card on screen (List, Timeline, Board,
+    // Carousel views) it floats centred. One video plays at a time; it stops when its card loses focus or the view
+    // changes. In a headset, web pages do not render, so play is not offered there (phase 3 covers XR). ----
+    const mediaPlayer = document.getElementById('media-player');
+    const mediaFrame = document.getElementById('media-frame');
+    let playing = null;
+    let mediaFrameLoop = 0;
+    const isPlayableLink = url => Boolean(window.AetherSpatial && window.AetherSpatial.isPlayable(url));
+    // Drawn icons rather than characters, which some systems render as colour emoji.
+    const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>';
+    const LAUNCH_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3 4 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    // Turns a link element into the compact play or launch button.
+    const styleLinkAction = (element, url, playable) => {
+      element.innerHTML = playable ? PLAY_ICON : LAUNCH_ICON;
+      element.classList.add('link-action');
+      element.classList.toggle('play', playable);
+      element.classList.toggle('launch', !playable);
+      element.title = playable ? 'Play video' : 'Open in a new tab';
+      element.setAttribute('aria-label', playable ? 'Play video' : 'Open in a new tab');
+      element.dataset.play = playable ? '1' : '';
+    };
+    // A card list's link button: plays the node's video, or opens the link in a new tab.
+    const buildLinkAction = node => {
+      const link = document.createElement('a');
+      link.href = node.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      styleLinkAction(link, node.url, isPlayableLink(node.url));
+      link.addEventListener('click', event => {
+        event.stopPropagation();
+        if (!link.dataset.play) return;
+        event.preventDefault();
+        selectNode(node, { fly: true });
+        playMedia(node);
+      });
+      return link;
+    };
+    const stopMedia = () => {
+      if (!playing) return;
+      playing = null;
+      mediaFrame.replaceChildren();
+      mediaPlayer.hidden = true;
+      cancelAnimationFrame(mediaFrameLoop);
+      mediaFrameLoop = 0;
+    };
+    const playMedia = node => {
+      const media = window.AetherSpatial && window.AetherSpatial.parseMedia(node.url);
+      if (!media || xrPresenting()) {
+        window.open(node.url, '_blank', 'noopener');
+        return;
+      }
+      stopMedia();
+      let element;
+      if (media.kind === 'file') {
+        element = document.createElement('video');
+        element.src = media.src;
+        element.controls = true;
+        element.autoplay = true;
+        element.playsInline = true;
+      } else {
+        element = document.createElement('iframe');
+        element.src = media.embedUrl;
+        element.title = node.title || 'Video';
+        element.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+        element.allowFullscreen = true;
+        // YouTube's embeds refuse to play without a referrer.
+        element.referrerPolicy = 'strict-origin-when-cross-origin';
+      }
+      mediaFrame.replaceChildren(element);
+      playing = { id: String(node.id), view: filterState.view };
+      mediaPlayer.hidden = false;
+      placeMedia();
+    };
+    document.getElementById('media-close').addEventListener('click', stopMedia);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && playing) stopMedia();
+    });
+    // Screen rectangle of a card's face, or null when it is not in front of the camera.
+    const cardFaceRect = node => {
+      const root = node && node.__threeObj;
+      if (!root || !THREE || !root.visible) return null;
+      const spatial = window.AetherSpatial;
+      const canvas = Graph.renderer().domElement.getBoundingClientRect();
+      const camera = Graph.camera();
+      root.updateMatrixWorld(true);
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const corner = root.localToWorld(new THREE.Vector3(sx * spatial.CARD_WIDTH / 2, sy * spatial.CARD_HEIGHT / 2, 0)).project(camera);
+        if (corner.z > 1 || corner.z < -1) return null;
+        const x = canvas.left + (corner.x + 1) / 2 * canvas.width;
+        const y = canvas.top + (1 - corner.y) / 2 * canvas.height;
+        left = Math.min(left, x);
+        right = Math.max(right, x);
+        top = Math.min(top, y);
+        bottom = Math.max(bottom, y);
+      }
+      return { left, top, width: right - left, height: bottom - top };
+    };
+    // The smallest the pinned player gets, in pixels; a smaller card gets the centred player instead.
+    const MEDIA_MIN_WIDTH = 240;
+    const placeMedia = () => {
+      mediaFrameLoop = 0;
+      if (!playing) return;
+      // Stops with its card: another card focused, the card closed, or the view changed.
+      if (filterState.view !== playing.view || (playing.pinned && (!focus.node || String(focus.node.id) !== playing.id))) {
+        stopMedia();
+        return;
+      }
+      const node = focus.node && String(focus.node.id) === playing.id ? focus.node : null;
+      const rect = filterState.view === 'graph' && node ? cardFaceRect(node) : null;
+      let box;
+      if (rect && rect.width >= MEDIA_MIN_WIDTH) {
+        playing.pinned = true;
+        box = rect;
+      } else {
+        const width = Math.min(720, window.innerWidth * 0.92);
+        const height = width * 9 / 16;
+        box = { left: (window.innerWidth - width) / 2, top: Math.max(110, (window.innerHeight - height) / 2), width, height };
+      }
+      // Always wholly on screen, even when its card is partly off an edge.
+      box.left = Math.min(Math.max(8, box.left), Math.max(8, window.innerWidth - box.width - 8));
+      box.top = Math.min(Math.max(8, box.top), Math.max(8, window.innerHeight - box.height - 8));
+      Object.assign(mediaPlayer.style, { left: Math.round(box.left) + 'px', top: Math.round(box.top) + 'px', width: Math.round(box.width) + 'px', height: Math.round(box.height) + 'px' });
+      mediaFrameLoop = requestAnimationFrame(placeMedia);
+    };
+    // The card link in the node card plays in place instead of opening a tab when the video plays inside Aether.
+    cardLink.addEventListener('click', event => {
+      if (!cardLink.dataset.play || !focus.node) return;
+      event.preventDefault();
+      playMedia(focus.node);
+    });
+    // A tap on the thumbnail band of the focused card, on its 3D face, plays its video. Returns whether it did.
+    const playFromFace = node => {
+      if (!focus.node || focus.node !== node || !isPlayableLink(node.url) || !lastPointer || !THREE) return false;
+      const root = node.__threeObj;
+      if (!root) return false;
+      const rect = Graph.renderer().domElement.getBoundingClientRect();
+      const pointer = new THREE.Vector2(((lastPointer.x - rect.left) / rect.width) * 2 - 1, -((lastPointer.y - rect.top) / rect.height) * 2 + 1);
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(pointer, Graph.camera());
+      const hit = raycaster.intersectObject(root, true).find(item => item.uv && item.object.material && item.object.material.map);
+      if (!hit) return false;
+      const spatial = window.AetherSpatial;
+      const x = hit.uv.x * spatial.FACE_WIDTH;
+      const y = (1 - hit.uv.y) * spatial.FACE_HEIGHT;
+      const band = spatial.MEDIA_BAND;
+      if (x < band.x || x > band.x + band.w || y < band.y || y > band.y + band.h) return false;
+      playMedia(node);
+      return true;
+    };
+
     xrButton.addEventListener('click', event => {
       event.stopPropagation();
       if (!xrBothModes) {
@@ -6102,7 +6308,8 @@ export default {
       readerBody.textContent = body;
       if (cardLink.getAttribute('href')) {
         readerLink.href = cardLink.href;
-        readerLink.style.display = 'inline-block';
+        styleLinkAction(readerLink, cardLink.href, false);
+        readerLink.style.display = 'inline-flex';
       } else {
         readerLink.removeAttribute('href');
         readerLink.style.display = 'none';
@@ -6678,13 +6885,7 @@ export default {
         site.className = 'item-site';
         site.textContent = node.site_name || getHostname(node.url);
         if (favicon) foot.append(buildFavicon(favicon));
-        const open = document.createElement('a');
-        open.href = node.url;
-        open.target = '_blank';
-        open.rel = 'noopener noreferrer';
-        open.textContent = 'Open ↗';
-        open.addEventListener('click', event => event.stopPropagation());
-        foot.append(site, open);
+        foot.append(site, buildLinkAction(node));
         card.append(foot);
       }
 
