@@ -1,6 +1,6 @@
 # Spatial View Architecture
 
-Status: **approved 2026-09-27. Phases 1-7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 5: the 2D board morph; 6: WebXR mixed reality; 7: Agentic Synthesis and Outcome Nodes). Next: hands-on tuning on a headset.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
+Status: **approved 2026-09-27. Phases 1-7 shipped (4b: hero scaling, hub glow, group proxies and LOD; 5: the 2D board morph; 6: WebXR mixed reality; 7: Agentic Synthesis and Outcome Nodes). Next: hands-on tuning on a headset; see [PROJECT_STATE.md](PROJECT_STATE.md) for the live state, configuration and next steps.** This spec covers hierarchical clustering with semantic zoom, a camera rig that zooms from the whole graph down to one node, a hybrid AI-plus-user grouping model, and a seamless switch between the 3D spatial view and a flat 2D node editor. It builds on what the graph view already does (see [ARCHITECTURE.md](ARCHITECTURE.md)) instead of replacing it, and follows the main portal system in [DESIGN.md](DESIGN.md).
 
 ## Locked decisions
 
@@ -692,5 +692,6 @@ The transport (API endpoint, share link or file) is decided with the Finish Line
 
 ## 9. Still open
 
+- **Connection Depth Slider (defined 2026-09-28, not designed or built):** a core backend parameter for the AI and clustering engine, not a visual highlight. It sets the semantic reach on a spectrum of **Obvious** (surface-level and keyword connections), **Logical** (standard semantic similarity) and **Abstract** (distant, cross-disciplinary conceptual leaps). It dictates how the engine draws node wires, forms groups (section 1) and generates Outcome blueprints (section 8). Integration points and open questions are in [PROJECT_STATE.md](PROJECT_STATE.md), next step 2.
 - **Group colours:** groups hash into the existing category palette. If users want to pick colours, add `color` to `node_groups` in Phase 2.
 - **Group limit:** when the miner proposes more than about 30 AI groups for a user, merge the smallest ones into their nearest neighbour by shared tags, or leave them? Decide after seeing real Phase 2 output.
