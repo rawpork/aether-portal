@@ -13,8 +13,10 @@ const statusRank = status => {
 // items: [{ id, key, label, status, created }] where key is the card's cluster (its column). Returns
 // { slots: Map(id -> { x, y, z }), columns: [{ key, label, count, subColumns, left, right, x, headerY, bottom }],
 // width, height }. Columns go largest first (ties by label), and a column taller than maxRows continues in a
-// sub-column beside it.
+// sub-column beside it. columns: [{ key, label }], when given, fixes the columns and their order and keeps empty ones
+// (the status board always shows Inbox, Active, Reference and Done, so there is somewhere to drop).
 export function boardLayout(items, {
+  columns: fixed = null,
   cardWidth,
   cardHeight,
   gapX = cardWidth * 0.25,
@@ -24,11 +26,14 @@ export function boardLayout(items, {
   maxRows = 12
 }) {
   const groups = new Map();
+  (fixed || []).forEach(column => groups.set(column.key, { key: column.key, label: column.label || column.key, items: [] }));
   items.forEach(item => {
     if (!groups.has(item.key)) groups.set(item.key, { key: item.key, label: item.label || item.key, items: [] });
     groups.get(item.key).items.push(item);
   });
-  const ordered = [...groups.values()].sort((a, b) => b.items.length - a.items.length || String(a.label).localeCompare(String(b.label)));
+  const ordered = fixed
+    ? [...groups.values()]
+    : [...groups.values()].sort((a, b) => b.items.length - a.items.length || String(a.label).localeCompare(String(b.label)));
 
   const slots = new Map();
   const columns = [];
@@ -36,7 +41,8 @@ export function boardLayout(items, {
   let tallest = 0;
   ordered.forEach(group => {
     group.items.sort((a, b) => statusRank(a.status) - statusRank(b.status) || String(b.created || '').localeCompare(String(a.created || '')));
-    const rows = Math.min(maxRows, group.items.length);
+    // An empty column still gets one row of height, so it reads as a drop target.
+    const rows = Math.max(1, Math.min(maxRows, group.items.length));
     const subColumns = Math.max(1, Math.ceil(group.items.length / maxRows));
     const width = subColumns * cardWidth + (subColumns - 1) * gapX;
     group.items.forEach((item, index) => {

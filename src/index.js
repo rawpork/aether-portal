@@ -1817,7 +1817,10 @@ export default {
     #board-hint {
       position: fixed;
       left: 50%;
-      bottom: 24px;
+      bottom: 96px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
       z-index: 25;
       max-width: min(90vw, 460px);
       padding: 10px 14px;
@@ -1829,6 +1832,64 @@ export default {
       font-size: 13px;
     }
     #board-hint[hidden] { display: none; }
+    #board-hint button {
+      flex: none;
+      min-height: 36px;
+      padding: 0 14px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius-s);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #board-hint button[hidden] { display: none; }
+    /* Board layout switcher: Groups, Status or Map, shown only on the board. */
+    #board-modes {
+      position: fixed;
+      left: 50%;
+      bottom: 32px;
+      z-index: 12;
+      display: none;
+      gap: 4px;
+      padding: 4px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+    }
+    body.board-mode:not(.collection-mode) #board-modes { display: flex; }
+    #board-modes button {
+      min-height: 44px;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-s);
+      background: none;
+      color: #8a93a6;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #board-modes button[aria-pressed="true"] { border-color: var(--accent-line); background: var(--active-fill); color: #fff; }
+    .board-header.renamable { pointer-events: auto; cursor: text; }
+    .board-header.renamable:hover { border-color: var(--accent-line); }
+    .board-header input {
+      width: 14ch;
+      padding: 0;
+      border: 0;
+      border-bottom: 1px solid var(--accent-line);
+      background: transparent;
+      color: #fff;
+      font: inherit;
+      outline: none;
+    }
+    @media (max-width: 767px) {
+      #board-modes { bottom: max(12px, env(safe-area-inset-bottom)); }
+      body.card-open #board-modes, body.card-open #board-hint { display: none !important; }
+      #board-hint { bottom: 80px; }
+    }
     body.board-card-dragging, body.board-card-dragging * { cursor: grabbing !important; }
     /* Gallery arrows: translucent, side by side in the dark space below the wall, centred in the open area between the
        sidebars. The page places them every frame while the gallery is open. */
@@ -2325,7 +2386,12 @@ export default {
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
   <div id="board-headers" hidden></div>
-  <div id="board-hint" role="status" hidden></div>
+  <div id="board-hint" role="status" hidden><span id="board-hint-text"></span><button type="button" id="board-hint-undo" hidden>Undo</button></div>
+  <div id="board-modes" role="group" aria-label="Board layout">
+    <button type="button" data-board-mode="groups" aria-pressed="true" title="A column per group">Groups</button>
+    <button type="button" data-board-mode="status" aria-pressed="false" title="Inbox, Active, Reference and Done">Status</button>
+    <button type="button" data-board-mode="map" aria-pressed="false" title="A node map wired along the connections">Map</button>
+  </div>
   <div id="gallery-nav" hidden>
     <button type="button" id="gallery-prev" title="Previous card in the gallery" aria-label="Previous card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 3.5 8 11 13.5z" fill="currentColor"/></svg></button>
     <button type="button" id="gallery-next" title="Next card in the gallery" aria-label="Next card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 12.5 8 5 13.5z" fill="currentColor"/></svg></button>
@@ -2357,8 +2423,11 @@ export default {
       horizon: 'all',
       query: '',
       clusterMode: 'category',
-      // Flat 2D canvas: nodes pinned to z = 0, camera faces the plane head-on.
+      // 2D board (Phase 5): the cards morph onto a flat board; the camera faces it head-on.
       flat: false,
+      // How the board lays the cards out: 'groups' (a column per group), 'status' (Inbox, Active, Reference, Done) or
+      // 'map' (a node-editor map wired along the links); remembered per browser.
+      boardMode: 'groups',
       // Hide nodes with no edges among the currently visible nodes.
       hideOrphans: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
@@ -2379,16 +2448,18 @@ export default {
     const LIST_LAYOUTS = ['list', 'grid'];
     const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
     const GROUP_BY_KEYS = ['group', 'category', 'platform', 'tag'];
+    const BOARD_MODES = ['groups', 'status', 'map'];
     try {
       const saved = JSON.parse(localStorage.getItem(VIEW_PREFS_KEY) || '{}') || {};
       if (VIEW_MODES.includes(saved.view)) filterState.view = saved.view;
       if (LIST_LAYOUTS.includes(saved.listLayout)) filterState.listLayout = saved.listLayout;
       if (LIST_SORTS.includes(saved.listSort)) filterState.listSort = saved.listSort;
       if (GROUP_BY_KEYS.includes(saved.groupBy)) filterState.groupBy = saved.groupBy;
+      if (BOARD_MODES.includes(saved.boardMode)) filterState.boardMode = saved.boardMode;
     } catch (err) {}
     const saveViewPrefs = () => {
       try {
-        localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ view: filterState.view, listLayout: filterState.listLayout, listSort: filterState.listSort, groupBy: filterState.groupBy }));
+        localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ view: filterState.view, listLayout: filterState.listLayout, listSort: filterState.listSort, groupBy: filterState.groupBy, boardMode: filterState.boardMode }));
       } catch (err) {}
     };
 
@@ -4217,6 +4288,7 @@ export default {
       cardLastTime = time;
       if (filterState.view === 'graph') {
         cardField.frame(dt, Graph.camera());
+        updateWires();
         const showLabels = !focus.node && !gallery;
         territories.entries.forEach((entry, key) => {
           const visible = showLabels && entry.hasNodes !== false && cardField.clusterLod(key) < 0.5;
@@ -4823,16 +4895,120 @@ export default {
     const BOARD_MARGIN = 8;
     const BOARD_DRAG_PX = 6;
 
+    // Where cards were dragged on the map; they keep those spots until the map is laid out from scratch.
+    const mapMoves = new Map();
+    const STATUS_KEY_PREFIX = 'status:';
     const layoutBoard = () => {
       if (!filterState.flat || !cardField || !window.AetherSpatial) return;
       const spatial = window.AetherSpatial;
-      const items = Graph.graphData().nodes.map(node => {
-        const key = getClusterKey(node);
-        return { id: String(node.id), key, label: (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key), status: node.status, created: node.created_at };
-      });
-      boardState = spatial.boardLayout(items, { cardWidth: spatial.CARD_WIDTH, cardHeight: spatial.CARD_HEIGHT });
+      const size = { cardWidth: spatial.CARD_WIDTH, cardHeight: spatial.CARD_HEIGHT };
+      const nodes = Graph.graphData().nodes;
+      if (filterState.boardMode === 'map') {
+        const links = Graph.graphData().links.map(link => ({ source: linkEndId(link.source), target: linkEndId(link.target), type: link.type }));
+        const map = spatial.mapLayout(nodes.map(node => String(node.id)), links, size);
+        mapMoves.forEach((position, id) => { if (map.slots.has(id)) map.slots.set(id, { ...position }); });
+        boardState = { slots: map.slots, columns: [], wires: map.wires, width: map.width, height: map.height };
+      } else if (filterState.boardMode === 'status') {
+        const items = nodes.map(node => ({ id: String(node.id), key: STATUS_KEY_PREFIX + getNodeStatus(node), status: getNodeStatus(node), created: node.created_at }));
+        boardState = spatial.boardLayout(items, { ...size, columns: BOARD_COLUMNS.map(column => ({ key: STATUS_KEY_PREFIX + column.status, label: column.icon + ' ' + column.label })) });
+      } else {
+        const items = nodes.map(node => {
+          const key = getClusterKey(node);
+          return { id: String(node.id), key, label: (isAiCluster(key) ? '✦ ' : '') + getClusterLabel(key), status: node.status, created: node.created_at };
+        });
+        boardState = spatial.boardLayout(items, size);
+      }
       cardField.setBoard(boardState.slots);
       renderBoardHeaders();
+      buildWires();
+    };
+    const getBoardColumnColor = key => {
+      if (!key.startsWith(STATUS_KEY_PREFIX)) return getClusterColor(key);
+      const column = BOARD_COLUMNS.find(item => item.status === key.slice(STATUS_KEY_PREFIX.length));
+      return column ? column.color : FALLBACK_CATEGORY_COLOR;
+    };
+
+    // ---- Map wires: node-editor Bezier curves between wired cards, drawn as thin flat ribbons on the board plane and
+    // re-shaped every frame from where the cards are drawn, so they follow the morph and any drag. ----
+    const WIRE_SEGMENTS = 20;
+    // Ribbon width as a share of a card's width, and how far behind the cards it lies.
+    const WIRE_WIDTH_SHARE = 0.03;
+    const WIRE_DEPTH = 0.3;
+    const WIRE_COLORS = { ai: '#ffd166', synthesis: OUTCOME_COLOR, concept: '#c38bff', semantic: '#6fc3e8' };
+    const WIRE_DEFAULT_COLOR = '#9fe8dc';
+    let wireMesh = null;
+    const buildWires = () => {
+      if (wireMesh) {
+        Graph.scene().remove(wireMesh);
+        wireMesh.geometry.dispose();
+        wireMesh.material.dispose();
+        wireMesh = null;
+      }
+      if (!filterState.flat || filterState.boardMode !== 'map' || !boardState || !boardState.wires || !boardState.wires.length) return;
+      if (typeof THREE === 'undefined' || !THREE) return;
+      const wires = boardState.wires;
+      const perWire = (WIRE_SEGMENTS + 1) * 2;
+      const positions = new Float32Array(wires.length * perWire * 3);
+      const colors = new Float32Array(wires.length * perWire * 3);
+      const indices = [];
+      const color = new THREE.Color();
+      wires.forEach((wire, w) => {
+        color.set(WIRE_COLORS[wire.type] || WIRE_DEFAULT_COLOR);
+        const base = w * perWire;
+        for (let v = 0; v < perWire; v++) colors.set([color.r, color.g, color.b], (base + v) * 3);
+        for (let i = 0; i < WIRE_SEGMENTS; i++) {
+          const a = base + i * 2;
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+      });
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geometry.setIndex(indices);
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+      wireMesh = new THREE.Mesh(geometry, material);
+      wireMesh.frustumCulled = false;
+      wireMesh.renderOrder = -2;
+      // Decoration: never the target of a click.
+      wireMesh.raycast = () => {};
+      Graph.scene().add(wireMesh);
+    };
+    const updateWires = () => {
+      if (!wireMesh || !boardState || !boardState.wires) return;
+      const spatial = window.AetherSpatial;
+      const weight = cardField.boardWeight();
+      wireMesh.material.opacity = 0.8 * Math.max(0, (weight - 0.4) / 0.6);
+      const half = (spatial.CARD_WIDTH * WIRE_WIDTH_SHARE) / 2;
+      const positions = wireMesh.geometry.attributes.position.array;
+      const perWire = (WIRE_SEGMENTS + 1) * 2;
+      boardState.wires.forEach((wire, w) => {
+        const from = cardField.displayPosition(wire.source);
+        const to = cardField.displayPosition(wire.target);
+        const base = w * perWire * 3;
+        if (!from || !to) {
+          positions.fill(0, base, base + perWire * 3);
+          return;
+        }
+        const points = spatial.wirePoints(from, to, { cardWidth: spatial.CARD_WIDTH, segments: WIRE_SEGMENTS });
+        points.forEach((point, i) => {
+          const prev = points[Math.max(0, i - 1)];
+          const next = points[Math.min(points.length - 1, i + 1)];
+          const tx = next.x - prev.x;
+          const ty = next.y - prev.y;
+          const length = Math.hypot(tx, ty) || 1;
+          const nx = (-ty / length) * half;
+          const ny = (tx / length) * half;
+          const z = Math.min(from.z, to.z) - WIRE_DEPTH;
+          const offset = base + i * 6;
+          positions[offset] = point.x + nx;
+          positions[offset + 1] = point.y + ny;
+          positions[offset + 2] = z;
+          positions[offset + 3] = point.x - nx;
+          positions[offset + 4] = point.y - ny;
+          positions[offset + 5] = z;
+        });
+      });
+      wireMesh.geometry.attributes.position.needsUpdate = true;
     };
 
     // Share of the canvas height the top bar and filter row cover.
@@ -4843,17 +5019,26 @@ export default {
         .map(element => element.getBoundingClientRect()).filter(rect => rect.width && rect.height).map(rect => rect.bottom - canvas.top);
       return Math.min(0.4, Math.max(0, ...bottoms) / canvas.height);
     };
-    // Front-on framing of the board below the top chrome; a board too big to read whole starts at its top-left.
+    // Share of the canvas height the board's layout switcher (and its gap) covers at the bottom.
+    const getBottomChrome = () => {
+      const canvas = Graph.renderer().domElement.getBoundingClientRect();
+      const rect = document.getElementById('board-modes').getBoundingClientRect();
+      if (!canvas.height || !rect.height) return 0;
+      return Math.min(0.3, Math.max(0, canvas.bottom - rect.top + 12) / canvas.height);
+    };
+    // Front-on framing of the board between the top chrome and the layout switcher; a board too big to read whole
+    // starts at its top-left.
     const getBoardFraming = (vFov, hFov) => {
       const tanV = Math.tan(vFov / 2);
       const tanH = Math.tan(hFov / 2);
       const chrome = getTopChrome();
+      const bottom = getBottomChrome();
       const halfW = boardState.width / 2 + BOARD_MARGIN;
       const halfH = boardState.height / 2 + BOARD_MARGIN;
-      const fit = Math.max(halfH / ((1 - chrome) * tanV), halfW / tanH);
+      const fit = Math.max(halfH / ((1 - chrome - bottom) * tanV), halfW / tanH);
       const canvasHeight = Graph.renderer().domElement.clientHeight || window.innerHeight;
       const readable = (window.AetherSpatial.CARD_HEIGHT * canvasHeight) / (2 * tanV * BOARD_MIN_CARD_PX);
-      if (fit <= readable) return { center: { x: 0, y: chrome * fit * tanV, z: 0 }, distance: fit };
+      if (fit <= readable) return { center: { x: 0, y: (chrome - bottom) * fit * tanV, z: 0 }, distance: fit };
       const visibleHalfW = readable * tanH;
       const visibleHalfH = readable * tanV;
       return {
@@ -4867,7 +5052,13 @@ export default {
       boardHeaders.replaceChildren(...(boardState ? boardState.columns : []).map(column => {
         const header = document.createElement('div');
         header.className = 'board-header';
-        header.style.borderTopColor = getClusterColor(column.key);
+        header.style.borderTopColor = getBoardColumnColor(column.key);
+        const groupId = column.key.startsWith('group:') ? column.key.slice('group:'.length) : null;
+        if (groupId && !groupId.startsWith('pending_')) {
+          header.classList.add('renamable');
+          header.title = 'Rename group';
+          header.addEventListener('click', () => startGroupRename(header, groupId));
+        }
         const label = document.createElement('span');
         label.className = 'board-header-label';
         label.textContent = column.label;
@@ -4912,13 +5103,96 @@ export default {
       if (!boardHeaderFrame) boardHeaderFrame = requestAnimationFrame(placeBoardHeaders);
     };
 
+    // The board's toast. With undo, it offers Undo for a few seconds longer.
+    const boardHintText = document.getElementById('board-hint-text');
+    const boardHintUndo = document.getElementById('board-hint-undo');
     let boardHintTimer = null;
-    const showBoardHint = text => {
-      boardHint.textContent = text;
+    let boardHintAction = null;
+    const showBoardHint = (text, undo = null) => {
+      boardHintText.textContent = text;
+      boardHintAction = undo;
+      boardHintUndo.hidden = !undo;
       boardHint.hidden = false;
       clearTimeout(boardHintTimer);
-      boardHintTimer = setTimeout(() => { boardHint.hidden = true; }, 3500);
+      boardHintTimer = setTimeout(() => {
+        boardHint.hidden = true;
+        boardHintAction = null;
+      }, undo ? 6000 : 3500);
     };
+    boardHintUndo.addEventListener('click', () => {
+      const undo = boardHintAction;
+      boardHintAction = null;
+      boardHint.hidden = true;
+      clearTimeout(boardHintTimer);
+      if (undo) undo();
+    });
+
+    // Renaming a group from its column header: the header's label becomes a text field; Enter or leaving it saves,
+    // Escape cancels. Optimistic, like the group picker: a failed save puts the old name back.
+    const renameGroup = async (groupId, name) => {
+      const group = (graphData.groups || []).find(item => item.id === groupId);
+      const clean = String(name || '').trim().split(' ').filter(Boolean).join(' ');
+      if (!group || !clean || clean === group.name) return;
+      const before = { name: group.name, source: group.source };
+      group.name = clean;
+      group.source = 'user';
+      reclusterLive();
+      try {
+        await apiFetch('/api/groups/' + encodeURIComponent(groupId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: clean })
+        });
+      } catch (err) {
+        console.error('Group rename failed:', err);
+        group.name = before.name;
+        group.source = before.source;
+        reclusterLive();
+        showBoardHint(err.message || 'Renaming the group failed.');
+      }
+    };
+    const startGroupRename = (header, groupId) => {
+      const group = (graphData.groups || []).find(item => item.id === groupId);
+      if (!group || header.querySelector('input')) return;
+      const label = header.querySelector('.board-header-label');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 60;
+      input.value = group.name;
+      input.setAttribute('aria-label', 'Group name');
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+      let done = false;
+      const finish = save => {
+        if (done) return;
+        done = true;
+        const value = input.value;
+        input.replaceWith(label);
+        if (save) renameGroup(groupId, value);
+      };
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') finish(true);
+        else if (event.key === 'Escape') finish(false);
+        event.stopPropagation();
+      });
+      input.addEventListener('blur', () => finish(true));
+    };
+
+    const boardModeButtons = [...document.querySelectorAll('#board-modes [data-board-mode]')];
+    const renderBoardModes = () => boardModeButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.boardMode === filterState.boardMode)));
+    renderBoardModes();
+    boardModeButtons.forEach(button => button.addEventListener('click', () => {
+      const mode = button.dataset.boardMode;
+      if (!BOARD_MODES.includes(mode) || mode === filterState.boardMode) return;
+      filterState.boardMode = mode;
+      saveViewPrefs();
+      renderBoardModes();
+      if (focus.node) hideNodeCard();
+      boardHint.hidden = true;
+      layoutBoard();
+      resetCameraView();
+    }));
 
     let savedZoomLimits = null;
     const setBoardMode = on => {
@@ -4938,6 +5212,7 @@ export default {
         controls.maxDistance = distanceFor(BOARD_ZOOM_PX.min);
       } else {
         cardField.setBoard(null);
+        buildWires();
         boardHint.hidden = true;
         if (savedZoomLimits) {
           controls.minDistance = savedZoomLimits.min;
@@ -4970,36 +5245,80 @@ export default {
     // A card dropped on another column joins that group. Under "Group by: Group" a column is a group, or the type
     // (category) of cards that have none, so a card can leave its group only for its own type's column.
     const dropOnColumn = (node, column) => {
+      const title = node.title || 'Card';
+      if (column.key.startsWith(STATUS_KEY_PREFIX)) {
+        const status = column.key.slice(STATUS_KEY_PREFIX.length);
+        const previous = getNodeStatus(node);
+        if (status === previous) return;
+        moveNodeToStatus(node, status);
+        showBoardHint(title + ' moved to ' + column.label + '.', () => moveNodeToStatus(node, previous));
+        return;
+      }
       if (column.key === getClusterKey(node)) return;
       if (filterState.groupBy !== 'group') {
         showBoardHint('Columns follow Group by: ' + filterState.groupBy + '. Switch Group by to Group to move cards between groups.');
         return;
       }
+      const previous = node.group_id ? { groupId: node.group_id } : { remove: true };
       if (column.key.startsWith('group:')) {
         assignGroup(node, { groupId: column.key.slice('group:'.length) });
       } else if (column.key === 'category:' + getNodeCategory(node)) {
         assignGroup(node, { remove: true });
       } else {
         showBoardHint('A card can leave its group only for its own type column (' + getNodeCategory(node).replace(/_/g, ' ') + ').');
+        return;
       }
+      showBoardHint(title + ' moved to ' + column.label + '.', () => assignGroup(node, previous));
     };
 
+    // Touch has to hold a card still for BOARD_HOLD_MS before it lifts (with a short buzz where supported), so a pan
+    // that starts on a card stays a pan; moving more than BOARD_HOLD_SLOP_PX first cancels it. A mouse drags as soon
+    // as it moves BOARD_DRAG_PX.
+    const BOARD_HOLD_MS = 280;
+    const BOARD_HOLD_SLOP_PX = 10;
     let boardCardDrag = null;
+    const cancelBoardHold = () => {
+      if (!boardCardDrag || boardCardDrag.armed) return;
+      clearTimeout(boardCardDrag.timer);
+      boardCardDrag = null;
+    };
+    const armBoardDrag = () => {
+      if (!boardCardDrag) return;
+      boardCardDrag.armed = true;
+      // The press belongs to the card now: the orbit controls must not pan with it.
+      Graph.controls().enabled = false;
+      const slot = boardState.slots.get(boardCardDrag.id);
+      if (slot) cardField.setBoardSlot(boardCardDrag.id, { ...slot, z: window.AetherSpatial.CARD_WIDTH * 0.25 }, true);
+      if (boardCardDrag.touch && navigator.vibrate) {
+        try { navigator.vibrate(12); } catch (err) {}
+      }
+    };
     // Registered after cancelCameraFlight (also a capture listener), so the controls stay off for a card press.
     graphElement.addEventListener('pointerdown', event => {
-      if (!filterState.flat || !boardState || !cardField || filterState.view !== 'graph' || !event.isPrimary || event.button !== 0) return;
+      if (!event.isPrimary) {
+        // A second finger (a pinch) is never a card drag.
+        cancelBoardHold();
+        return;
+      }
+      if (!filterState.flat || !boardState || !cardField || filterState.view !== 'graph' || event.button !== 0) return;
       if (cardField.boardWeight() < 0.95) return;
       const point = boardPointer(event);
       const id = point && boardCardAt(point);
       if (!id) return;
       const slot = boardState.slots.get(id);
-      // The press belongs to the card: the orbit controls must not pan with it.
-      Graph.controls().enabled = false;
-      boardCardDrag = { id, x: event.clientX, y: event.clientY, offset: { x: slot.x - point.x, y: slot.y - point.y }, moved: false };
+      const touch = event.pointerType !== 'mouse';
+      boardCardDrag = { id, x: event.clientX, y: event.clientY, offset: { x: slot.x - point.x, y: slot.y - point.y }, moved: false, armed: false, touch, timer: null };
+      if (touch) boardCardDrag.timer = setTimeout(armBoardDrag, BOARD_HOLD_MS);
+      else armBoardDrag();
     }, { capture: true, passive: true });
     window.addEventListener('pointermove', event => {
       if (!boardCardDrag) return;
-      if (!boardCardDrag.moved && Math.hypot(event.clientX - boardCardDrag.x, event.clientY - boardCardDrag.y) < BOARD_DRAG_PX) return;
+      const distance = Math.hypot(event.clientX - boardCardDrag.x, event.clientY - boardCardDrag.y);
+      if (!boardCardDrag.armed) {
+        if (distance > BOARD_HOLD_SLOP_PX) cancelBoardHold();
+        return;
+      }
+      if (!boardCardDrag.moved && distance < BOARD_DRAG_PX) return;
       const point = boardPointer(event);
       if (!point) return;
       boardCardDrag.moved = true;
@@ -5012,13 +5331,23 @@ export default {
       if (!boardCardDrag) return;
       const drag = boardCardDrag;
       boardCardDrag = null;
+      clearTimeout(drag.timer);
       document.body.classList.remove('board-card-dragging');
       if (!(cameraRig && cameraRig.active)) Graph.controls().enabled = true;
-      // A press without a drag is a tap: the graph's own click opens the card.
-      if (!drag.moved) return;
+      // A press without a drag is a tap: the graph's own click opens the card (a held card settles back first).
+      if (!drag.moved) {
+        if (drag.armed) layoutBoard();
+        return;
+      }
       ignoreClickUntil = Date.now() + 500;
       const dropped = cardField.boardSlot(drag.id);
       if (dropped) cardField.setBoardSlot(drag.id, { ...dropped, z: 0 }, false);
+      // On the map a card simply stays where it is put.
+      if (filterState.boardMode === 'map') {
+        if (dropped) mapMoves.set(drag.id, { x: dropped.x, y: dropped.y, z: 0 });
+        layoutBoard();
+        return;
+      }
       const node = Graph.graphData().nodes.find(item => String(item.id) === drag.id);
       const point = event && event.type === 'pointerup' ? boardPointer(event) || drag.point : drag.point;
       const column = point && boardState ? window.AetherSpatial.columnAt(boardState, point.x) : null;
@@ -6091,6 +6420,7 @@ export default {
 
     const refreshStatusViews = node => {
       if (filterState.view === 'board') renderCollection();
+      if (filterState.flat) layoutBoard();
       if (focus.node && focus.node.id === node.id) renderCardStatus(node);
     };
 

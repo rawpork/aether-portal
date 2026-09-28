@@ -43,6 +43,21 @@ describe("boardLayout", () => {
 	});
 });
 
+describe("boardLayout with fixed columns", () => {
+	it("keeps the given order and empty columns", () => {
+		const layout = boardLayout(
+			[
+				{ id: "a", key: "done", label: "Done" },
+				{ id: "b", key: "done", label: "Done" },
+				{ id: "c", key: "inbox", label: "Inbox" }
+			],
+			{ ...size, columns: [{ key: "inbox", label: "Inbox" }, { key: "active", label: "Active" }, { key: "done", label: "Done" }] }
+		);
+		expect(layout.columns.map(column => [column.key, column.count])).toEqual([["inbox", 1], ["active", 0], ["done", 2]]);
+		expect(layout.columns[1].bottom).toBeLessThan(layout.columns[1].headerY);
+	});
+});
+
 describe("columnAt", () => {
 	it("finds the column under an x position, or the nearest one", () => {
 		const layout = boardLayout(

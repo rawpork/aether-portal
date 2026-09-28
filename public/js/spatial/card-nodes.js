@@ -723,6 +723,11 @@ export function createCardField({ THREE, reducedMotion = false }) {
       return slot ? { ...slot } : null;
     },
     boardWeight: () => board.weight,
+    // Where a card is drawn this frame (after every blend), for things drawn between cards such as map wires.
+    displayPosition: id => {
+      const card = cards.get(String(id));
+      return card ? { x: card.root.position.x, y: card.root.position.y, z: card.root.position.z } : null;
+    },
     setGallerySlide: units => { gallerySlide = Number.isFinite(units) ? Math.max(0, units) : null; },
     size: () => cards.size,
     proxyRoot,
