@@ -1883,14 +1883,26 @@ export default {
     @media (min-width: 1100px) {
       body.collection-mode.card-open #collection-view { padding-right: 450px; padding-bottom: 24px; }
     }
-    /* Phones: a bottom sheet with a drag handle (swipe down to close, left/right to page the cluster). */
+    /* Phones: the node card is the one bottom sheet. It opens at a peek height so the 3D view keeps about three
+       quarters of the screen; swiping its handle up (or tapping it) expands it to the full details, down collapses
+       it and then closes it. While a card is open the group list and the filter row step aside. */
     @media (max-width: 767px) {
-      #node-card { left: 6px; right: 6px; bottom: 0; max-height: 78vh; padding-top: 24px; border-radius: var(--radius-m) var(--radius-m) 0 0; border-bottom: none; }
+      #node-card { left: 6px; right: 6px; bottom: 0; max-height: 24vh; padding-top: 24px; border-radius: var(--radius-m) var(--radius-m) 0 0; border-bottom: none; transition: max-height 300ms cubic-bezier(0.25, 1, 0.5, 1); }
+      #node-card.expanded { max-height: 78vh; }
+      #node-card:not(.expanded) #card-preview-image,
+      #node-card:not(.expanded) #card-carousel,
+      #node-card:not(.expanded) #card-to-deck { display: none !important; }
+      body.card-open #cluster-drawer,
+      body.card-open #filter-toolbar,
+      body.card-open #gallery-nav { display: none !important; }
+      #gallery-nav { display: none !important; }
       #node-card.dragging { transition: none; }
       #node-card.settling { transition: transform 0.2s ease; }
       .card-handle {
         display: block;
         position: absolute;
+        /* Above the header chips, whose 44pt hit areas reach up into the handle strip. */
+        z-index: 3;
         top: 0;
         left: 25%;
         right: 25%;
@@ -2008,7 +2020,6 @@ export default {
       #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
       #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
-      body.drawer-open #node-card { right: 15px; top: 102px; bottom: auto; max-height: calc(40vh - 84px); overflow-y: auto; }
       #filter-toolbar { left: 10px; right: 10px; transform: none; max-width: none; }
       #platform-bar { flex: 1 1 auto; }
       .platform-pill { padding: 0 10px; }
@@ -2748,6 +2759,7 @@ export default {
     if (window.matchMedia('(max-width: 768px)').matches) legend.open = false;
     // Matches the CSS breakpoint where the node card becomes a bottom sheet.
     const compactLayout = window.matchMedia('(max-width: 767px)');
+    compactLayout.addEventListener('change', () => { FOCUS_FILL = compactLayout.matches ? FOCUS_FILL_COMPACT : FOCUS_FILL_WIDE; });
     const cardTitle = document.getElementById('card-title');
     const cardTag = document.getElementById('card-tag');
     const cardGroup = document.getElementById('card-group');
@@ -3072,6 +3084,7 @@ export default {
     }));
 
     const showNodeCard = node => {
+      if (focus.node !== node) nodeCard.classList.remove('expanded');
       const isLink = Boolean(node.url && /^https?:/i.test(node.url));
       cardTitle.textContent = node.title || node.name || 'Saved Entry';
       cardTag.textContent = getTypeIcon(getNodeCategory(node)) + ' ' + getNodeCategory(node).replace(/_/g, ' ').toUpperCase();
@@ -3952,6 +3965,7 @@ export default {
 
     // Touch: drag the sheet's handle/header down to close; swipe left/right anywhere on the card to page.
     const SWIPE_DISMISS_PX = 90;
+    const SWIPE_EXPAND_PX = 40;
     const SWIPE_PAGE_PX = 60;
     let swipe = null;
     nodeCard.addEventListener('touchstart', event => {
@@ -3978,7 +3992,18 @@ export default {
       swipe = null;
       nodeCard.classList.remove('dragging');
       if (fromHandle && dy > SWIPE_DISMISS_PX && dy > Math.abs(dx)) {
-        closeNodeCard();
+        nodeCard.style.transform = '';
+        if (nodeCard.classList.contains('expanded')) nodeCard.classList.remove('expanded');
+        else closeNodeCard();
+        return;
+      }
+      if (fromHandle && -dy > SWIPE_EXPAND_PX && -dy > Math.abs(dx)) {
+        nodeCard.style.transform = '';
+        nodeCard.classList.add('expanded');
+        return;
+      }
+      if (fromHandle && Math.abs(dx) < 8 && Math.abs(dy) < 8 && event.target.closest('.card-handle')) {
+        nodeCard.classList.toggle('expanded');
         return;
       }
       // Anything short of a dismiss springs back.
@@ -4011,7 +4036,10 @@ export default {
     const GROUP_MIN_DISTANCE = 60;
     // A focused card fills at most this share of the free part of the screen (width and height): big enough to read on
     // the card, with the arc around it still in view.
-    const FOCUS_FILL = { width: 0.58, height: 0.5 };
+    const FOCUS_FILL_WIDE = { width: 0.58, height: 0.5 };
+    // Phones have the whole width and most of the height above the sheet, so the card is framed large.
+    const FOCUS_FILL_COMPACT = { width: 0.88, height: 0.62 };
+    let FOCUS_FILL = compactLayout.matches ? FOCUS_FILL_COMPACT : FOCUS_FILL_WIDE;
     // Focused card size on screen: about 36% of the uncovered height, and at most FOCUS_FILL of the uncovered width.
     const getNodeDistance = cover => {
       if (!cardField) return NODE_DISTANCE;
@@ -4056,7 +4084,10 @@ export default {
           // Only sheets that span the screen count; a narrow side panel on a small tablet leaves the band open.
           const sheets = panels.filter(rect => rect.width >= 0.6 * canvas.width);
           const middle = canvas.top + canvas.height / 2;
-          const top = Math.max(0, ...sheets.filter(rect => rect.top + rect.height / 2 < middle).map(rect => rect.bottom - canvas.top)) / canvas.height;
+          const chrome = [document.getElementById('topbar'), document.getElementById('filter-toolbar')]
+            .map(element => element.getBoundingClientRect()).filter(rect => rect.width && rect.height);
+          const top = Math.max(0, ...sheets.filter(rect => rect.top + rect.height / 2 < middle).map(rect => rect.bottom - canvas.top),
+            ...chrome.map(rect => rect.bottom - canvas.top)) / canvas.height;
           const bottom = Math.max(0, ...sheets.filter(rect => rect.top + rect.height / 2 >= middle).map(rect => canvas.bottom - rect.top)) / canvas.height;
           return { side: 'band', top, bottom, fraction: top + bottom };
         })()
@@ -4202,16 +4233,19 @@ export default {
     const lockGalleryControls = on => {
       const controls = Graph.controls();
       if (on && !savedControls) {
-        savedControls = { min: controls.minPolarAngle, max: controls.maxPolarAngle, zoom: controls.enableZoom, pan: controls.enablePan };
+        savedControls = { min: controls.minPolarAngle, max: controls.maxPolarAngle, zoom: controls.enableZoom, pan: controls.enablePan, rotate: controls.enableRotate };
         controls.minPolarAngle = Math.PI / 2;
         controls.maxPolarAngle = Math.PI / 2;
         controls.enableZoom = false;
         controls.enablePan = false;
+        // Phones swipe from card to card instead of turning the view (see the gallery swipe below).
+        controls.enableRotate = !compactLayout.matches;
       } else if (!on && savedControls) {
         controls.minPolarAngle = savedControls.min;
         controls.maxPolarAngle = savedControls.max;
         controls.enableZoom = savedControls.zoom;
         controls.enablePan = savedControls.pan;
+        controls.enableRotate = savedControls.rotate;
         savedControls = null;
       }
     };
@@ -4350,6 +4384,25 @@ export default {
     const startGalleryNav = () => {
       if (!galleryNavFrame) galleryNavFrame = requestAnimationFrame(placeGalleryNav);
     };
+    // Phones: a quick horizontal swipe on the 3D view snaps to the next (swipe left) or previous (swipe right) card
+    // along the wall.
+    const GALLERY_SWIPE_PX = 45;
+    const GALLERY_SWIPE_MS = 1000;
+    let gallerySwipe = null;
+    graphElement.addEventListener('pointerdown', event => {
+      gallerySwipe = gallery && compactLayout.matches && event.isPrimary ? { x: event.clientX, y: event.clientY, time: Date.now() } : null;
+    }, { capture: true, passive: true });
+    graphElement.addEventListener('pointerup', event => {
+      const start = gallerySwipe;
+      gallerySwipe = null;
+      if (!start || !gallery) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (Date.now() - start.time > GALLERY_SWIPE_MS || Math.abs(dx) < GALLERY_SWIPE_PX || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      ignoreClickUntil = Date.now() + 500;
+      stepGallery(dx < 0 ? 1 : -1);
+    }, { capture: true, passive: true });
+    graphElement.addEventListener('pointercancel', () => { gallerySwipe = null; }, { passive: true });
 
     const exitGallery = () => {
       if (!gallery) return;
