@@ -4,13 +4,13 @@
 
 ## Next session (start here)
 
-**Where we stopped (2026-09-29):** three commits sit on local `main`, **not pushed and not deployed**. The live site is still version `cc9f4c9d` (the phone thumb wheel, `4aad8d3`).
+**Where we stopped (2026-09-29):** the three commits below are **deployed and pushed**: live version `2a2a1b0c-1e3a-4369-96e6-579fef9006a0`.
 
 | Commit | What it adds |
 | --- | --- |
 | `741ac90` | **Mechanical UI and XR raycaster fix.** Wheel Simple / Advanced modes, the desktop wheel (mouse drag, one stop per scroll notch), and the headset lens barrel that replaces the flat wrist panel. XR fix: ray directions were built from the dolly-scaled controller matrix, so the picking ray drifted from the drawn laser whenever the world was scaled; they now read the matrix's -Z column. |
 | `cfca6c0` | **Spatial refinements.** See below. |
-| (the commit after it) | **Review fixes** from the first hands-on test. See below. |
+| `a5f3722` | **Review fixes** from the first hands-on test. See below. |
 
 **What the spatial refinements changed:**
 - **Curved typography:** wheel labels run along their ring (SVG `textPath`), and the headset barrel's labels are bent onto their ring (`bendPoint` in `xr-barrel.js`). Also fixed: the wheel's knurl ticks grew longer one by one, because the loop variable shadowed the scale.
@@ -41,7 +41,7 @@
    - whether swipes should switch groups rather than cards;
    - the closer Horizon framing;
    - the Carousel arc on a real phone.
-2. **Deploy both commits:** `npx wrangler deploy`, then `git push`. No migration is pending. Then record the new live version here.
+2. **Deployed 2026-09-29** as `2a2a1b0c` and pushed. Reload any open tab or installed app once.
 3. **Headset retest (Quest, and the PC browser over Link):** the controller and hand models, the pinned controls on entry, the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
 4. **Carry-overs:**
    - zoom stops step 2 (headset stop placements, and Scale stops on the barrel) and step 3 (the phone vertical rail);
@@ -51,8 +51,8 @@
 ## 1. What is live
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
-- **Latest code commit:** the spatial refinements commit after `741ac90`, both local only (see Next session). Last pushed: `d174163`.
-- **Live version:** `cc9f4c9d-586c-4c9f-a7f5-81796da09eb1` (deployed 2026-09-29, after `4aad8d3`, the phone thumb wheel).
+- **Latest code commit:** `a5f3722` "fix: review fixes - Home view, zoom to cursor, Horizon video, card-shaped player, XR hands", pushed to `main`.
+- **Live version:** `2a2a1b0c-1e3a-4369-96e6-579fef9006a0` (deployed 2026-09-29, with `741ac90`, `cfca6c0` and `a5f3722`; see Next session).
 - **Zoom stops in progress:** step 1 (desktop and screens) is live. Step 2 is the headset: four placements, a scale glide between them, a ZOOM row on the dashboard, one stop per stick push, and launching into the arc at 1.3 m. Step 3 is phones: a vertical rail and a collapsed group tab at stop 3.
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
