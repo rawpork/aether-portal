@@ -1304,6 +1304,44 @@ export default {
     body.collection-mode .depth-control,
     body.collection-mode #view-toggle,
     body.collection-mode #legend { display: none !important; }
+    /* Thumb wheel (phones): the concentric control rings in the bottom-right corner (public/js/spatial/thumb-wheel.js).
+       It takes over the view switch, 2D toggle, Add, time stepper, depth slider, platform pills and board layouts. */
+    #thumb-wheel { display: none; }
+    @media (max-width: 767px) {
+      #thumb-wheel {
+        display: block;
+        position: fixed;
+        right: 0;
+        bottom: env(safe-area-inset-bottom, 0px);
+        z-index: 15;
+        width: 164px;
+        height: 164px;
+        touch-action: none;
+        transition: bottom 300ms cubic-bezier(0.25, 1, 0.5, 1);
+      }
+      .thumb-wheel-svg { display: block; overflow: hidden; pointer-events: none; font-family: inherit; user-select: none; -webkit-user-select: none; }
+      .thumb-wheel-svg path, .thumb-wheel-svg text { pointer-events: auto; }
+      .thumb-wheel-svg .thumb-wheel-mark { pointer-events: none; }
+      .thumb-wheel-svg g:focus { outline: none; }
+      .thumb-wheel-svg g:focus-visible path:first-child { stroke: var(--accent-line); }
+      /* The visual click (the only one where the phone cannot vibrate): the index marks flick wider for a moment. */
+      .thumb-wheel-svg .thumb-wheel-mark { transform-box: fill-box; transform-origin: center; }
+      .thumb-wheel-svg.clicked .thumb-wheel-mark { animation: wheel-click 120ms ease-out; }
+      @keyframes wheel-click { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+      /* The graph library's mouse hint means nothing on a touch screen, and sits under the wheel. */
+      .scene-nav-info { display: none; }
+      /* Above the node card's peek sheet; out of the way while a sheet is expanded. */
+      body.card-open #thumb-wheel { bottom: calc(24vh + 6px); }
+      body:has(#node-card.expanded) #thumb-wheel,
+      body:has(#cluster-drawer.expanded) #thumb-wheel { display: none; }
+      #view-switch, #view-toggle, #add-node-button, #scope-stepper, #depth-control, #platform-bar, #board-modes { display: none !important; }
+    }
+    /* Phones: the group list at Horizon is a small tab beside the wheel; tapping its title opens the full sheet. */
+    @media (max-width: 600px) {
+      #cluster-drawer:not(.expanded) { right: 176px; max-height: none; }
+      #cluster-drawer:not(.expanded) > :not(.drawer-head):not(#drawer-close) { display: none !important; }
+      #cluster-drawer .drawer-head { cursor: pointer; }
+    }
     body.collection-mode [id="3d-graph"] { display: none; }
     #collection-view {
       display: none;
@@ -2393,6 +2431,7 @@ export default {
       <button class="settings-option" id="remine-button">🏷️ Mine Tags &amp; Groups for Old Nodes</button>
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
       <button class="settings-option phone-only" id="telegram-help-menu-option">✈️ Telegram Commands</button>
+      <button class="settings-option phone-only" id="dial-sound-option" hidden>🔈 Wheel clicks: On</button>
       <button class="settings-option" id="logout-button">⎋ Sign Out</button>
     </div>
   </div>
@@ -2607,6 +2646,7 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
+  <div id="thumb-wheel"></div>
   <div id="media-player" hidden>
     <div id="media-frame"></div>
     <button type="button" id="media-close" title="Close video" aria-label="Close video">×</button>
@@ -3086,6 +3126,12 @@ export default {
     if (window.matchMedia('(max-width: 768px)').matches) legend.open = false;
     // Matches the CSS breakpoint where the node card becomes a bottom sheet.
     const compactLayout = window.matchMedia('(max-width: 767px)');
+    // The phone thumb wheel (created once the spatial modules load); every control it mirrors calls this when its value
+    // changes elsewhere, so the rings turn to match.
+    let thumbWheel = null;
+    const syncThumbWheel = () => {
+      if (thumbWheel) thumbWheel.sync();
+    };
     compactLayout.addEventListener('change', () => { FOCUS_FILL = compactLayout.matches ? FOCUS_FILL_COMPACT : FOCUS_FILL_WIDE; });
     const cardTitle = document.getElementById('card-title');
     const cardTag = document.getElementById('card-tag');
@@ -3765,6 +3811,8 @@ export default {
       }
       renderClusterDrawer();
       clusterCards.scrollTop = clusterCards.scrollLeft = 0;
+      // Phones open it as the small tab (its title opens the full sheet).
+      if (changed) clusterDrawer.classList.remove('expanded');
       clusterDrawer.classList.add('open');
       document.body.classList.add('drawer-open');
       legend.style.display = 'none';
@@ -4470,6 +4518,7 @@ export default {
     // The cluster the last Cluster framing was for, and its distance.
     let clusterFrame = null;
     const renderZoomStop = () => {
+      syncThumbWheel();
       zoomSlider.value = String(ZOOM_STOP_ORDER.indexOf(zoomStop));
       zoomSlider.setAttribute('aria-valuetext', ZOOM_STOP_NAMES[zoomStop]);
       zoomStopLabels.forEach(label => label.classList.toggle('active', label.dataset.stop === zoomStop));
@@ -4966,6 +5015,7 @@ export default {
     const scopeNarrow = document.getElementById('scope-narrow');
     const scopeWiden = document.getElementById('scope-widen');
     const renderScope = () => {
+      syncThumbWheel();
       const index = SCOPES.indexOf(filterState.horizon);
       scopeLabel.textContent = (SCOPE_LABELS[filterState.horizon] || 'All time') + ' · ' + currentVisibleNodes.length;
       scopeNarrow.disabled = index <= 0;
@@ -5188,6 +5238,7 @@ export default {
     const filterBadge = document.getElementById('filter-badge');
     const PLATFORM_LABELS = { all: 'All', youtube: 'YouTube', x: 'X/Twitter', facebook: 'Facebook', links: 'Links', notes: 'Notes', images: 'Images' };
     const renderPlatformBar = visibleNodes => {
+      syncThumbWheel();
       const counts = { all: visibleNodes.length };
       visibleNodes.forEach(node => {
         const platform = getPlatform(node);
@@ -5284,6 +5335,7 @@ export default {
     placeDepthControl();
     phoneBar.addEventListener('change', placeDepthControl);
     const renderDepth = () => {
+      syncThumbWheel();
       depthSlider.value = String(DEPTH_LEVELS.indexOf(filterState.depth));
       depthSlider.setAttribute('aria-valuetext', DEPTH_LABELS[filterState.depth]);
       depthStops.forEach(stop => stop.classList.toggle('active', stop.dataset.depth === filterState.depth));
@@ -6389,7 +6441,10 @@ export default {
     };
 
     const boardModeButtons = [...document.querySelectorAll('#board-modes [data-board-mode]')];
-    const renderBoardModes = () => boardModeButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.boardMode === filterState.boardMode)));
+    const renderBoardModes = () => {
+      syncThumbWheel();
+      boardModeButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.boardMode === filterState.boardMode)));
+    };
     renderBoardModes();
     boardModeButtons.forEach(button => button.addEventListener('click', () => {
       const mode = button.dataset.boardMode;
@@ -6611,6 +6666,7 @@ export default {
       viewToggle.classList.toggle('active', filterState.flat);
       pinToPlane(graphData.nodes);
       setBoardMode(filterState.flat);
+      syncThumbWheel();
 
       const controls = Graph.controls();
       // Trackball controls (the default) use noRotate; orbit controls use enableRotate.
@@ -7066,6 +7122,10 @@ export default {
     bindAskShortcut(drawerAskInput, drawerAskButton);
 
     document.getElementById('drawer-close').addEventListener('click', closeClusterDrawer);
+    // Phones: the group list's title opens and closes the full sheet over the tab.
+    clusterDrawer.querySelector('.drawer-head').addEventListener('click', () => {
+      if (phoneBar.matches) clusterDrawer.classList.toggle('expanded');
+    });
 
     cardDelete.addEventListener('click', async () => {
       const node = focus.node;
@@ -7979,6 +8039,7 @@ export default {
 
     // The canvas keeps its data up to date in every view, but only animates while it is visible.
     function renderActiveView() {
+      syncThumbWheel();
       const isGraph = filterState.view === 'graph';
       document.body.classList.toggle('collection-mode', !isGraph);
       document.body.classList.toggle('board-mode', filterState.view === 'board');
@@ -8032,6 +8093,95 @@ export default {
     });
     // Restored view applies before the first graph load, so there is no flash of the wrong view.
     renderActiveView();
+
+    // ---- Thumb wheel (phones, public/js/spatial/thumb-wheel.js): View rim outermost (3D Space, List, Timeline, Board,
+    // Carousel), then the primary ring (the Scale in 3D Space, the Layout on the Board, Time elsewhere), then what the
+    // stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: nothing). The hub is + Add. ----
+    const thumbWheelMount = document.getElementById('thumb-wheel');
+    const WHEEL_TIME_LABELS = { day: 'Today', week: 'Week', month: 'Month', groups: 'Groups', all: 'All' };
+    const WHEEL_BOARD_LABELS = { groups: 'Groups', status: 'Status', map: 'Map', timeline: 'Timeline' };
+    const wheelRingDefs = () => ({
+      view: { name: 'View', stops: [
+        { value: 'space', label: '3D Space' },
+        { value: 'list', label: 'List' },
+        { value: 'timeline', label: 'Timeline' },
+        { value: 'board', label: 'Board' },
+        { value: 'carousel', label: 'Carousel' }
+      ] },
+      scale: { name: 'Scale', stops: ZOOM_STOP_ORDER.map(value => ({ value, label: ZOOM_STOP_NAMES[value] })) },
+      layout: { name: 'Board layout', stops: BOARD_MODES.map(value => ({ value, label: WHEEL_BOARD_LABELS[value] })) },
+      time: { name: 'Time', stops: SCOPES.map(value => ({ value, label: WHEEL_TIME_LABELS[value] })) },
+      depth: { name: 'Depth', stops: DEPTH_LEVELS.map(value => ({ value, label: DEPTH_LABELS[value] })) },
+      filters: { name: 'Show', stops: Object.keys(PLATFORM_LABELS).map(value => ({ value, label: value === 'x' ? 'X' : PLATFORM_LABELS[value] })) }
+    });
+    // The status Board view (kept for desktop) reads as the wheel's Board, in its Status layout.
+    const wheelView = () => filterState.view === 'graph' ? (filterState.flat ? 'board' : 'space') : filterState.view;
+    const wheelState = () => ({
+      view: wheelView(),
+      scale: zoomStop,
+      layout: filterState.view === 'board' ? 'status' : filterState.boardMode,
+      time: filterState.horizon,
+      depth: filterState.depth,
+      filters: filterState.platform
+    });
+    const setWheelView = value => {
+      if (value === 'space' || value === 'board') {
+        setView('graph');
+        setFlat(value === 'board');
+      } else {
+        setView(value);
+      }
+    };
+    const onWheelChange = (ring, value) => {
+      if (ring === 'view') setWheelView(value);
+      else if (ring === 'scale') setZoomStop(value);
+      else if (ring === 'layout') {
+        if (filterState.view !== 'graph' || !filterState.flat) setWheelView('board');
+        const button = boardModeButtons.find(item => item.dataset.boardMode === value);
+        if (button) button.click();
+      } else if (ring === 'time') setScope(value);
+      else if (ring === 'depth') setDepth(value);
+      else if (ring === 'filters' && value !== filterState.platform) setPlatform(value);
+      // A stop that could not be reached (nothing there) turns the ring back to where the view is.
+      syncThumbWheel();
+    };
+    // Where the phone cannot vibrate (iPhone), the wheel can tick audibly; remembered per browser.
+    const DIAL_SOUND_KEY = 'aetherDialSound';
+    const dialSoundOption = document.getElementById('dial-sound-option');
+    const dialSoundOn = () => {
+      try {
+        return localStorage.getItem(DIAL_SOUND_KEY) !== 'off';
+      } catch (err) {
+        return true;
+      }
+    };
+    const renderDialSound = () => { dialSoundOption.textContent = (dialSoundOn() ? '🔈 Wheel clicks: On' : '🔇 Wheel clicks: Off'); };
+    dialSoundOption.hidden = typeof navigator.vibrate === 'function';
+    renderDialSound();
+    dialSoundOption.addEventListener('click', () => {
+      try { localStorage.setItem(DIAL_SOUND_KEY, dialSoundOn() ? 'off' : 'on'); } catch (err) {}
+      renderDialSound();
+    });
+    const mountThumbWheel = () => {
+      const spatial = window.AetherSpatial;
+      if (!spatial || !spatial.createThumbWheel) return;
+      if (compactLayout.matches && !thumbWheel) {
+        thumbWheel = spatial.createThumbWheel({
+          mount: thumbWheelMount,
+          rings: wheelRingDefs(),
+          state: wheelState,
+          onChange: onWheelChange,
+          onAdd: () => openAddNodeModal(),
+          sound: dialSoundOn
+        });
+      } else if (!compactLayout.matches && thumbWheel) {
+        thumbWheel.destroy();
+        thumbWheel = null;
+      }
+    };
+    if (window.AetherSpatial) mountThumbWheel();
+    else window.addEventListener('aether-spatial-ready', mountThumbWheel, { once: true });
+    compactLayout.addEventListener('change', mountThumbWheel);
 
     const loginGate = document.getElementById('login-gate');
     const loginError = document.getElementById('login-error');

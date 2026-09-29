@@ -18,9 +18,15 @@ import { createDashboard } from './xr-dashboard.js';
 import { DEPTHS, primaryGroup, visibleLinks } from './depth.js';
 import { isPlayable, parseMedia } from './media.js';
 import { FACE_HEIGHT, FACE_WIDTH, MEDIA_BAND } from './card-faces.js';
+import { createThumbWheel } from './thumb-wheel.js';
+import { createDial, wheelRings, WHEEL_VIEWS } from './dial.js';
 import { ZOOM_STOPS, ZOOM_STOP_LABELS, DEFAULT_ZOOM_STOP, arcFraming, wallPose, stopFor, stepStop, createWheelStepper } from './zoom-stops.js';
 
 window.AetherSpatial = {
+  createThumbWheel,
+  createDial,
+  wheelRings,
+  WHEEL_VIEWS,
   ZOOM_STOPS,
   ZOOM_STOP_LABELS,
   DEFAULT_ZOOM_STOP,
