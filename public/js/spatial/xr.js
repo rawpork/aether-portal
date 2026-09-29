@@ -27,6 +27,17 @@ const MENU_BUTTON = 4;
 // build could switch rays to the grip and remembered that per browser, which kept Quest installs on the sky-pointing
 // ray after the default changed; that option is gone.
 
+// What the hands look like (metres; the grips sit in the dolly with the camera, so these are real sizes): a matte
+// controller, a handle with the tracking ring over its top, and for tracked hands a small dot on every joint. Without
+// them the headset showed only the rays, and the wrist barrel had nothing to be seen riding on.
+const HANDLE_RADIUS_M = 0.016;
+const HANDLE_LENGTH_M = 0.1;
+const RING_RADIUS_M = 0.034;
+const RING_TUBE_M = 0.005;
+const HANDLE_COLOR = 0x1a2638;
+const RING_COLOR = 0x00ffcc;
+const JOINT_COLOR = 0xdffdf7;
+
 // Which immersive modes this browser can open. Mixed reality comes first when both are there.
 export async function xrSupport() {
   const xr = typeof navigator !== 'undefined' ? navigator.xr : null;
@@ -101,6 +112,45 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     hand.controller.add(hand.line);
     hand.controller.add(hand.cursor);
   });
+
+  // ---- What the hands look like: a controller model on each grip, joint dots on tracked hands ----
+  const handleMaterial = new THREE.MeshLambertMaterial({ color: HANDLE_COLOR });
+  const ringMaterial = new THREE.MeshBasicMaterial({ color: RING_COLOR, transparent: true, opacity: 0.85 });
+  const jointMaterial = new THREE.MeshBasicMaterial({ color: JOINT_COLOR, transparent: true, opacity: 0.9 });
+  const jointGeometry = new THREE.SphereGeometry(1, 10, 8);
+  const noPick = object => { object.raycast = () => {}; return object; };
+  hands.forEach(hand => {
+    const model = new THREE.Group();
+    // The grip's -Z runs along the handle, away from the palm; the ring sits over its top end.
+    const handle = noPick(new THREE.Mesh(new THREE.CylinderGeometry(HANDLE_RADIUS_M, HANDLE_RADIUS_M * 0.85, HANDLE_LENGTH_M, 20), handleMaterial));
+    handle.rotation.x = Math.PI / 2;
+    handle.position.z = 0.01;
+    const ring = noPick(new THREE.Mesh(new THREE.TorusGeometry(RING_RADIUS_M, RING_TUBE_M, 10, 40), ringMaterial));
+    ring.position.set(0, 0.012, -HANDLE_LENGTH_M / 2 + 0.005);
+    ring.rotation.x = Math.PI / 2.6;
+    model.add(handle, ring);
+    model.visible = false;
+    hand.grip.add(model);
+    hand.model = model;
+    hand.handSpace = renderer.xr.getHand(hand.index);
+  });
+  // Shows the controller for controllers and the joint dots for tracked hands, and sizes each dot to its joint.
+  const updateHandModels = () => {
+    hands.forEach(hand => {
+      const tracked = Boolean(hand.source && hand.source.hand);
+      hand.model.visible = Boolean(hand.source) && !tracked;
+      const joints = hand.handSpace && hand.handSpace.joints;
+      if (!joints) return;
+      Object.values(joints).forEach(joint => {
+        if (!joint.userData.dot) {
+          joint.userData.dot = noPick(new THREE.Mesh(jointGeometry, jointMaterial));
+          joint.add(joint.userData.dot);
+        }
+        joint.userData.dot.visible = tracked;
+        joint.userData.dot.scale.setScalar(Math.max(0.004, (joint.jointRadius || 0.008) * 0.8));
+      });
+    });
+  };
 
   // World-space ray from a controller: origin and forward (-Z) direction of its target ray space.
   // The direction is read straight off the matrix's Z column: the controller sits in the dolly, whose scale (graph units
@@ -285,6 +335,7 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
       pollInput(time);
       stepFade(time);
       if (posed) updateRays();
+      updateHandModels();
       frame(time, xrFrame);
     } catch (err) {
       // Logged once: a frame that throws must not take the session down, and must not flood the console at 72-90 Hz.
@@ -311,6 +362,7 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
       hand.source = null;
       hand.line.visible = false;
       hand.cursor.visible = false;
+      hand.model.visible = false;
     });
     applyDolly({ position: { x: 0, y: 0, z: 0 }, rotationY: 0, scale: 1 });
     if (onEnd) onEnd();
@@ -346,6 +398,7 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
       hands.forEach(hand => {
         dolly.add(hand.controller);
         dolly.add(hand.grip);
+        if (hand.handSpace) dolly.add(hand.handSpace);
       });
       posed = false;
       setFade(1);

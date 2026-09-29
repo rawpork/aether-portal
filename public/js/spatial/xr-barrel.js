@@ -29,7 +29,7 @@ const LABEL_ARC = 1.7;
 // Above the wrist; where the pinned barrel sits; how it follows (as the dashboard did before it).
 const WRIST_LIFT_M = 0.16;
 const PINNED_DISTANCE_M = 0.5;
-const PINNED_DROP_M = 0.3;
+const PINNED_DROP_M = 0.22;
 const FOLLOW_ANGLE = 0.6;
 const FOLLOW_RATE = 4;
 // Ring width tween (per second), and how far a ray may travel across a ring's face and still be a click (metres).
@@ -386,7 +386,9 @@ export function createBarrel({ THREE, dolly, camera, rings, state, onChange, onA
       const scale = Math.min(1, layer.width / (layer.full || 1));
       layer.labels.forEach((label, index) => {
         const a = labelAngle(index, display, pitch);
-        const off = Math.abs(wrap(a - MARK_ANGLE));
+        // Distance from the index mark along the dial, not wrapped: a ring with more stops than fit round it (Show)
+        // would otherwise draw the far stops over the near ones.
+        const off = Math.abs((index - display) * pitch);
         label.visible = off < LABEL_ARC && scale > 0.35;
         if (!label.visible) return;
         label.position.set(mid * Math.cos(a), mid * Math.sin(a), ring.front + 0.0012);
@@ -565,9 +567,11 @@ export function createBarrel({ THREE, dolly, camera, rings, state, onChange, onA
       shown = Boolean(on);
     },
     isPinned: () => pinned,
+    // Pinned, it stands in front of the way the head faces; that is read on the next frame, as the head pose only
+    // exists once a session's frames have started (so a session can start pinned).
     setPinned(on) {
       pinned = Boolean(on);
-      pinnedYaw = pinned ? headYaw() : null;
+      pinnedYaw = null;
     },
     // For tests and probes: the rings shown, outer to inner, with the stop each reads and its size.
     read: () => order.slice().reverse().filter(id => layers.get(id).target > 0).map(id => {
@@ -588,6 +592,7 @@ export function createBarrel({ THREE, dolly, camera, rings, state, onChange, onA
       order = order.filter(id => layers.get(id).width > 0 || layers.get(id).target > 0);
       if (!root.visible) return;
       if (pinned) {
+        if (pinnedYaw === null) pinnedYaw = headYaw();
         const yaw = headYaw();
         const delta = wrap(yaw - pinnedYaw);
         if (Math.abs(delta) > FOLLOW_ANGLE || following) {

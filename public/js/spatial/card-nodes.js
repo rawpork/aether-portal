@@ -12,7 +12,7 @@ export const CARD_WIDTH = 12;
 export const CARD_HEIGHT = 7.5;
 const CARD_DEPTH = 0.3;
 // Corners that read as about 8px when the card is in focus.
-export const CARD_RADIUS = 0.66;
+const CARD_RADIUS = 0.66;
 const TEAL = 0x00ffcc;
 const WHITE = 0xffffff;
 const HOVER_SCALE = 0.1;

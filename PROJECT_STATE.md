@@ -4,12 +4,13 @@
 
 ## Next session (start here)
 
-**Where we stopped (2026-09-29):** two commits sit on local `main`, **not pushed and not deployed**. The live site is still version `cc9f4c9d` (the phone thumb wheel, `4aad8d3`).
+**Where we stopped (2026-09-29):** three commits sit on local `main`, **not pushed and not deployed**. The live site is still version `cc9f4c9d` (the phone thumb wheel, `4aad8d3`).
 
 | Commit | What it adds |
 | --- | --- |
 | `741ac90` | **Mechanical UI and XR raycaster fix.** Wheel Simple / Advanced modes, the desktop wheel (mouse drag, one stop per scroll notch), and the headset lens barrel that replaces the flat wrist panel. XR fix: ray directions were built from the dolly-scaled controller matrix, so the picking ray drifted from the drawn laser whenever the world was scaled; they now read the matrix's -Z column. |
-| (the commit after it) | **Spatial refinements.** See below. |
+| `cfca6c0` | **Spatial refinements.** See below. |
+| (the commit after it) | **Review fixes** from the first hands-on test. See below. |
 
 **What the spatial refinements changed:**
 - **Curved typography:** wheel labels run along their ring (SVG `textPath`), and the headset barrel's labels are bent onto their ring (`bendPoint` in `xr-barrel.js`). Also fixed: the wheel's knurl ticks grew longer one by one, because the loop variable shadowed the scale.
@@ -26,6 +27,13 @@
   - On phones, the Categories legend is a compact pill that opens to one sideways-scrolling row of chips, with an active-count badge.
 - **Orbit pivot:** a tap on empty space after anything was selected (a card, a wall, a framed cluster, a highlight) unselects the group and moves the orbit's pivot back to the scene origin (0, 0, 0) (`recentreOrbit`). Turning off the last highlighted category does the same. A single tap in Horizon now does this instead of backing out to that group's Cluster view.
 
+**Review fixes (after the first hands-on test):**
+- **Home:** a Home pill beside the wheel's Simple / Advanced switch (and the Home or H key) goes back to the launch view, the newest card's wall at Horizon, from any view (`goHome`). Free zoom in Space and Cluster now goes toward the pointer (`zoomToCursor`), so scrolling no longer flies past cards or away from them.
+- **Horizon video:** a click anywhere on a playable card plays it in place; only a click on the picture used to. A second click on the playing card opens Atomic, and the video keeps playing.
+- **Player look:** on a card, the player takes the thumbnail's place (`MEDIA_BAND`, 16:9, the thumbnail's small corners, no border), so the card's own frame stays round it. Before, a card-sized black box with its own border and large corners covered the card.
+- **Headset:** each controller shows a matte handle with a teal ring, and tracked hands show a dot on each joint (`xr.js`); before, only the rays were drawn. The controls start **pinned in front at waist height** (22 cm below the eyes) on every entry, where they are seen at once; Unpin moves them to the left wrist. The Show ring's labels no longer overlap: labels were hidden by their wrapped angle, so a ring with more stops than fit round it drew far stops over near ones.
+- Found in the first test: entering VR from the PC browser on the local dev server (localhost is a secure context) showed no hands and no controls.
+
 **Checked:** 257 tests pass. Every item was checked in headless Edge at 1400 × 900 and on a 390 × 844 touch screen; the probe scripts are in the session scratchpad, not the repo. The probes read page state through a never-pausing conditional breakpoint, with no debug code in the app. Not checked on a physical phone, iPhone Safari (the `textPath` rendering) or a headset.
 
 **Next steps, in order:**
@@ -34,7 +42,7 @@
    - the closer Horizon framing;
    - the Carousel arc on a real phone.
 2. **Deploy both commits:** `npx wrangler deploy`, then `git push`. No migration is pending. Then record the new live version here.
-3. **Headset retest (Quest):** the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
+3. **Headset retest (Quest, and the PC browser over Link):** the controller and hand models, the pinned controls on entry, the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
 4. **Carry-overs:**
    - zoom stops step 2 (headset stop placements, and Scale stops on the barrel) and step 3 (the phone vertical rail);
    - wire `relation` on hover;

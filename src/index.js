@@ -1330,11 +1330,28 @@ export default {
     @keyframes wheel-click { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
     /* Wheel mode: Simple keeps to the View rim and the primary ring; Advanced telescopes the inner rings out. The switch
        rides just above the wheel's corner. */
+    .wheel-actions { position: absolute; top: -28px; right: 6px; z-index: 1; display: flex; gap: 6px; }
+    #wheel-home {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 22px;
+      padding: 0 8px 0 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 11px;
+      background: #0a111c;
+      color: #8a93a6;
+      font-family: inherit;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    #wheel-home svg { width: 12px; height: 12px; }
+    #wheel-home:hover, #wheel-home:focus-visible { border-color: var(--accent-line); color: var(--accent); outline: none; }
     #wheel-mode {
-      position: absolute;
-      top: -28px;
-      right: 6px;
-      z-index: 1;
       display: flex;
       align-items: center;
       gap: 5px;
@@ -2308,9 +2325,10 @@ export default {
     .mini-card .link-action, .item-foot .link-action { width: 32px; height: 32px; margin-top: 6px; }
     .item-foot .link-action { margin: 0 0 0 auto; }
     /* The inline player, pinned over the focused card (or centred when there is no card on screen). */
-    /* Pinned over a card, its corners follow the card's own (--media-radius, set per frame from the card's size); an
-       iframe is its own compositing layer and can ignore a parent's rounded clip, so the frame and the player inside
-       are rounded and clipped too. */
+    /* On a card it takes the place of the card's thumbnail: its corners follow the thumbnail's (--media-radius, set per
+       frame from the card's size) and it has no border, the card's frame being round it. An iframe is its own
+       compositing layer and can ignore a parent's rounded clip, so the frame and the player inside are rounded and
+       clipped too. */
     #media-player {
       position: fixed;
       left: 0;
@@ -2324,6 +2342,7 @@ export default {
       background: #000;
     }
     #media-player[hidden] { display: none; }
+    #media-player.on-card { border-color: transparent; }
     #media-frame, #media-frame iframe, #media-frame video { display: block; width: 100%; height: 100%; border: 0; background: #000; }
     #media-frame, #media-frame iframe, #media-frame video {
       overflow: hidden;
@@ -2762,7 +2781,7 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
-  <div id="thumb-wheel"><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div>
+  <div id="thumb-wheel"><div class="wheel-actions"><button type="button" id="wheel-home" title="Home: back to the view the portal opens on (Home or H)" aria-label="Home view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div></div>
   <div id="media-player" hidden>
     <div id="media-frame"></div>
     <button type="button" id="media-close" title="Close video" aria-label="Close video">×</button>
@@ -5433,6 +5452,40 @@ export default {
       fitTimer = setTimeout(attempt, delay);
     };
 
+    // Home: back to the view the portal opens on (the newest card's wall at Horizon), from wherever the camera has
+    // got to: panels closed, video stopped, in 3D Space. With no cards it frames the whole graph.
+    const goHome = () => {
+      if (xrPresenting()) return;
+      stopMedia();
+      const wasShown = filterState.view === 'graph' && !filterState.flat;
+      if (filterState.view !== 'graph') setView('graph');
+      if (filterState.flat) setFlat(false);
+      if (focus.node) hideNodeCard();
+      closeClusterDrawer({ fly: false });
+      clusterFrame = null;
+      if (filterState.highlighted.size) {
+        filterState.highlighted = new Set();
+        applyGraphFilters();
+      }
+      // Coming back from another view or the board, the cards need a moment to be placed (scheduleLaunch waits).
+      scheduleLaunch(wasShown ? 0 : 400);
+    };
+    document.getElementById('wheel-home').addEventListener('click', event => {
+      event.stopPropagation();
+      goHome();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Home' && event.key !== 'h' && event.key !== 'H') return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
+      if (document.querySelector('.modal-backdrop:not([hidden])') || !loginGate.hidden) return;
+      event.preventDefault();
+      goHome();
+    });
+    // Free zoom (Space and Cluster) goes toward what the pointer is on, not the orbit's pivot, so scrolling at a card
+    // brings it nearer instead of flying past it or away.
+    graphControls.zoomToCursor = true;
+
     // A filter change reframes what is left once it has had a moment to settle (typing debounces through scheduleFit).
     const reframeAfterFilter = () => {
       if (filterState.view === 'graph' && !focus.node) scheduleFit(400);
@@ -5948,6 +6001,9 @@ export default {
         try {
           // Mixed reality shows the room through the headset: nothing is drawn behind the graph.
           Graph.backgroundColor(mode === 'immersive-ar' ? 'rgba(0,0,0,0)' : XR_VR_BACKGROUND);
+          // The controls start pinned in front of the user at waist height, where they are seen straight away (on
+          // the wrist they only show once the left hand is raised into view); Pin moves them to the wrist.
+          if (xrBarrel) xrBarrel.setPinned(true);
           await xr.start(mode);
           xrPlaceOverview(true);
           return;
@@ -6142,7 +6198,12 @@ export default {
       const onCard = Boolean(rect && rect.width >= MEDIA_MIN_WIDTH);
       if (onCard) {
         playing.pinned = true;
-        box = rect;
+        // Where the card's own thumbnail is (MEDIA_BAND: inset from the card's edges like the picture), at 16:9, so
+        // the picture becomes the video and the card's frame, badge row and edge stay round it.
+        const spatial = window.AetherSpatial;
+        const band = spatial.MEDIA_BAND;
+        const width = rect.width * band.w / spatial.FACE_WIDTH;
+        box = { left: rect.left + rect.width * band.x / spatial.FACE_WIDTH, top: rect.top + rect.height * band.y / spatial.FACE_HEIGHT, width, height: width * 9 / 16 };
       } else {
         const width = Math.min(720, window.innerWidth * 0.92);
         const height = width * 9 / 16;
@@ -6152,9 +6213,10 @@ export default {
       box.left = Math.min(Math.max(8, box.left), Math.max(8, window.innerWidth - box.width - 8));
       box.top = Math.min(Math.max(8, box.top), Math.max(8, window.innerHeight - box.height - 8));
       Object.assign(mediaPlayer.style, { left: Math.round(box.left) + 'px', top: Math.round(box.top) + 'px', width: Math.round(box.width) + 'px', height: Math.round(box.height) + 'px' });
-      // Pinned, its corners match the card's (the same share of its width); floating, the panels' radius.
-      const spatial = window.AetherSpatial;
-      if (onCard && spatial && spatial.CARD_RADIUS) mediaPlayer.style.setProperty('--media-radius', (box.width * spatial.CARD_RADIUS / spatial.CARD_WIDTH).toFixed(1) + 'px');
+      // On a card it has the thumbnail's small corners (8 of the face's 512 px) and no frame of its own (the card's is
+      // round it); floating, the panels' radius and a teal hairline.
+      mediaPlayer.classList.toggle('on-card', onCard);
+      if (onCard) mediaPlayer.style.setProperty('--media-radius', Math.max(4, rect.width * 8 / window.AetherSpatial.FACE_WIDTH).toFixed(1) + 'px');
       else mediaPlayer.style.removeProperty('--media-radius');
       mediaFrameLoop = requestAnimationFrame(placeMedia);
     };
@@ -6165,10 +6227,18 @@ export default {
       playMedia(focus.node);
     });
     // A tap on the thumbnail band of the focused card, on its 3D face, plays its video. Returns whether it did.
-    // On the Horizon wall (no card open) a tap on any wall card's thumbnail band plays it there, with no zoom to Atomic.
+    // On the Horizon wall (no card open) a click anywhere on a playable card plays it there, with no zoom to Atomic; a
+    // click on the card that is already playing opens it (Atomic) and the video plays on. An open card plays from a tap
+    // on its thumbnail band.
     const playFromFace = node => {
       const onWall = !focus.node && gallery && gallery.ids.has(String(node.id)) && !xrPresenting();
-      if (!(onWall || focus.node === node) || !isPlayableLink(node.url) || !lastPointer || !THREE) return false;
+      if (!(onWall || focus.node === node) || !isPlayableLink(node.url) || !THREE) return false;
+      if (onWall) {
+        if (playing && playing.id === String(node.id)) return false;
+        playMedia(node, { wall: true });
+        return true;
+      }
+      if (!lastPointer) return false;
       const root = node.__threeObj;
       if (!root) return false;
       const rect = Graph.renderer().domElement.getBoundingClientRect();
@@ -6182,7 +6252,7 @@ export default {
       const y = (1 - hit.uv.y) * spatial.FACE_HEIGHT;
       const band = spatial.MEDIA_BAND;
       if (x < band.x || x > band.x + band.w || y < band.y || y > band.y + band.h) return false;
-      playMedia(node, { wall: onWall });
+      playMedia(node);
       return true;
     };
 
