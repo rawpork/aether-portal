@@ -42,7 +42,7 @@
    - the closer Horizon framing;
    - the Carousel arc on a real phone.
 2. **Deployed 2026-09-29** as `2a2a1b0c` and pushed. Reload any open tab or installed app once.
-3. **Headset retest (Quest, and the PC browser over Link):** the controller and hand models, the pinned controls on entry, the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
+3. **Headset retest: START HERE.** A Quest test of the live build (`2a2a1b0c`) was started on 2026-09-29 but no results were reported; ask how it went first. Check on the Quest, and in the PC browser over Link: the controller and hand models, the pinned controls on entry, the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
 4. **Carry-overs:**
    - zoom stops step 2 (headset stop placements, and Scale stops on the barrel) and step 3 (the phone vertical rail);
    - wire `relation` on hover;
