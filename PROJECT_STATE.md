@@ -32,8 +32,8 @@
 | `c9933b7` | Headset: AR/VR choice, grip-aligned rays (thumbstick press switches), physical label and proxy sizes; `media.js`. |
 | `cc75296` | Inline video phase 1: play/launch icon buttons and the pinned player on screens. |
 | `975d63a` | Headset spatial dashboard (wrist or pinned panel), Board and Timeline walls in XR, pointer rays back as default, sprite sizes in metres. |
-| `4aad8d3` | Radial controls: the dial engine and the phone thumb wheel (stop 3 renamed Horizon in `e929537`). |
 | `931177a` | Zoom stops step 1: launch into the 180° wall, the 4-stop slider, closer stop 3 framing, wheel stepping; headset rays always from the target ray space. |
+| `4aad8d3` | Radial controls: the dial engine and the phone thumb wheel (stop 3 renamed Horizon in `e929537`). |
 
 ## 2. Codebase configuration
 
