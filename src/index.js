@@ -1271,6 +1271,36 @@ export default {
     }
     .depth-stops { display: flex; justify-content: space-between; width: 150px; font-size: 9px; line-height: 1; color: #8a93a6; }
     .depth-stops span.active { color: var(--accent); font-weight: 700; }
+    /* Spatial zoom: a four-stop slider in the top bar (Space, Cluster, Zoom, Atomic), styled like the depth slider. */
+    .zoom-control {
+      display: inline-flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 1px;
+      height: 30px;
+      box-sizing: border-box;
+      padding: 0 10px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+    }
+    .zoom-control input[type="range"] {
+      width: 168px;
+      height: 12px;
+      margin: 0;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .zoom-stops { display: flex; justify-content: space-between; width: 168px; font-size: 9px; line-height: 1; color: #8a93a6; }
+    .zoom-stops span { cursor: pointer; }
+    .zoom-stops span.active { color: var(--accent); font-weight: 700; }
+    body.collection-mode .zoom-control,
+    body.flat-board .zoom-control { display: none; }
+    /* Stop 4 (Atomic) on wide screens: the group list steps aside so the card has the room between it and the details;
+       it comes back at stop 3. */
+    @media (min-width: 768px) {
+      body.zoom-atomic #cluster-drawer { display: none; }
+    }
     body.collection-mode .depth-control,
     body.collection-mode #view-toggle,
     body.collection-mode #legend { display: none !important; }
@@ -2303,6 +2333,8 @@ export default {
          stop's name. */
       .depth-control { flex: none; padding: 0 8px; }
       .depth-control input[type="range"], .depth-stops { width: 64px; }
+      /* Phones get a vertical zoom rail beside the 3D view instead (zoom stops, step 3). */
+      .zoom-control { display: none; }
       .depth-stops { justify-content: center; }
       .depth-stops span:not(.active) { display: none; }
       #view-toggle::after { content: attr(data-short); }
@@ -2338,6 +2370,10 @@ export default {
     <div class="depth-control" id="depth-control" title="Connection depth: how far Aether reaches when it links your saves. It shapes the wires, and the Outcomes synthesis proposes.">
       <input type="range" id="depth-slider" min="0" max="2" step="1" value="1" aria-label="Connection depth" aria-valuetext="Logical">
       <div class="depth-stops" aria-hidden="true"><span data-depth="obvious">Obvious</span><span data-depth="logical">Logical</span><span data-depth="abstract">Abstract</span></div>
+    </div>
+    <div class="zoom-control" id="zoom-control" title="Spatial zoom: Space (everything), Cluster (one group), Zoom (the group's 180° wall), Atomic (one card). The mouse wheel steps between them too.">
+      <input type="range" id="zoom-slider" min="0" max="3" step="1" value="2" aria-label="Spatial zoom" aria-valuetext="Zoom">
+      <div class="zoom-stops"><span data-stop="space">Space</span><span data-stop="cluster">Cluster</span><span data-stop="zoom">Zoom</span><span data-stop="atomic">Atomic</span></div>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
     <div class="xr-wrap">
@@ -3564,9 +3600,11 @@ export default {
     // Group state (SPATIAL_ARCHITECTURE.md 2.1): frames a cluster's bounding sphere from the current direction
     // (straight on in 2D), never closer than the node framing.
     const flyToBounds = (center, radius, cluster = null) => {
+      const distance = Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, 1.25));
+      clusterFrame = cluster ? { key: cluster, distance } : null;
       cameraGoTo({
         target: { x: center.x, y: center.y, z: center.z },
-        distance: Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, 1.25)),
+        distance,
         ...(filterState.flat ? FLAT_ORBIT : {}),
         state: 'group',
         detail: cluster
@@ -3575,7 +3613,7 @@ export default {
 
     const flyToCluster = key => {
       if (gallery && gallery.key === key) {
-        cameraGoTo({ ...galleryPose(gallery.yaw, (1 + GALLERY_STANDOFF) * gallery.radius), state: 'group', detail: key });
+        flyToArc();
         return;
       }
       const entry = territories.entries.get(key);
@@ -3661,32 +3699,32 @@ export default {
     };
 
     // Node state: close framing on one card, shifted so it sits in the part of the view the node card does not cover.
-    // In the gallery the camera stays at the standpoint and turns to face the card, which slides forward to meet it.
+    // In the gallery (stop 4, Atomic) the camera moves along the card's radius toward the wall until the card, grown
+    // 1.15 and slid a little toward the viewer, fills ATOMIC_FILL of the part of the screen the panels leave free, and
+    // always comes at least ATOMIC_CLOSER nearer than stop 3 (on desktop the details panel narrows the free part).
     const flyToNode = node => {
       if (![node.x, node.y, node.z].every(Number.isFinite)) return;
       const cover = getCardCover();
       if (gallery && gallery.ids.has(node.id)) {
         const slot = cardField.galleryPosition(node.id);
         if (slot) {
-          // The focused card grows 1.15 and slides up to 0.25 R toward the standpoint, but no closer than where it
-          // fills FOCUS_FILL of the part of the screen the panels leave free, so it is read on the card itself with
-          // room around it.
+          gallery.look = { yaw: window.AetherSpatial.yawToward(gallery.origin, slot), y: slot.y };
+          // The headset places the viewer itself (xrOnSelect).
+          if (xrPresenting()) return;
+          // The group list steps aside first, so the framing below uses the room it leaves.
+          setAtomicLayout(true);
+          const cover = getCardCover();
           const spatial = window.AetherSpatial;
-          const yaw = spatial.yawToward(gallery.origin, slot);
           const vFov = cameraFov();
           const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
           const free = getFreeView(cover);
-          const fits = Math.max(
-            (spatial.CARD_WIDTH * 1.15) / (FOCUS_FILL.width * free.width * 2 * Math.tan(hFov / 2)),
-            (spatial.CARD_HEIGHT * 1.15) / (FOCUS_FILL.height * free.height * 2 * Math.tan(vFov / 2))
-          );
-          // A small group's wall can be nearer than that even without the slide: then the camera steps further back
-          // behind the standpoint instead, so the card never fills the free area.
-          const standoff = Math.max(GALLERY_STANDOFF * gallery.radius, fits - gallery.radius);
-          const far = gallery.radius + standoff;
-          const slide = Math.max(0, Math.min(0.25 * gallery.radius, far - fits));
+          const fits = Math.min(ATOMIC_CLOSER * (gallery.arcDistance || arcDistance()), Math.max(
+            (spatial.CARD_WIDTH * 1.15) / (ATOMIC_FILL.width * free.width * 2 * Math.tan(hFov / 2)),
+            (spatial.CARD_HEIGHT * 1.15) / (ATOMIC_FILL.height * free.height * 2 * Math.tan(vFov / 2))
+          ));
+          const slide = Math.min(ATOMIC_SLIDE * fits, 0.5 * gallery.radius);
           cardField.setGallerySlide(slide);
-          cameraGoTo({ ...galleryPose(yaw, far - slide, standoff), state: 'node', detail: node.id });
+          cameraGoTo({ ...arcPose(gallery.look, fits + slide), state: 'node', detail: node.id });
           return;
         }
       }
@@ -4092,6 +4130,7 @@ export default {
       nodeCard.style.display = 'none';
       nodeCard.style.transform = '';
       document.body.classList.remove('card-open');
+      setAtomicLayout(false);
       if (!clusterDrawer.classList.contains('open')) legend.style.display = 'block';
       clearFocus();
       syncDrawerSelection();
@@ -4417,8 +4456,37 @@ export default {
       if (cameraRig.active) rigFrame = requestAnimationFrame(stepRig);
       else finishFlight();
     };
+    // ---- Spatial zoom stops (public/js/spatial/zoom-stops.js): Space (the whole cloud), Cluster (one island), Zoom (its
+    // 180-degree wall, the default on launch) and Atomic (one card). The slider and the mouse wheel move between them;
+    // every camera move reports the stop it lands on, so the slider always shows where the view is. ----
+    const ZOOM_STOP_ORDER = ['space', 'cluster', 'zoom', 'atomic'];
+    const ZOOM_STOP_NAMES = { space: 'Space', cluster: 'Cluster', zoom: 'Zoom', atomic: 'Atomic' };
+    // Free zoom in Space and Cluster steps to the next stop past these multiples of the stop's own framing distance.
+    const STOP_PUSH_IN = 0.6;
+    const STOP_PULL_BACK = 1.8;
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomStopLabels = [...document.querySelectorAll('.zoom-stops [data-stop]')];
+    let zoomStop = 'space';
+    // The cluster the last Cluster framing was for, and its distance.
+    let clusterFrame = null;
+    const renderZoomStop = () => {
+      zoomSlider.value = String(ZOOM_STOP_ORDER.indexOf(zoomStop));
+      zoomSlider.setAttribute('aria-valuetext', ZOOM_STOP_NAMES[zoomStop]);
+      zoomStopLabels.forEach(label => label.classList.toggle('active', label.dataset.stop === zoomStop));
+    };
+    renderZoomStop();
+    const setAtomicLayout = on => document.body.classList.toggle('zoom-atomic', on);
+    const noteZoomStop = state => {
+      const next = state === 'macro' ? 'space' : state === 'node' ? 'atomic' : gallery ? 'zoom' : 'cluster';
+      if (next !== 'atomic') setAtomicLayout(false);
+      if (next === zoomStop) return;
+      zoomStop = next;
+      renderZoomStop();
+    };
+
     // goal: { target, distance, theta?, phi?, state, detail?, instant? }; theta/phi default to the current direction.
     const cameraGoTo = goal => {
+      if (goal.state) noteZoomStop(goal.state);
       // In a headset the viewer is placed by the XR session (teleports and the gallery), never flown.
       if (viewer && viewer.isPresenting()) return;
       pauseAutoRotate();
@@ -4535,10 +4603,22 @@ export default {
     window.addEventListener('aether-spatial-ready', initCards, { once: true });
 
     // ---- 180-degree gallery (SPATIAL_ARCHITECTURE.md 6): opening a group in 3D lays its cards on a half cylinder around
-    // a standpoint at the cluster's centre. On screens the camera stands 0.35 R behind that point and dragging turns
-    // the view along the wall (polar angle locked to the horizon, no pan or zoom). ----
+    // a standpoint at the cluster's centre. On screens (stop 3, Zoom) the camera stands inside the arc, a little above
+    // eye level, looking at one card on the wall from close enough that it fills the middle of the free view while the
+    // next cards only just show at the edges (arcFraming in zoom-stops.js, which also widens the wall for that).
+    // Dragging slides the view along the wall and settles on the nearest card; the orbit controls' own rotate, pan and
+    // zoom are off. ----
     let savedControls = null;
-    const GALLERY_STANDOFF = 0.35;
+    // Cards per row on the wall (galleryLayout's default) and a card plus its gap along the arc.
+    const GALLERY_PER_ROW = 9;
+    const GALLERY_PITCH = 1.15;
+    // In stop 3 a hovered card slides this share of the viewing distance toward the viewer; in stop 4 the focused card
+    // slides this share of its framing distance.
+    const ARC_HOVER_SLIDE = 0.1;
+    const ATOMIC_SLIDE = 0.15;
+    // Stop 4: the card fills most of the free part of the view, and stands at most this share of stop 3's distance.
+    const ATOMIC_FILL = { width: 0.86, height: 0.78 };
+    const ATOMIC_CLOSER = 0.8;
     const lockGalleryControls = on => {
       const controls = Graph.controls();
       if (on && !savedControls) {
@@ -4547,8 +4627,8 @@ export default {
         controls.maxPolarAngle = Math.PI / 2;
         controls.enableZoom = false;
         controls.enablePan = false;
-        // Phones swipe from card to card instead of turning the view (see the gallery swipe below).
-        controls.enableRotate = !compactLayout.matches;
+        // Desktop drags slide along the wall and phones swipe from card to card (both below), not the orbit controls.
+        controls.enableRotate = false;
       } else if (!on && savedControls) {
         controls.minPolarAngle = savedControls.min;
         controls.maxPolarAngle = savedControls.max;
@@ -4558,25 +4638,61 @@ export default {
         savedControls = null;
       }
     };
-    // Camera pose in the gallery: at the standpoint, level, facing yaw. Open panels are cleared without moving the
-    // pivot the drag turns around: sidebars turn the view so what it faces sits mid-way across the free part of the
-    // screen; phone sheets shift the eye so it sits mid-way up the band they leave. lookDistance is how far
-    // away the thing being looked at is.
-    const galleryPose = (yaw, lookDistance, standoff = GALLERY_STANDOFF * gallery.radius) => {
-      const cover = getCardCover();
-      const free = getFreeView(cover);
-      const vFov = cameraFov();
-      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
-      // Turn so what is straight ahead lands mid-way across the free part of the screen (between the sidebars), and
-      // on phones lower or raise the eye so it sits mid-way up the band between the sheets.
-      const turn = Math.atan(-free.centreX * Math.tan(hFov / 2));
-      const drop = free.centreY * lookDistance * Math.tan(vFov / 2);
-      return {
-        target: { x: gallery.origin.x, y: gallery.origin.y - drop, z: gallery.origin.z },
-        distance: standoff,
-        theta: -(yaw + turn),
-        phi: Math.PI / 2
-      };
+    // Stop 3 framing for a wall of count cards with the panels open now: { radius, distance } (arcFraming).
+    // minRadius keeps a wall that is already up from shrinking.
+    const arcFramingFor = (count, minRadius = 0) => {
+      const spatial = window.AetherSpatial;
+      const free = getFreeView(getCardCover());
+      const tanV = Math.tan(cameraFov() / 2);
+      const tanH = tanV * Graph.camera().aspect;
+      const perRow = Math.max(1, Math.min(count, GALLERY_PER_ROW));
+      return spatial.arcFraming({
+        cardWidth: spatial.CARD_WIDTH,
+        cardHeight: spatial.CARD_HEIGHT,
+        perRow,
+        minRadius: Math.max(minRadius, (perRow * spatial.CARD_WIDTH * GALLERY_PITCH) / Math.PI),
+        tanHalfWidth: tanH * free.width,
+        tanHalfHeight: tanV * free.height
+      });
+    };
+    const arcDistance = () => arcFramingFor(gallery.ids.size, gallery.radius).distance;
+    // Camera goal looking at the wall at look ({ yaw, y }) from distance, shifted so that point lands in the middle of
+    // the part of the screen the panels leave free (between the sidebars, or mid-way up the band between phone sheets).
+    const arcPose = (look, distance) => {
+      const free = getFreeView(getCardCover());
+      const tanV = Math.tan(cameraFov() / 2);
+      const tanH = tanV * Graph.camera().aspect;
+      return window.AetherSpatial.wallPose({
+        origin: gallery.origin,
+        radius: gallery.radius,
+        yaw: look.yaw,
+        y: look.y,
+        distance,
+        shift: { x: free.centreX * distance * tanH, y: free.centreY * distance * tanV }
+      });
+    };
+    // Stop 3: back to the wall framing at the current look, card unfocused.
+    const flyToArc = (options = {}) => {
+      if (!gallery || xrPresenting()) return;
+      // The group list is back (it steps aside in stop 4) before the framing measures the room.
+      setAtomicLayout(false);
+      const distance = arcDistance();
+      // Remembered for stop 4, which must come nearer than this.
+      gallery.arcDistance = distance;
+      cardField.setGallerySlide(distance * ARC_HOVER_SLIDE);
+      cameraGoTo({ ...arcPose(gallery.look, distance), state: 'group', detail: gallery.key, ...options });
+    };
+    // Where the wall slot of card id is looked at from: { yaw, y }.
+    const lookAtSlot = id => {
+      const slot = cardField.galleryPosition(id);
+      return slot ? { yaw: window.AetherSpatial.yawToward(gallery.origin, slot), y: slot.y } : null;
+    };
+    // The card in the middle of the wall (the one a new wall centres on): the smallest turn from the facing, middle row.
+    const frontSlotLook = placed => {
+      const slots = placed.layout.slots.filter(slot => slot.page === 0);
+      if (!slots.length) return { yaw: placed.yaw, y: placed.origin.y };
+      const front = slots.reduce((best, slot) => (Math.abs(slot.angle) + Math.abs(slot.local.y) * 0.01 < Math.abs(best.angle) + Math.abs(best.local.y) * 0.01 ? slot : best));
+      return { yaw: placed.yaw + front.angle, y: placed.origin.y + front.local.y };
     };
     const galleryIds = key => getClusterNodes(key).filter(node => Number.isFinite(node.x)).map(node => node.id);
     // Centre of a cluster: the island label's, or the members' own centroid for a cluster that has no label position
@@ -4597,17 +4713,18 @@ export default {
       if (!origin || !ids.length) return;
       const camera = Graph.camera().position;
       const yaw = window.AetherSpatial.yawToward(camera, origin);
-      // In a headset the arc is wider, so a card on it is a comfortable size rather than filling the view.
-      const placed = cardField.enterGallery(ids, { origin, yaw, centerId, minRadius: xrPresenting() ? XR_GALLERY_MIN_RADIUS : undefined });
-      gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids };
+      // In a headset the arc is wider, so a card on it is a comfortable size rather than filling the view; on screens
+      // it is as wide as stop 3's framing asks.
+      const minRadius = xrPresenting() ? XR_GALLERY_MIN_RADIUS : arcFramingFor(ids.length).radius;
+      const placed = cardField.enterGallery(ids, { origin, yaw, centerId, minRadius });
+      gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids, look: frontSlotLook(placed) };
       startGalleryNav();
       syncCards();
       Graph.linkVisibility(link => !gallery || !(gallery.ids.has(linkEndId(link.source)) || gallery.ids.has(linkEndId(link.target))));
       if (territories.group) territories.group.visible = false;
       pauseAutoRotate();
       lockGalleryControls(true);
-      // Camera 0.35 R behind the standpoint, level, looking along the gallery's facing.
-      cameraGoTo({ ...galleryPose(yaw, (1 + GALLERY_STANDOFF) * placed.radius), state: 'group', detail: key });
+      flyToArc();
     };
     // Filters or group changes while the gallery is open re-slot its cards without moving the camera.
     const refreshGallery = (centerId = null) => {
@@ -4617,9 +4734,12 @@ export default {
         exitGallery();
         return;
       }
-      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId, minRadius: xrPresenting() ? XR_GALLERY_MIN_RADIUS : undefined });
+      const minRadius = xrPresenting() ? XR_GALLERY_MIN_RADIUS : Math.max(gallery.radius, arcFramingFor(ids.length).radius);
+      const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId, minRadius });
       gallery.ids = placed.ids;
       gallery.radius = placed.radius;
+      if (centerId !== null) gallery.look = frontSlotLook(placed);
+      if (!focus.node && !xrPresenting()) cardField.setGallerySlide(arcDistance() * ARC_HOVER_SLIDE);
       syncCards();
     };
     // ---- Gallery arrows: step to the previous or next card along the wall (its display order runs row by row, left to
@@ -4654,6 +4774,7 @@ export default {
       });
       return best;
     };
+    // In stop 4 the arrows and swipes focus the next card; in stop 3 they slide the view to it without opening it.
     const stepGallery = delta => {
       if (!gallery || !cardField) return;
       const ids = [...gallery.ids];
@@ -4662,14 +4783,68 @@ export default {
       const current = focus.node && gallery.ids.has(String(focus.node.id)) ? String(focus.node.id) : null;
       const index = current ? ids.indexOf(current) : aheadGalleryIndex(ids);
       const visible = new Map(Graph.graphData().nodes.map(item => [String(item.id), item]));
-      for (let step = current ? 1 : 0; step < count; step++) {
+      for (let step = 1; step < count; step++) {
         const next = visible.get(ids[((index + delta * step) % count + count) % count]);
-        if (next) {
+        if (!next) continue;
+        if (current) {
           focusCard(next);
-          return;
+        } else {
+          const look = lookAtSlot(next.id);
+          if (look) gallery.look = look;
+          flyToArc();
         }
+        return;
       }
     };
+    // The card straight ahead on the wall, or null.
+    const aheadGalleryNode = () => {
+      if (!gallery || !cardField) return null;
+      const ids = [...gallery.ids];
+      if (!ids.length) return null;
+      const id = ids[aheadGalleryIndex(ids)];
+      return Graph.graphData().nodes.find(item => String(item.id) === id) || null;
+    };
+    // ---- Desktop drag in stop 3: the view slides along the wall with the pointer and settles on the nearest card ----
+    const ARC_DRAG_PX = 4;
+    let arcDrag = null;
+    graphElement.addEventListener('pointerdown', event => {
+      arcDrag = gallery && !focus.node && !compactLayout.matches && !xrPresenting() && event.isPrimary && event.button === 0
+        ? { x: event.clientX, yaw: gallery.look.yaw, moved: false }
+        : null;
+    }, { capture: true, passive: true });
+    window.addEventListener('pointermove', event => {
+      if (!arcDrag || !gallery) return;
+      const dx = event.clientX - arcDrag.x;
+      if (!arcDrag.moved && Math.abs(dx) < ARC_DRAG_PX) return;
+      arcDrag.moved = true;
+      // One pixel moves the wall point under the pointer by the width a pixel covers at the viewing distance.
+      const width = Graph.renderer().domElement.clientWidth || 1;
+      const tanH = Math.tan(cameraFov() / 2) * Graph.camera().aspect;
+      const distance = arcDistance();
+      const perPixel = (2 * distance * tanH) / width / gallery.radius;
+      const limit = Math.PI / 2;
+      const yaw = Math.max(gallery.yaw - limit, Math.min(gallery.yaw + limit, arcDrag.yaw - dx * perPixel));
+      gallery.look = { yaw, y: gallery.look.y };
+      cameraGoTo({ ...arcPose(gallery.look, distance), state: 'group', detail: gallery.key, instant: true });
+    }, { passive: true });
+    const endArcDrag = () => {
+      const drag = arcDrag;
+      arcDrag = null;
+      if (!drag || !drag.moved || !gallery) return;
+      ignoreClickUntil = Date.now() + 300;
+      // Settle on the card nearest the middle of the view, in the row being looked at.
+      let best = null;
+      gallery.ids.forEach(id => {
+        const look = lookAtSlot(id);
+        if (!look) return;
+        const score = Math.abs(Math.atan2(Math.sin(look.yaw - gallery.look.yaw), Math.cos(look.yaw - gallery.look.yaw))) + Math.abs(look.y - gallery.look.y) * 0.05;
+        if (!best || score < best.score) best = { look, score };
+      });
+      if (best) gallery.look = best.look;
+      flyToArc();
+    };
+    window.addEventListener('pointerup', endArcDrag, { passive: true });
+    window.addEventListener('pointercancel', endArcDrag, { passive: true });
     galleryPrevButton.addEventListener('click', () => stepGallery(-1));
     galleryNextButton.addEventListener('click', () => stepGallery(1));
     let galleryNavFrame = 0;
@@ -4820,7 +4995,7 @@ export default {
     scopeWiden.addEventListener('click', () => stepScope(1));
     let scopeZoomTimer = null;
     const checkScopeZoom = () => {
-      if (filterState.view !== 'graph' || filterState.flat || gallery || focus.node || (cameraRig && cameraRig.active)) return;
+      if (filterState.view !== 'graph' || filterState.flat || gallery || focus.node || (cameraRig && cameraRig.active) || zoomStop !== 'space') return;
       const index = SCOPES.indexOf(filterState.horizon);
       if (index < 0 || index >= SCOPES.length - 1) return;
       const distance = Graph.camera().position.distanceTo(Graph.controls().target);
@@ -4828,7 +5003,10 @@ export default {
     };
     graphControls.addEventListener('end', () => {
       clearTimeout(scopeZoomTimer);
-      scopeZoomTimer = setTimeout(checkScopeZoom, 250);
+      scopeZoomTimer = setTimeout(() => {
+        checkStopZoom();
+        checkScopeZoom();
+      }, 250);
     });
 
     // Closing the card steps back out from Node to the node's cluster (Group state).
@@ -4837,6 +5015,145 @@ export default {
       const wasFocused = Boolean(cameraRig && cameraRig.state === 'node');
       hideNodeCard();
       if (node && wasFocused && filterState.view === 'graph') flyToCluster(getClusterKey(node));
+    };
+
+    // The newest placed card of a cluster (a wall centres on it), or of everything shown.
+    const isPlaced = node => [node.x, node.y, node.z].every(Number.isFinite);
+    const newestIn = key => getClusterNodes(key).find(isPlaced) || null;
+    const newestShown = () => Graph.graphData().nodes.filter(isPlaced)
+      .reduce((best, node) => (!best || String(node.created_at || '') > String(best.created_at || '') ? node : best), null);
+    // A card's wall: an Outcome opens its own, anything else its cluster's.
+    const wallKeyOf = node => getNodeCategory(node) === 'outcome' ? 'outcome:' + node.id : getClusterKey(node);
+    // The cluster nearest the middle of the view (smallest angle off the line of sight), or null.
+    const clusterAhead = () => {
+      const camera = Graph.camera().position;
+      const target = Graph.controls().target;
+      const look = { x: target.x - camera.x, y: target.y - camera.y, z: target.z - camera.z };
+      const length = Math.hypot(look.x, look.y, look.z) || 1;
+      let best = null;
+      territories.entries.forEach((entry, key) => {
+        if (!entry.center || !newestIn(key)) return;
+        const to = { x: entry.center.x - camera.x, y: entry.center.y - camera.y, z: entry.center.z - camera.z };
+        const cos = (look.x * to.x + look.y * to.y + look.z * to.z) / (length * (Math.hypot(to.x, to.y, to.z) || 1));
+        if (!best || cos > best.cos) best = { key, cos };
+      });
+      return best ? best.key : null;
+    };
+    // Which cluster the stops act on: the open wall's, the open card's, the one ahead from Space, else the one framed
+    // last, else the newest card's.
+    const zoomContextKey = () => {
+      if (gallery) return gallery.key;
+      if (focus.node) return wallKeyOf(focus.node);
+      const ahead = zoomStop === 'space' ? clusterAhead() : null;
+      if (ahead) return ahead;
+      if (clusterFrame && newestIn(clusterFrame.key)) return clusterFrame.key;
+      const newest = newestShown();
+      return newest ? wallKeyOf(newest) : null;
+    };
+    const setZoomStop = stop => {
+      if (!ZOOM_STOP_ORDER.includes(stop) || filterState.view !== 'graph' || filterState.flat || xrPresenting()) return;
+      cancelPendingFit();
+      if (stop === 'space') {
+        if (focus.node) hideNodeCard();
+        closeClusterDrawer();
+        resetCameraView();
+        return;
+      }
+      const key = zoomContextKey();
+      if (!key) return;
+      if (stop === 'cluster') {
+        if (focus.node) hideNodeCard();
+        // Leaving the wall flies to its cluster (exitGallery); an Outcome's own wall has no island, so it goes to Space.
+        if (gallery) closeClusterDrawer();
+        else if (key.indexOf('outcome:') === 0) resetCameraView();
+        else flyToCluster(key);
+        return;
+      }
+      if (stop === 'zoom') {
+        if (gallery) {
+          if (focus.node) hideNodeCard();
+          flyToArc();
+          return;
+        }
+        const centre = focus.node && wallKeyOf(focus.node) === key ? focus.node : newestIn(key);
+        if (focus.node) hideNodeCard();
+        openClusterDrawer(key, { centerId: centre ? centre.id : null });
+        return;
+      }
+      if (focus.node) return;
+      const node = gallery ? aheadGalleryNode() : newestIn(key);
+      if (node) focusCard(node);
+    };
+    const stepZoomStop = delta => {
+      const index = ZOOM_STOP_ORDER.indexOf(zoomStop) + Math.sign(delta);
+      if (index >= 0 && index < ZOOM_STOP_ORDER.length) setZoomStop(ZOOM_STOP_ORDER[index]);
+    };
+    // Dragging the slider shows the stop under the thumb; letting go (or a key press) goes there.
+    zoomSlider.addEventListener('input', () => {
+      const stop = ZOOM_STOP_ORDER[Number(zoomSlider.value)];
+      zoomStopLabels.forEach(label => label.classList.toggle('active', label.dataset.stop === stop));
+    });
+    zoomSlider.addEventListener('change', () => {
+      const stop = ZOOM_STOP_ORDER[Number(zoomSlider.value)];
+      setZoomStop(stop);
+      // A stop that could not be reached (nothing to show) leaves the slider where the view is.
+      renderZoomStop();
+    });
+    zoomStopLabels.forEach(label => label.addEventListener('click', () => {
+      setZoomStop(label.dataset.stop);
+      renderZoomStop();
+    }));
+    // Free zoom in Space and Cluster: pushing in or pulling back well past the stop's framing moves one stop.
+    const checkStopZoom = () => {
+      if (filterState.view !== 'graph' || filterState.flat || gallery || focus.node || (cameraRig && cameraRig.active) || xrPresenting()) return;
+      const distance = Graph.camera().position.distanceTo(Graph.controls().target);
+      if (zoomStop === 'cluster' && clusterFrame) {
+        if (distance < clusterFrame.distance * STOP_PUSH_IN) setZoomStop('zoom');
+        else if (distance > clusterFrame.distance * STOP_PULL_BACK) setZoomStop('space');
+      } else if (zoomStop === 'space' && distance < getMacroFraming().distance * STOP_PUSH_IN) {
+        setZoomStop('cluster');
+      }
+    };
+    // On the wall (stops 3 and 4) the orbit zoom is off, so the wheel steps between stops instead: one step per flick.
+    // The whole flick is kept from the orbit controls and the flight canceller (window capture runs before both), also
+    // after it has stepped out of the wall, or its tail would stop the flight out and zoom the camera back in.
+    const WHEEL_GESTURE_MS = 250;
+    let wheelStepper = null;
+    let wheelGestureUntil = 0;
+    window.addEventListener('wheel', event => {
+      if (xrPresenting() || !window.AetherSpatial || !graphElement.contains(event.target)) return;
+      const now = performance.now();
+      if (!gallery && now > wheelGestureUntil) return;
+      event.stopPropagation();
+      wheelGestureUntil = now + WHEEL_GESTURE_MS;
+      if (!wheelStepper) wheelStepper = window.AetherSpatial.createWheelStepper({ idleMs: WHEEL_GESTURE_MS });
+      const step = wheelStepper(event.deltaY, now);
+      if (step) stepZoomStop(-step);
+    }, { capture: true, passive: true });
+
+    // Launch (zoom stops): once the first layout has spread, open the newest card's cluster as its wall (stop 3) instead
+    // of the distant whole-graph view. The cards load a moment after the graph, so it waits for them, up to
+    // LAUNCH_WAIT_MS, and falls back to the whole-graph view. Touching the canvas meanwhile cancels it (cancelPendingFit).
+    const LAUNCH_WAIT_MS = 6000;
+    const LAUNCH_RETRY_MS = 300;
+    const scheduleLaunch = delay => {
+      cancelPendingFit();
+      const started = Date.now() + delay;
+      const attempt = () => {
+        fitTimer = null;
+        if (filterState.view !== 'graph' || focus.node || gallery) return;
+        const home = newestShown();
+        const ready = home && cardField && !filterState.flat && cardField.has(home.id);
+        if (ready) {
+          openClusterDrawer(wallKeyOf(home), { centerId: home.id });
+          if (gallery) return;
+        } else if (Date.now() - started < LAUNCH_WAIT_MS) {
+          fitTimer = setTimeout(attempt, LAUNCH_RETRY_MS);
+          return;
+        }
+        resetCameraView();
+      };
+      fitTimer = setTimeout(attempt, delay);
     };
 
     // A filter change reframes what is left once it has had a moment to settle (typing debounces through scheduleFit).
@@ -5092,7 +5409,8 @@ export default {
       applyGraphFilters();
       // First load in graph view: the layout grows out from the origin, so frame it once it has spread. A reload keeps
       // the layout (keepLayout), so it leaves the camera where it is.
-      if (firstLoad && filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
+      if (firstLoad && filterState.view === 'graph' && !deepLinkId) scheduleLaunch(FIT_SETTLE_MS + 600);
+      else if (firstLoad && filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
       if (deepLinkId) openDeepLink();
     };
 
@@ -5165,16 +5483,9 @@ export default {
     let xrRaycaster = null;
     const xrHovered = new Map();
     const xrPresenting = () => Boolean(xr && xr.isActive());
-    // Where the headset rays come from ('grip' or 'pointer'), remembered per browser; the left or right thumbstick
-    // press switches it in the headset.
-    const XR_RAY_MODE_KEY = 'aetherXrRayMode';
-    const readXrRayMode = () => {
-      try {
-        return localStorage.getItem(XR_RAY_MODE_KEY) || 'pointer';
-      } catch (err) {
-        return 'pointer';
-      }
-    };
+    // Headset rays always come from the pointing pose now; an older build remembered a grip-ray choice here, which kept
+    // the Quest on a ray pointing at the sky. Clear it.
+    try { localStorage.removeItem('aetherXrRayMode'); } catch (err) {}
     // A gallery's arc radius in a headset (graph units; 18 on screens) and the size cards are drawn at in the overview:
     // about XR_OVERVIEW_CARD_M wide, at most XR_OVERVIEW_CARD_MAX times their graph size.
     const XR_GALLERY_MIN_RADIUS = 36;
@@ -5381,10 +5692,6 @@ export default {
         onSelect: xrOnSelect,
         onBack: xrOnBack,
         onEnd: xrOnEnd,
-        rayMode: readXrRayMode(),
-        onRayMode: mode => {
-          try { localStorage.setItem(XR_RAY_MODE_KEY, mode); } catch (err) {}
-        },
         onMenu: () => { if (xrDashboard) xrDashboard.toggle(); },
         onScale: xrOnScale
       });

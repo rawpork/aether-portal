@@ -18,14 +18,14 @@ const RAY_COLOR = 0x00ffcc;
 // Thumbstick: past PRESS it turns once; it must come back under RELEASE before the next turn.
 const STICK_PRESS = 0.7;
 const STICK_RELEASE = 0.3;
-// xr-standard gamepad: the thumbstick press is button 3, A/X is button 4 and B/Y button 5.
+// xr-standard gamepad: A/X is button 4 and B/Y button 5.
 const BACK_BUTTONS = [5];
 const MENU_BUTTON = 4;
-const RAY_MODE_BUTTON = 3;
-// Where a controller's ray comes from: 'pointer' is the platform's own pointing pose (the Quest Browser's laser), the
-// default; 'grip' is the grip pose's forward axis, which on the Quest runs along the handle (the Quest 2 test found it
-// pointing at the sky), kept only as an alternative. Tracked hands always use their pointing pose.
-export const RAY_MODES = ['pointer', 'grip'];
+// Rays always come from the target ray space (renderer.xr.getController: the platform's pointing pose, the Quest
+// Browser's own laser, which runs straight out of the front of the controller). The grip space's -Z axis runs along the
+// handle, so a ray from it points at the sky on the Quest 2; the grip only carries the wrist dashboard. An earlier
+// build could switch rays to the grip and remembered that per browser, which kept Quest installs on the sky-pointing
+// ray after the default changed; that option is gone.
 
 // Which immersive modes this browser can open. Mixed reality comes first when both are there.
 export async function xrSupport() {
@@ -38,10 +38,9 @@ export async function xrSupport() {
 
 // renderer: the graph's WebGLRenderer. camera: the graph's camera, already inside `dolly` (createViewer). frame is
 // called on every XR frame with (time, frame) and must render. pick(ray) returns { distance } (graph units) or null.
-export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, onHover, onSelect, onBack, onEnd, rayMode = 'pointer', onRayMode, onMenu, onScale }) {
+export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, onHover, onSelect, onBack, onEnd, onMenu, onScale }) {
   let session = null;
   let mode = null;
-  let currentRayMode = RAY_MODES.includes(rayMode) ? rayMode : 'pointer';
   const temp = { matrix: new THREE.Matrix4(), origin: new THREE.Vector3(), direction: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
 
   // ---- Rays: one per controller or tracked hand ----
@@ -60,7 +59,6 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     controller.addEventListener('connected', event => {
       hand.source = event.data || null;
       line.visible = true;
-      attachRay(hand);
     });
     controller.addEventListener('disconnected', () => {
       hand.source = null;
@@ -77,24 +75,15 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     return hand;
   });
 
-  // The pose a hand's ray comes from: the grip or the pointing pose for controllers, the pointing pose for tracked
-  // hands (their grip is the palm). The line and cursor live on it, so what is drawn is what is picked.
-  const rayPose = hand => (currentRayMode === 'grip' && hand.source && !hand.source.hand ? hand.grip : hand.controller);
-  const attachRay = hand => {
-    const pose = rayPose(hand);
-    if (hand.line.parent !== pose) pose.add(hand.line);
-    if (hand.cursor.parent !== pose) pose.add(hand.cursor);
-  };
-  const setRayMode = next => {
-    if (!RAY_MODES.includes(next) || next === currentRayMode) return;
-    currentRayMode = next;
-    hands.forEach(attachRay);
-    if (onRayMode) onRayMode(currentRayMode);
-  };
+  // The line and cursor live on the target ray space, so what is drawn is what is picked.
+  hands.forEach(hand => {
+    hand.controller.add(hand.line);
+    hand.controller.add(hand.cursor);
+  });
 
-  // World-space ray from a controller: origin and forward (-Z) direction.
+  // World-space ray from a controller: origin and forward (-Z) direction of its target ray space.
   const rayOf = hand => {
-    temp.matrix.copy(rayPose(hand).matrixWorld);
+    temp.matrix.copy(hand.controller.matrixWorld);
     temp.origin.setFromMatrixPosition(temp.matrix);
     temp.quaternion.setFromRotationMatrix(temp.matrix);
     temp.direction.set(0, 0, -1).applyQuaternion(temp.quaternion).normalize();
@@ -219,10 +208,6 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
         if (pressed && !hand.buttons[index] && onBack) onBack(hand.index);
         hand.buttons[index] = pressed;
       });
-      // Pressing a thumbstick in switches where the rays come from, to compare on the headset.
-      const stickPress = Boolean(gamepad.buttons[RAY_MODE_BUTTON] && gamepad.buttons[RAY_MODE_BUTTON].pressed);
-      if (stickPress && !hand.buttons[RAY_MODE_BUTTON]) setRayMode(currentRayMode === 'grip' ? 'pointer' : 'grip');
-      hand.buttons[RAY_MODE_BUTTON] = stickPress;
     });
   };
 
@@ -307,8 +292,6 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
   return {
     isActive: () => Boolean(session),
     mode: () => mode,
-    rayMode: () => currentRayMode,
-    setRayMode,
     zoomBy,
     scale: () => dolly.scale.x,
     // The grip of the controller or hand in that hand ('left' or 'right'), or null when it is not tracked.

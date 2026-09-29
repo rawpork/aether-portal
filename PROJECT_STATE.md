@@ -102,9 +102,16 @@
 
 ### 3D graph and gallery
 
-- **Opening scope:** the portal opens on the shortest recent time span with at least 5 cards. Zooming out widens the span: day, week, month, groups, then all.
+- **Opening scope:** the portal opens on the shortest recent time span with at least 5 cards. Pulling back from Space widens the span: day, week, month, groups, then all.
+- **Launch view (zoom stops, 2026-09-28):** once the first layout settles, the portal opens the newest card's cluster as its 180° wall (stop 3), not the distant cloud. It waits up to 6 s for the cards, then falls back to the whole-graph view; a deep link still opens its card.
+- **Spatial zoom stops** (`public/js/spatial/zoom-stops.js`): Space (whole cloud), Cluster (one island), Zoom (the 180° wall), Atomic (one card).
+  - **Top-bar slider** next to the depth slider; its labels are clickable too. It is hidden on phones until the vertical rail (step 3) and on the 2D board.
+  - **Stays in sync:** every camera move reports its stop (`noteZoomStop` in `cameraGoTo`).
+  - **Wheel:** on the wall, one flick = one stop (a trackpad's inertia included; the whole flick is kept from the orbit controls). In Space and Cluster the wheel zooms freely and steps on past 0.6× or 1.8× the stop's framing distance. The time span only widens from Space.
+  - **Stop 3 framing:** the camera stands inside the arc, 0.1 rad above the card and looking down, close enough that the card fills 62% of the free width (70% of the height at most). The arc is widened (`arcFraming`) so the next cards' inner edges sit at 88% of the half-width; a wall the layout makes wider still is met by stepping back, down to 50%. Desktop drags slide along the wall and settle on the nearest card; arrows and swipes move the view without opening a card.
+  - **Stop 4 framing:** the camera moves along the card's radius until it fills 86% of the free width (78% of the height), always at least 20% nearer than stop 3. On desktop the group list steps aside (`body.zoom-atomic`) while a card is open on the wall.
 - **Focus:** focusing any card opens its cluster as a 180° gallery. An Outcome Node gets its own gallery with the saves it cites.
-- **Desktop layout:** the group list is a left sidebar and the node card a right sidebar. The camera frames the focused card in the free centre at up to 58% of the free width and 50% of its height (`FOCUS_FILL_WIDE`). Translucent ◀ ▶ arrows sit below the wall.
+- **Desktop layout:** the group list is a left sidebar and the node card a right sidebar. Outside the wall, the camera frames the focused card in the free centre at up to 58% of the free width and 50% of its height (`FOCUS_FILL_WIDE`); on the wall, stop 4's framing applies. Translucent ◀ ▶ arrows sit below the wall.
 - **Phones:**
   - A focused card hides the group list and the filter row.
   - The node card is one bottom sheet with a 24vh peek; swipe up or tap the handle to expand it, swipe down to collapse and then close.
@@ -220,7 +227,8 @@ What was built while you were away. Full notes are in SPATIAL_ARCHITECTURE.md 5.
      - **Show:** the platforms.
      - **Actions:** Back, Recenter, Zoom − / + (factor 1.4), Room on/off (MR only: a dark shell around the head, no session restart), Pin/Unpin, Exit.
    - **Left thumbstick:** zooms continuously (the world grows or shrinks around the head); the right stick snap-turns.
-   - **Rays** are back to the Quest pointing pose by default. The grip pose's forward axis runs along the handle, which pointed at the sky on the Quest 2. A thumbstick press still switches.
+   - **Rays** always come from the target ray space (the Quest pointing pose). The grip pose's forward axis runs along the handle, which pointed at the sky on the Quest 2.
+   - **Rays still pointed at the sky after `975d63a` (Quest 2 retest):** the Quest browser had remembered the old grip choice (`aetherXrRayMode` in localStorage), which overrode the new default. Pushing the left stick in to zoom could also click it and flip the mode. The grip-ray option, its thumbstick toggle and the stored choice are now gone (the key is cleared on load). **Retest:** the laser should run straight out of the front of the controller.
    - **Sprite sizes:** three.js applies a sprite's size in the camera's units, which are metres in a headset. Labels are now sized in metres directly (2.5 cm tall; the 80968464 fix had made them metres high) and card glows are converted to metres.
    - **Timeline:** a new board layout on screens too, with a column per day, week or month to fit the span shown. Drops there change nothing.
    - **Checked** on the emulated Quest 3: every button, both panel placements, and zoom.
