@@ -6,7 +6,7 @@
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
 - **Latest code commit:** `931177a` "feat: zoom stops step 1 - launch into the 180 wall, 4-stop slider, pointer-only rays", pushed to `main`.
-- **Live version:** `7a62b549-b5e8-42bb-9efa-dff5b3d833ea` (deployed 2026-09-29, after `e929537` renamed stop 3 to Horizon).
+- **Live version:** `cc9f4c9d-586c-4c9f-a7f5-81796da09eb1` (deployed 2026-09-29, after `4aad8d3`, the phone thumb wheel).
 - **Zoom stops in progress:** step 1 (desktop and screens) is live. Step 2 is the headset: four placements, a scale glide between them, a ZOOM row on the dashboard, one stop per stick push, and launching into the arc at 1.3 m. Step 3 is phones: a vertical rail and a collapsed group tab at stop 3.
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
@@ -32,6 +32,7 @@
 | `c9933b7` | Headset: AR/VR choice, grip-aligned rays (thumbstick press switches), physical label and proxy sizes; `media.js`. |
 | `cc75296` | Inline video phase 1: play/launch icon buttons and the pinned player on screens. |
 | `975d63a` | Headset spatial dashboard (wrist or pinned panel), Board and Timeline walls in XR, pointer rays back as default, sprite sizes in metres. |
+| `4aad8d3` | Radial controls: the dial engine and the phone thumb wheel (stop 3 renamed Horizon in `e929537`). |
 | `931177a` | Zoom stops step 1: launch into the 180° wall, the 4-stop slider, closer stop 3 framing, wheel stepping; headset rays always from the target ray space. |
 
 ## 2. Codebase configuration
