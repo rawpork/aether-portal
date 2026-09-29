@@ -86,6 +86,16 @@ export function labelAngle(index, display, pitch) {
   return MARK_ANGLE - (index - display) * pitch;
 }
 
+// Bends a point of a flat label (x along the text, y up, origin at its middle) onto a ring of `radius` whose centre is
+// straight below the label, so the text follows the ring's curve: x becomes a distance along the arc, y a distance
+// out from it.
+export function bendPoint(x, y, radius) {
+  if (!(radius > 0)) return { x, y };
+  const angle = x / radius;
+  const r = radius + y;
+  return { x: r * Math.sin(angle), y: r * Math.cos(angle) - radius };
+}
+
 // The angle the dial engine turns by for a point on a ring's face: the engine's positive turn runs clockwise here.
 export function dialAngle(x, y) {
   return -Math.atan2(y, x);
@@ -148,13 +158,29 @@ export function createBarrel({ THREE, dolly, camera, rings, state, onChange, onA
   const labelMesh = (text, em, options = {}) => {
     // The canvas's em is 0.62 of its height, so the plane is sized to give the wanted em.
     const height = em / 0.62;
+    // Enough columns for ring labels to bend smoothly along their ring (bendLabel).
     const mesh = new THREE.Mesh(
-      keep(new THREE.PlaneGeometry(height * 4, height)),
+      keep(new THREE.PlaneGeometry(height * 4, height, 24, 1)),
       keep(new THREE.MeshBasicMaterial({ map: textTexture(text, options), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }))
     );
     mesh.raycast = () => {};
     mesh.renderOrder = 2;
     return mesh;
+  };
+  // Curves a ring label along a ring of `radius` (in the label's own units): its flat shape is kept, and it is only
+  // re-bent when the radius has changed by more than 1% (rings telescope and fold).
+  const bendLabel = (mesh, radius) => {
+    const position = mesh.geometry.attributes.position;
+    if (!mesh.userData.flat) mesh.userData.flat = Float32Array.from(position.array);
+    if (mesh.userData.bent && Math.abs(mesh.userData.bent - radius) < radius * 0.01) return;
+    mesh.userData.bent = radius;
+    const flat = mesh.userData.flat;
+    for (let i = 0; i < position.count; i++) {
+      const point = bendPoint(flat[i * 3], flat[i * 3 + 1], radius);
+      position.setXY(i, point.x, point.y);
+    }
+    position.needsUpdate = true;
+    mesh.geometry.computeBoundingSphere();
   };
 
   // Knurling for a ring's front face: fine radial ridges near its outer edge, drawn once per fill (RingGeometry maps
@@ -366,6 +392,7 @@ export function createBarrel({ THREE, dolly, camera, rings, state, onChange, onA
         label.position.set(mid * Math.cos(a), mid * Math.sin(a), ring.front + 0.0012);
         label.rotation.z = a - MARK_ANGLE;
         label.scale.setScalar(scale);
+        bendLabel(label, mid / scale);
         label.material.color.setHex(index === selected ? COLOR.accent : COLOR.text);
         // Labels fade toward the edge of the readable arc.
         label.material.opacity = Math.min(1, (LABEL_ARC - off) / 0.4);

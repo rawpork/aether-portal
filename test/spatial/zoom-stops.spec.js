@@ -33,7 +33,7 @@ describe("arcFraming", () => {
 
 	it("steps back on a wider wall to keep the neighbours' edges in view, down to the smallest card size", () => {
 		const framed = arcFraming({ ...card, ...desktop, perRow: 5, minRadius: 0 });
-		const wider = arcFraming({ ...card, ...desktop, perRow: 5, minRadius: framed.radius * 1.1 });
+		const wider = arcFraming({ ...card, ...desktop, perRow: 5, minRadius: framed.radius * 1.03 });
 		expect(wider.distance).toBeGreaterThan(framed.distance);
 		const edge = arcNeighbourEdge(wider.radius, wider.distance, Math.PI / 5, 6) / desktop.tanHalfWidth;
 		expect(edge).toBeCloseTo(ARC_EDGE, 6);

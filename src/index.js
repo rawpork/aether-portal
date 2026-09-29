@@ -1357,8 +1357,11 @@ export default {
     #wheel-mode[aria-checked="true"] { color: var(--accent); }
     #wheel-mode[aria-checked="true"] .wheel-mode-knob { left: 10px; background: var(--accent); }
     #wheel-mode:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 1px; }
-    /* Desktop: the card sidebar comes down the right edge, so the wheel moves to its left while a card is open. */
+    /* Desktop: the card sidebar comes down the right edge, so the wheel moves to its left while a card is open. Over the
+       List, Timeline, Board and Carousel it stands in from the corner by the list's scrollbar (--scrollbar-w, measured
+       from script) and a small gap, so the scrollbar and its arrows stay reachable. */
     @media (min-width: 768px) {
+      body.collection-mode #thumb-wheel { right: calc(var(--scrollbar-w, 0px) + 6px); bottom: 6px; }
       body.card-open #thumb-wheel { right: calc(clamp(340px, 27vw, 420px) + 24px); }
       body.collection-mode #collection-view { padding-bottom: 240px; }
     }
@@ -1454,22 +1457,24 @@ export default {
     /* The card following the pointer; above the node card (20), below the top bar (30). */
     .item-card.board-ghost { position: fixed; left: 0; top: 0; z-index: 25; margin: 0; pointer-events: none; transition: none; border-color: var(--accent); box-shadow: 0 8px 20px rgba(0,0,0,0.45); opacity: 0.95; }
     body.board-dragging, body.board-dragging * { cursor: grabbing !important; }
-    /* Carousel view: one card on top of a stack, dragged or swiped sideways to page. Cards past the top one sit
-       lower, smaller and fainter; the previous card waits off-screen left. Transforms are set from script. */
-    .deck-view { display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: hidden; padding: 6px 0 4px; }
-    .deck-stage { position: relative; width: 100%; max-width: 440px; height: clamp(300px, calc(100vh - 270px), 580px); touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+    /* Carousel view: the cards on the curved Horizon wall, dragged or swiped sideways to turn it. The card in front
+       faces the viewer; the ones either side come forward and turn in along the arc and run off the edges. The
+       stage's perspective (the arc's radius) and every card's transform are set from script. */
+    .deck-view { display: flex; flex-direction: column; align-items: center; gap: 12px; overflow: hidden; margin: 0 -16px; padding: 6px 0 4px; }
+    .deck-stage { position: relative; width: 100%; height: clamp(300px, calc(100vh - 270px), 580px); perspective-origin: 50% 50%; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
     .item-card.carousel {
       position: absolute;
       top: 0;
-      left: 0;
-      right: 0;
+      left: calc(50% - min(220px, 38vw));
+      width: min(440px, 76vw);
       bottom: 40px;
+      backface-visibility: hidden;
       gap: 8px;
       /* Opaque so the cards underneath don't show through the top one. */
       background: var(--bg-panel);
       border-color: rgba(0,255,204,0.18);
       box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-      transform-origin: 50% 100%;
+      transform-origin: 50% 50%;
       transition: transform 0.34s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.34s ease, border-color 0.15s ease;
     }
     /* Only the top card casts a shadow, and cards are promoted to their own layers only while dragged: five blurred,
@@ -1478,7 +1483,8 @@ export default {
     .deck-stage.dragging .item-card.carousel { will-change: transform, opacity; }
     .item-card.carousel:hover, .item-card.carousel:focus-visible { background: #0e1a27; }
     .item-card.carousel.active { border-color: var(--accent); }
-    .item-card.carousel.behind { pointer-events: none; }
+    .item-card.carousel.behind { cursor: pointer; }
+    .item-card.carousel.beyond { pointer-events: none; }
     .item-card.carousel img { -webkit-user-drag: none; }
     .item-card.carousel .item-cover { flex: none; }
     .item-card.carousel .item-title { font-size: 17px; }
@@ -1490,7 +1496,7 @@ export default {
     .deck-btn:hover, .deck-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
     .deck-btn:disabled { opacity: 0.3; cursor: default; }
     .deck-counter { min-width: 72px; text-align: center; font-size: 13px; color: #aab3c5; font-variant-numeric: tabular-nums; }
-    .deck-hint { font-size: 11px; color: #6b7385; }
+    .deck-hint { max-width: calc(100% - 32px); font-size: 11px; color: #6b7385; text-align: center; }
     @media (prefers-reduced-motion: reduce) {
       .item-card.carousel { transition: none; }
     }
@@ -2219,7 +2225,6 @@ export default {
       body.card-open #cluster-drawer,
       body.card-open #filter-toolbar,
       body.card-open #gallery-nav { display: none !important; }
-      #gallery-nav { display: none !important; }
       #node-card.dragging { transition: none; }
       #node-card.settling { transition: transform 0.2s ease; }
       .card-handle {
@@ -2303,18 +2308,28 @@ export default {
     .mini-card .link-action, .item-foot .link-action { width: 32px; height: 32px; margin-top: 6px; }
     .item-foot .link-action { margin: 0 0 0 auto; }
     /* The inline player, pinned over the focused card (or centred when there is no card on screen). */
+    /* Pinned over a card, its corners follow the card's own (--media-radius, set per frame from the card's size); an
+       iframe is its own compositing layer and can ignore a parent's rounded clip, so the frame and the player inside
+       are rounded and clipped too. */
     #media-player {
       position: fixed;
       left: 0;
       top: 0;
       z-index: 12;
       overflow: hidden;
+      isolation: isolate;
       border: 1px solid var(--accent-line);
-      border-radius: var(--radius-m);
+      border-radius: var(--media-radius, var(--radius-m));
+      clip-path: inset(0 round var(--media-radius, var(--radius-m)));
       background: #000;
     }
     #media-player[hidden] { display: none; }
     #media-frame, #media-frame iframe, #media-frame video { display: block; width: 100%; height: 100%; border: 0; background: #000; }
+    #media-frame, #media-frame iframe, #media-frame video {
+      overflow: hidden;
+      border-radius: max(0px, calc(var(--media-radius, var(--radius-m)) - 1px));
+      clip-path: inset(0 round max(0px, calc(var(--media-radius, var(--radius-m)) - 1px)));
+    }
     #media-frame video { object-fit: contain; }
     #media-close {
       position: absolute;
@@ -2384,6 +2399,67 @@ export default {
     #legend .legend-badge { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     #legend .legend-name { flex: 1; }
     #legend .legend-count { color: #8a93a6; font-variant-numeric: tabular-nums; }
+    #legend .legend-active { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; letter-spacing: 0; }
+    #legend .legend-active[hidden] { display: none; }
+    /* Phones: the category list is a compact pill in the corner (a count badge shows how many are highlighted); open, it
+       is one row of category chips just above the pill, scrolled sideways, clear of the control wheel. */
+    @media (max-width: 767px) {
+      #legend {
+        left: 10px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        min-width: 0;
+        max-width: calc(100vw - 196px);
+        max-height: none;
+        overflow: visible;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+      }
+      #legend .legend-title {
+        width: max-content;
+        height: 34px;
+        padding: 0 12px;
+        box-sizing: border-box;
+        border: var(--hairline);
+        border-radius: 17px;
+        background: var(--bg-panel);
+        color: #aab3c5;
+      }
+      #legend[open] .legend-title { margin-bottom: 0; border-color: var(--accent-line); color: var(--accent); }
+      #legend .legend-hint { display: none; }
+      #legend-items {
+        position: absolute;
+        left: 0;
+        bottom: calc(100% + 6px);
+        display: flex;
+        gap: 6px;
+        width: calc(100vw - 196px);
+        padding: 1px 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+        mask-image: linear-gradient(to right, #000 82%, transparent);
+      }
+      #legend-items::-webkit-scrollbar { display: none; }
+      #legend .legend-item {
+        flex: none;
+        width: auto;
+        height: 32px;
+        margin: 0;
+        padding: 0 11px;
+        gap: 6px;
+        border: var(--hairline);
+        border-radius: 16px;
+        background: var(--bg-panel);
+        white-space: nowrap;
+      }
+      #legend .legend-item:last-child { margin-right: 28px; }
+      #legend .legend-item.active { border-color: var(--accent); background: #0c2a2a; color: var(--accent); }
+      #legend .legend-item.active .legend-count { color: var(--accent); }
+      #legend .legend-item.dimmed { opacity: 0.6; }
+      #legend .legend-badge { width: 8px; height: 8px; }
+    }
     /* Tablets and small laptops: icon-only Telegram and view buttons (tooltips keep the names), so the search
        box keeps its room and the top bar never scrolls. */
     @media (max-width: 900px) {
@@ -2681,7 +2757,7 @@ export default {
   </div>
 
   <details id="legend" open>
-    <summary class="legend-title">Categories · tap to highlight</summary>
+    <summary class="legend-title"><span class="legend-label">Categories</span><span class="legend-hint"> · tap to highlight</span><span id="legend-active" class="legend-active" hidden></span></summary>
     <div id="legend-items"></div>
   </details>
 
@@ -2958,8 +3034,11 @@ export default {
       if (!gallery.ids.has(String(node.id))) return 1;
       return focus.node && focus.node.id !== node.id ? 0.15 : 0;
     };
+    // The card whose video is playing inline on the wall (Horizon): it stays lifted like a hovered card, so it holds
+    // still under its player while the pointer is over the video (and so off the canvas).
+    let playingCardId = null;
     const getCardTargets = node => ({
-      heat: focus.node && focus.node.id === node.id ? 1 : hover.id === node.id ? 0.5 : 0,
+      heat: focus.node && focus.node.id === node.id ? 1 : hover.id === node.id || String(node.id) === playingCardId ? 0.5 : 0,
       dim: gallery ? getGalleryDim(node) : focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1),
       weight: hubWeights.get(node.id) || 0
     });
@@ -3686,7 +3765,7 @@ export default {
     // Group state (SPATIAL_ARCHITECTURE.md 2.1): frames a cluster's bounding sphere from the current direction
     // (straight on in 2D), never closer than the node framing.
     const flyToBounds = (center, radius, cluster = null) => {
-      const distance = Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, 1.25));
+      const distance = Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, CLUSTER_FIT_MARGIN));
       clusterFrame = cluster ? { key: cluster, distance } : null;
       cameraGoTo({
         target: { x: center.x, y: center.y, z: center.z },
@@ -3786,8 +3865,9 @@ export default {
 
     // Node state: close framing on one card, shifted so it sits in the part of the view the node card does not cover.
     // In the gallery (stop 4, Atomic) the camera moves along the card's radius toward the wall until the card, grown
-    // 1.15 and slid a little toward the viewer, fills ATOMIC_FILL of the part of the screen the panels leave free, and
-    // always comes at least ATOMIC_CLOSER nearer than stop 3 (on desktop the details panel narrows the free part).
+    // 1.15 and slid a little toward the viewer, fills ATOMIC_FILL of the part of the screen the panels and the top bar
+    // leave free (getWallView; on desktop the details panel narrows it). It is never pushed nearer than that fit, which
+    // put the top of the card under the top bar.
     const flyToNode = node => {
       if (![node.x, node.y, node.z].every(Number.isFinite)) return;
       const cover = getCardCover();
@@ -3803,11 +3883,11 @@ export default {
           const spatial = window.AetherSpatial;
           const vFov = cameraFov();
           const hFov = 2 * Math.atan(Math.tan(vFov / 2) * Graph.camera().aspect);
-          const free = getFreeView(cover);
-          const fits = Math.min(ATOMIC_CLOSER * (gallery.arcDistance || arcDistance()), Math.max(
+          const free = getWallView(cover);
+          const fits = Math.max(
             (spatial.CARD_WIDTH * 1.15) / (ATOMIC_FILL.width * free.width * 2 * Math.tan(hFov / 2)),
             (spatial.CARD_HEIGHT * 1.15) / (ATOMIC_FILL.height * free.height * 2 * Math.tan(vFov / 2))
-          ));
+          );
           const slide = Math.min(ATOMIC_SLIDE * fits, 0.5 * gallery.radius);
           cardField.setGallerySlide(slide);
           cameraGoTo({ ...arcPose(gallery.look, fits + slide), state: 'node', detail: node.id });
@@ -3857,14 +3937,16 @@ export default {
       document.body.classList.add('drawer-open');
       legend.style.display = 'none';
       if (!gallery || gallery.key !== key) {
-        if (gallery) exitGallery();
+        // The new wall flies the camera itself, so leaving the old one does not fly to its cluster first.
+        if (gallery) exitGallery({ fly: false });
         enterGallery(key, options.centerId || null);
       } else if (options.centerId) {
         refreshGallery(options.centerId);
       }
     };
 
-    const closeClusterDrawer = () => {
+    // options.fly false: leaving the wall does not fly to its cluster (the caller moves the camera).
+    const closeClusterDrawer = (options = {}) => {
       if (!clusterDrawer.classList.contains('open')) return;
       clusterDrawer.classList.remove('open');
       document.body.classList.remove('drawer-open');
@@ -3872,12 +3954,13 @@ export default {
       if (hover.source === 'drawer') setHover(null);
       drawerCluster = null;
       if (nodeCard.style.display !== 'block') legend.style.display = 'block';
-      exitGallery();
+      exitGallery({ fly: options.fly !== false });
     };
 
     // Empty canvas resets everything: drawer, card, highlight, and the idle orbit restarts right away.
-    const resetSelection = () => {
-      closeClusterDrawer();
+    // options.fly false: a wall that closes does not fly to its cluster (the caller moves the camera).
+    const resetSelection = (options = {}) => {
+      closeClusterDrawer(options);
       hideNodeCard();
       if (filterState.highlighted.size) {
         filterState.highlighted = new Set();
@@ -4058,7 +4141,27 @@ export default {
       // Timed from the release, not from this (animation-frame delayed) callback.
       const point = lastTapUp.point || (lastPointer ? { x: lastPointer.x, y: lastPointer.y } : null);
       lastBackgroundTap = { time: lastTapUp.time || Date.now(), point, highlighted: new Set(filterState.highlighted) };
-      resetSelection();
+      // Something was selected (a card, a group or its wall, a framed cluster, a highlight): deselecting also lets go of
+      // the group as the orbit's pivot, so turning the view afterwards turns the whole scene, not the old group.
+      const selected = Boolean(gallery || focus.node || drawerCluster || clusterFrame || filterState.highlighted.size) || zoomStop === 'cluster';
+      resetSelection({ fly: false });
+      if (selected) recentreOrbit();
+    };
+    // Moves the orbit's pivot back to the scene centre (the origin, where the cluster anchors are spread around) and
+    // unselects the framed group, keeping the camera where it is (stepped back if it is inside the cloud's middle), so
+    // the view turns smoothly to the centre.
+    const recentreOrbit = () => {
+      if (filterState.view !== 'graph' || filterState.flat || xrPresenting()) return;
+      clusterFrame = null;
+      const camera = Graph.camera().position;
+      const length = camera.length() || 1;
+      cameraGoTo({
+        target: { x: 0, y: 0, z: 0 },
+        distance: Math.max(length, getMacroFraming().distance * 0.5),
+        theta: Math.atan2(camera.x, camera.z),
+        phi: Math.acos(Math.min(1, Math.max(-1, camera.y / length))),
+        state: 'macro'
+      });
     };
 
     // Slow idle orbit that yields to any interaction and resumes after a quiet spell.
@@ -4451,7 +4554,10 @@ export default {
     // and a WebXR-ready viewer applies them (the camera sits in a dolly group). Grabbing the canvas mid-flight hands
     // the camera straight back to the orbit controls. Until the spatial modules load, moves use the library's tween.
     const NODE_DISTANCE = 90;
-    const GROUP_MIN_DISTANCE = 60;
+    const GROUP_MIN_DISTANCE = 42;
+    // Stop 2 (Cluster) frames the cluster's bounding sphere at this margin: under 1, so its cards fill the view and the
+    // outer ones run off the edges, rather than a small island far away.
+    const CLUSTER_FIT_MARGIN = 0.85;
     // A focused card fills at most this share of the free part of the screen (width and height): big enough to read on
     // the card, with the arc around it still in view.
     const FOCUS_FILL_WIDE = { width: 0.58, height: 0.5 };
@@ -4705,9 +4811,22 @@ export default {
     // slides this share of its framing distance.
     const ARC_HOVER_SLIDE = 0.1;
     const ATOMIC_SLIDE = 0.15;
-    // Stop 4: the card fills most of the free part of the view, and stands at most this share of stop 3's distance.
-    const ATOMIC_FILL = { width: 0.86, height: 0.78 };
-    const ATOMIC_CLOSER = 0.8;
+    // Stop 4: the card fills most of the free part of the view.
+    const ATOMIC_FILL = { width: 0.88, height: 0.86 };
+    // Room kept between the top bar (and filter row) and the top of a card on the wall, in pixels.
+    const WALL_TOP_GAP_PX = 14;
+    // The part of the view a card on the wall is framed in (stops 3 and 4): what the panels leave free, and on wide
+    // screens also below the top bar and filter row, which float over the canvas (on phones the band between the sheets
+    // already starts below them). Same shape as getFreeView: shares of the width and height, centre in device units.
+    const getWallView = (cover = getCardCover()) => {
+      const free = getFreeView(cover);
+      if (compactLayout.matches) return free;
+      const canvasHeight = Graph.renderer().domElement.clientHeight || window.innerHeight;
+      const top = getTopChrome() + WALL_TOP_GAP_PX / canvasHeight;
+      const upper = Math.min(free.centreY + free.height, 1 - 2 * top);
+      const lower = free.centreY - free.height;
+      return { ...free, height: Math.max(0.1, (upper - lower) / 2), centreY: (upper + lower) / 2 };
+    };
     const lockGalleryControls = on => {
       const controls = Graph.controls();
       if (on && !savedControls) {
@@ -4731,7 +4850,7 @@ export default {
     // minRadius keeps a wall that is already up from shrinking.
     const arcFramingFor = (count, minRadius = 0) => {
       const spatial = window.AetherSpatial;
-      const free = getFreeView(getCardCover());
+      const free = getWallView();
       const tanV = Math.tan(cameraFov() / 2);
       const tanH = tanV * Graph.camera().aspect;
       const perRow = Math.max(1, Math.min(count, GALLERY_PER_ROW));
@@ -4748,7 +4867,7 @@ export default {
     // Camera goal looking at the wall at look ({ yaw, y }) from distance, shifted so that point lands in the middle of
     // the part of the screen the panels leave free (between the sidebars, or mid-way up the band between phone sheets).
     const arcPose = (look, distance) => {
-      const free = getFreeView(getCardCover());
+      const free = getWallView();
       const tanV = Math.tan(cameraFov() / 2);
       const tanH = tanV * Graph.camera().aspect;
       return window.AetherSpatial.wallPose({
@@ -4947,7 +5066,13 @@ export default {
       // on top of a card's picture.
       const free = getFreeView(getCardCover());
       const centreX = canvas.left + canvas.width * (1 + free.centreX) / 2;
-      const freeBottom = canvas.top + canvas.height * (1 - free.centreY + free.height) / 2;
+      let freeBottom = canvas.top + canvas.height * (1 - free.centreY + free.height) / 2;
+      // Phones: the group list's small tab sits in the bottom-left corner (it does not count as a covering sheet), so
+      // the arrows stand just above it.
+      if (compactLayout.matches && clusterDrawer.classList.contains('open') && !clusterDrawer.classList.contains('expanded')) {
+        const tab = clusterDrawer.getBoundingClientRect();
+        if (tab.height) freeBottom = Math.min(freeBottom, tab.top - 4 + GALLERY_NAV_BOTTOM_COMPACT);
+      }
       const top = Math.round(Math.max(canvas.top + GALLERY_NAV_MIN_TOP, freeBottom - (compactLayout.matches ? GALLERY_NAV_BOTTOM_COMPACT : GALLERY_NAV_BOTTOM) - GALLERY_NAV_SIZE)) + 'px';
       galleryPrevButton.style.top = top;
       galleryNextButton.style.top = top;
@@ -4958,27 +5083,77 @@ export default {
     const startGalleryNav = () => {
       if (!galleryNavFrame) galleryNavFrame = requestAnimationFrame(placeGalleryNav);
     };
-    // Phones: a quick horizontal swipe on the 3D view snaps to the next (swipe left) or previous (swipe right) card
-    // along the wall.
-    const GALLERY_SWIPE_PX = 45;
-    const GALLERY_SWIPE_MS = 1000;
-    let gallerySwipe = null;
+    // ---- Group swipes (2026-09-29): in Cluster, Horizon and Atomic a sideways swipe on the 3D view flies in the next
+    // (swipe left) or previous (swipe right) group at the same stop, with no zoom out: the next island framed, its wall
+    // put up, or its newest card opened on its wall. Groups run in order around the scene's vertical axis, so going on
+    // swiping one way tours every group and comes back round. A double tap on empty space, or turning the Scale ring,
+    // leaves as before. Cards within a wall step with the arrows below it, the keyboard, a desktop drag along the wall,
+    // or a swipe on the open card's sheet (phones).
+    // Touch: a quick, clearly sideways flick (a slower one-finger drag still turns the view in Cluster). A mouse: a
+    // sideways drag in Atomic, where dragging does nothing else (in Horizon it slides along the wall; in Cluster it
+    // orbits). A trackpad: a two-finger sideways swipe, at any of the three stops (the wheel handler below).
+    const GROUP_SWIPE_PX = 60;
+    const GROUP_SWIPE_MS = 450;
+    const GROUP_SWIPE_STOPS = ['cluster', 'horizon', 'atomic'];
+    // The groups with cards on screen, in order of their direction from the scene's centre (a turn about the vertical).
+    const orderedGroupKeys = () => {
+      const keys = [];
+      territories.entries.forEach((entry, key) => {
+        if (entry.center && newestIn(key)) keys.push({ key, angle: Math.atan2(entry.center.x, entry.center.z) });
+      });
+      return keys.sort((a, b) => a.angle - b.angle || a.key.localeCompare(b.key)).map(item => item.key);
+    };
+    // The group the view is on: its wall, the open card's, or the framed cluster.
+    const currentGroupKey = () => gallery ? gallery.key : focus.node ? wallKeyOf(focus.node) : clusterFrame ? clusterFrame.key : null;
+    const swipeGroup = delta => {
+      if (filterState.view !== 'graph' || filterState.flat || xrPresenting() || !GROUP_SWIPE_STOPS.includes(zoomStop)) return false;
+      const keys = orderedGroupKeys();
+      if (!keys.length) return false;
+      const current = currentGroupKey();
+      const index = keys.indexOf(current);
+      // From an Outcome's own wall (not an island), the first group in the order.
+      const key = index < 0 ? keys[0] : keys[((index + delta) % keys.length + keys.length) % keys.length];
+      if (key === current) return false;
+      cancelPendingFit();
+      const newest = newestIn(key);
+      if (zoomStop === 'cluster') {
+        if (focus.node) hideNodeCard();
+        flyToCluster(key);
+      } else if (zoomStop === 'horizon') {
+        if (focus.node) hideNodeCard();
+        openClusterDrawer(key, { centerId: newest ? newest.id : null });
+      } else if (newest) {
+        focusCard(newest, { centre: true });
+      }
+      return true;
+    };
+    let groupSwipe = null;
     graphElement.addEventListener('pointerdown', event => {
-      gallerySwipe = gallery && compactLayout.matches && event.isPrimary ? { x: event.clientX, y: event.clientY, time: Date.now() } : null;
+      // A second finger (a pinch) is never a swipe.
+      if (!event.isPrimary) {
+        groupSwipe = null;
+        return;
+      }
+      const touch = event.pointerType === 'touch' || event.pointerType === 'pen';
+      const eligible = GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && !xrPresenting()
+        && (touch || (event.pointerType === 'mouse' && event.button === 0 && zoomStop === 'atomic'));
+      groupSwipe = eligible ? { x: event.clientX, y: event.clientY, time: Date.now(), touch } : null;
     }, { capture: true, passive: true });
     graphElement.addEventListener('pointerup', event => {
-      const start = gallerySwipe;
-      gallerySwipe = null;
-      if (!start || !gallery) return;
+      const start = groupSwipe;
+      groupSwipe = null;
+      // A desktop drag along the wall is a slide, not a swipe.
+      if (!start || !event.isPrimary || (arcDrag && arcDrag.moved)) return;
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
-      if (Date.now() - start.time > GALLERY_SWIPE_MS || Math.abs(dx) < GALLERY_SWIPE_PX || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      if ((start.touch && Date.now() - start.time > GROUP_SWIPE_MS) || Math.abs(dx) < GROUP_SWIPE_PX || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+      if (!swipeGroup(dx < 0 ? 1 : -1)) return;
       ignoreClickUntil = Date.now() + 500;
-      stepGallery(dx < 0 ? 1 : -1);
+      lastBackgroundTap = null;
     }, { capture: true, passive: true });
-    graphElement.addEventListener('pointercancel', () => { gallerySwipe = null; }, { passive: true });
+    graphElement.addEventListener('pointercancel', () => { groupSwipe = null; }, { passive: true });
 
-    const exitGallery = () => {
+    const exitGallery = (options = {}) => {
       if (!gallery) return;
       const key = gallery.key;
       gallery = null;
@@ -4987,7 +5162,7 @@ export default {
       Graph.linkVisibility(!filterState.flat);
       lockGalleryControls(false);
       if (territories.group) territories.group.visible = !focus.node && !filterState.flat;
-      if (filterState.view === 'graph') flyToCluster(key);
+      if (filterState.view === 'graph' && options.fly !== false) flyToCluster(key);
     };
 
     // Universal focus (2026-09-27): selecting a card in the 3D graph, in any time scope, opens its cluster as the
@@ -5210,8 +5385,20 @@ export default {
     const WHEEL_GESTURE_MS = 250;
     let wheelStepper = null;
     let wheelGestureUntil = 0;
+    // A trackpad's two-finger sideways swipe changes group (Cluster, Horizon, Atomic), one per flick like the stops.
+    let groupWheelStepper = null;
+    let groupWheelUntil = 0;
     window.addEventListener('wheel', event => {
       if (xrPresenting() || !window.AetherSpatial || !graphElement.contains(event.target)) return;
+      const sideways = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+      if (GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && (sideways || performance.now() < groupWheelUntil) && event.deltaX) {
+        event.stopPropagation();
+        groupWheelUntil = performance.now() + WHEEL_GESTURE_MS;
+        if (!groupWheelStepper) groupWheelStepper = window.AetherSpatial.createWheelStepper({ threshold: 90, idleMs: WHEEL_GESTURE_MS });
+        const step = groupWheelStepper(event.deltaX, performance.now());
+        if (step) swipeGroup(step);
+        return;
+      }
       const now = performance.now();
       if (!gallery && now > wheelGestureUntil) return;
       event.stopPropagation();
@@ -5349,6 +5536,8 @@ export default {
         item.addEventListener('click', () => {
           const highlighting = !filterState.highlighted.has(category);
           toggleHighlight(category);
+          // The last highlight off: its cluster stops being the orbit's pivot.
+          if (!highlighting && !filterState.highlighted.size && clusterFrame && !gallery && !focus.node) recentreOrbit();
           if (!highlighting || filterState.view !== 'graph') return;
           cancelPendingFit();
           flyToCategory(category);
@@ -5356,6 +5545,9 @@ export default {
         return item;
       }));
       legend.style.visibility = categories.length ? 'visible' : 'hidden';
+      const legendActive = document.getElementById('legend-active');
+      legendActive.hidden = !filterState.highlighted.size;
+      legendActive.textContent = String(filterState.highlighted.size);
     };
 
     // ---- Connection Depth slider (PROJECT_STATE.md step 2). Moving it re-filters the wires at once (3D, gallery and the
@@ -5845,6 +6037,16 @@ export default {
         event.stopPropagation();
         if (!link.dataset.play) return;
         event.preventDefault();
+        // On the wall (Horizon) with no card open, the view turns to the card and it plays there, without zooming in.
+        if (filterState.view === 'graph' && gallery && !focus.node && gallery.ids.has(String(node.id))) {
+          const look = lookAtSlot(node.id);
+          if (look) {
+            gallery.look = look;
+            flyToArc();
+          }
+          playMedia(node, { wall: true });
+          return;
+        }
         selectNode(node, { fly: true });
         playMedia(node);
       });
@@ -5853,12 +6055,17 @@ export default {
     const stopMedia = () => {
       if (!playing) return;
       playing = null;
+      if (playingCardId) {
+        playingCardId = null;
+        syncCards();
+      }
       mediaFrame.replaceChildren();
       mediaPlayer.hidden = true;
       cancelAnimationFrame(mediaFrameLoop);
       mediaFrameLoop = 0;
     };
-    const playMedia = node => {
+    // options.wall: started on the Horizon wall with no card open, so it plays pinned over the card where it stands.
+    const playMedia = (node, options = {}) => {
       const media = window.AetherSpatial && window.AetherSpatial.parseMedia(node.url);
       if (!media || xrPresenting()) {
         window.open(node.url, '_blank', 'noopener');
@@ -5882,7 +6089,11 @@ export default {
         element.referrerPolicy = 'strict-origin-when-cross-origin';
       }
       mediaFrame.replaceChildren(element);
-      playing = { id: String(node.id), view: filterState.view };
+      playing = { id: String(node.id), view: filterState.view, wall: Boolean(options.wall) };
+      if (playing.wall) {
+        playingCardId = playing.id;
+        syncCards();
+      }
       mediaPlayer.hidden = false;
       placeMedia();
     };
@@ -5916,15 +6127,20 @@ export default {
     const placeMedia = () => {
       mediaFrameLoop = 0;
       if (!playing) return;
-      // Stops with its card: another card focused, the card closed, or the view changed.
-      if (filterState.view !== playing.view || (playing.pinned && (!focus.node || String(focus.node.id) !== playing.id))) {
+      // The card it plays over: the open card, or (started on the Horizon wall) its card on the wall.
+      const node = focus.node && String(focus.node.id) === playing.id ? focus.node
+        : playing.wall && !focus.node && gallery && gallery.ids.has(playing.id)
+          ? Graph.graphData().nodes.find(item => String(item.id) === playing.id) || null
+          : null;
+      // Stops with its card: another card focused, the card closed or off the wall, or the view changed.
+      if (filterState.view !== playing.view || (playing.pinned && !node)) {
         stopMedia();
         return;
       }
-      const node = focus.node && String(focus.node.id) === playing.id ? focus.node : null;
       const rect = filterState.view === 'graph' && node ? cardFaceRect(node) : null;
       let box;
-      if (rect && rect.width >= MEDIA_MIN_WIDTH) {
+      const onCard = Boolean(rect && rect.width >= MEDIA_MIN_WIDTH);
+      if (onCard) {
         playing.pinned = true;
         box = rect;
       } else {
@@ -5936,6 +6152,10 @@ export default {
       box.left = Math.min(Math.max(8, box.left), Math.max(8, window.innerWidth - box.width - 8));
       box.top = Math.min(Math.max(8, box.top), Math.max(8, window.innerHeight - box.height - 8));
       Object.assign(mediaPlayer.style, { left: Math.round(box.left) + 'px', top: Math.round(box.top) + 'px', width: Math.round(box.width) + 'px', height: Math.round(box.height) + 'px' });
+      // Pinned, its corners match the card's (the same share of its width); floating, the panels' radius.
+      const spatial = window.AetherSpatial;
+      if (onCard && spatial && spatial.CARD_RADIUS) mediaPlayer.style.setProperty('--media-radius', (box.width * spatial.CARD_RADIUS / spatial.CARD_WIDTH).toFixed(1) + 'px');
+      else mediaPlayer.style.removeProperty('--media-radius');
       mediaFrameLoop = requestAnimationFrame(placeMedia);
     };
     // The card link in the node card plays in place instead of opening a tab when the video plays inside Aether.
@@ -5945,8 +6165,10 @@ export default {
       playMedia(focus.node);
     });
     // A tap on the thumbnail band of the focused card, on its 3D face, plays its video. Returns whether it did.
+    // On the Horizon wall (no card open) a tap on any wall card's thumbnail band plays it there, with no zoom to Atomic.
     const playFromFace = node => {
-      if (!focus.node || focus.node !== node || !isPlayableLink(node.url) || !lastPointer || !THREE) return false;
+      const onWall = !focus.node && gallery && gallery.ids.has(String(node.id)) && !xrPresenting();
+      if (!(onWall || focus.node === node) || !isPlayableLink(node.url) || !lastPointer || !THREE) return false;
       const root = node.__threeObj;
       if (!root) return false;
       const rect = Graph.renderer().domElement.getBoundingClientRect();
@@ -5960,7 +6182,7 @@ export default {
       const y = (1 - hit.uv.y) * spatial.FACE_HEIGHT;
       const band = spatial.MEDIA_BAND;
       if (x < band.x || x > band.x + band.w || y < band.y || y > band.y + band.h) return false;
-      playMedia(node);
+      playMedia(node, { wall: onWall });
       return true;
     };
 
@@ -7842,13 +8064,17 @@ export default {
       if (button && focus.node) moveNodeToStatus(focus.node, button.dataset.status);
     });
 
-    // Carousel view: the visible nodes (in the list sort) as a card deck. deck.id is the top card and survives
-    // re-renders and view changes, so the deck reopens where it was, or on the node selected in the graph.
-    const DECK_BEHIND = 3;
-    const DECK_STEP_PX = 12;
-    const DECK_SCALE_STEP = 0.05;
-    const DECK_FADE_STEP = 0.18;
-    const DECK_TILT_DEG = 8;
+    // Carousel view: the visible nodes (in the list sort) on a curved wall, the same 180-degree Horizon arc as the 3D
+    // wall: the viewer stands at the arc's centre (the stage's perspective is the arc's radius), the card in front
+    // faces them square on, and the cards either side come forward and turn in toward them along the curve, running off
+    // the edges of the screen. deck.id is the card in front and survives re-renders and view changes, so the carousel
+    // reopens where it was, or on the node selected in the graph.
+    // Cards either side kept on the arc (and one more each way, faded out, to slide in while dragging).
+    const DECK_SIDE = 3;
+    // Slots on the arc per half turn (as on the 3D wall), and the card plus its gap along it.
+    const DECK_PER_ARC = 7;
+    const DECK_PITCH = 1.08;
+    const DECK_FADE_STEP = 0.28;
     const DECK_DRAG_START_PX = 8;
     // A mouse, pen or headset laser pointer jitters and presses deliberately: a drag needs a longer, clearly sideways
     // move, and a flick a longer one, so a click is never read as a tiny drag (which moved the cards under the pointer
@@ -7859,24 +8085,36 @@ export default {
     const DECK_FLICK_PX = 30;
     const DECK_FLICK_SPEED = 0.45;
     const DECK_CLICK_GUARD_MS = 400;
-    const deck = { nodes: [], index: 0, id: null, cards: new Map(), stage: null, counter: null, prev: null, next: null, throwX: 0, suppressClickUntil: 0 };
+    const deck = { nodes: [], index: 0, id: null, cards: new Map(), stage: null, counter: null, prev: null, next: null, radius: 1, step: 0, slidePx: 1, suppressClickUntil: 0 };
     let deckDrag = null;
 
-    // depth 0 is the top card, 1..DECK_BEHIND the stack under it, DECK_BEHIND + 1 an invisible slot at the back;
-    // fractional depths are used mid-drag. x slides a card sideways and tilts it with the distance.
-    const placeDeckCard = (card, depth, x) => {
-      const width = deck.stage.clientWidth || 1;
-      const opacity = depth <= DECK_BEHIND ? 1 - DECK_FADE_STEP * depth : (1 - DECK_FADE_STEP * DECK_BEHIND) * Math.max(0, DECK_BEHIND + 1 - depth);
-      card.style.transform = 'translate(' + x + 'px, ' + (depth * DECK_STEP_PX) + 'px) rotate(' + (x / width * DECK_TILT_DEG) + 'deg) scale(' + (1 - DECK_SCALE_STEP * depth) + ')';
-      card.style.opacity = String(opacity);
+    // The arc for the stage's size: its radius (px) and the angle between slots. The viewer's distance (the stage's
+    // perspective) is the radius, so the card in front is drawn at its own size.
+    const measureDeckArc = () => {
+      const card = deck.stage.querySelector('.item-card.carousel');
+      const width = (card && card.offsetWidth) || Math.min(440, deck.stage.clientWidth * 0.78);
+      deck.step = Math.PI / DECK_PER_ARC;
+      deck.radius = (width * DECK_PITCH) / deck.step;
+      // How far a drag moves the wall by one slot: the next card's centre on screen (a tangent, seen from the centre).
+      deck.slidePx = deck.radius * Math.tan(deck.step);
+      deck.stage.style.perspective = Math.round(deck.radius) + 'px';
+    };
+    // position: the card's slot relative to the card in front (0), fractional mid-drag. A card at angle a on the arc
+    // stands radius * sin(a) across and radius * (1 - cos(a)) nearer, turned by -a to face the centre.
+    const placeDeckCard = (card, position) => {
+      const angle = position * deck.step;
+      const across = deck.radius * Math.sin(angle);
+      const nearer = deck.radius * (1 - Math.cos(angle));
+      const distance = Math.abs(position);
+      card.style.transform = 'translate3d(' + across.toFixed(1) + 'px, 0, ' + nearer.toFixed(1) + 'px) rotateY(' + (-angle * 180 / Math.PI).toFixed(2) + 'deg)';
+      card.style.opacity = String(distance <= DECK_SIDE ? 1 - DECK_FADE_STEP * Math.max(0, distance - 1) : 0);
+      card.style.zIndex = String(100 - Math.round(distance * 10));
     };
 
     const layoutDeck = () => {
       if (!deck.stage || !deck.stage.isConnected) return;
-      // Far enough left that a card with the previous offset is fully off-screen.
-      deck.throwX = deck.stage.getBoundingClientRect().right + 24;
       const wanted = new Map();
-      for (let offset = -1; offset <= DECK_BEHIND + 1; offset++) {
+      for (let offset = -DECK_SIDE - 1; offset <= DECK_SIDE + 1; offset++) {
         const node = deck.nodes[deck.index + offset];
         if (node) wanted.set(node.id, { node, offset });
       }
@@ -7895,36 +8133,23 @@ export default {
         }
         card.dataset.offset = String(offset);
         card.classList.toggle('behind', offset !== 0);
+        card.classList.toggle('beyond', Math.abs(offset) > DECK_SIDE);
         card.tabIndex = offset === 0 ? 0 : -1;
         card.setAttribute('aria-hidden', String(offset !== 0));
-        // The previous card sits above the stack so it slides back in over the top one.
-        card.style.zIndex = String(offset < 0 ? 20 : 10 - offset);
-        if (offset < 0) placeDeckCard(card, 0, -deck.throwX);
-        else placeDeckCard(card, offset, 0);
       });
+      measureDeckArc();
+      deck.cards.forEach(card => placeDeckCard(card, Number(card.dataset.offset)));
       deck.counter.textContent = (deck.index + 1) + ' / ' + deck.nodes.length;
       deck.prev.disabled = deck.index <= 0;
       deck.next.disabled = deck.index >= deck.nodes.length - 1;
     };
 
-    // Mid-drag: left pulls the top card with the finger and lifts the stack; right slides the previous card
-    // back in and pushes the stack down. Past either end the top card only gives a little.
+    // Mid-drag the whole wall turns with the finger along the arc, one slot per slidePx; past either end it only gives
+    // a little.
     const dragDeck = dx => {
       const atEnd = dx < 0 ? deck.index >= deck.nodes.length - 1 : deck.index <= 0;
-      const progress = Math.min(Math.abs(dx) / (deck.stage.clientWidth || 1), 1);
-      deck.cards.forEach(card => {
-        const offset = Number(card.dataset.offset);
-        if (atEnd) {
-          if (offset === 0) placeDeckCard(card, 0, dx * 0.25);
-        } else if (dx < 0) {
-          if (offset === 0) placeDeckCard(card, 0, dx);
-          else if (offset > 0) placeDeckCard(card, offset - progress, 0);
-        } else if (offset < 0) {
-          placeDeckCard(card, 0, -deck.throwX * (1 - progress));
-        } else {
-          placeDeckCard(card, offset + progress, 0);
-        }
-      });
+      const shift = Math.max(-1, Math.min(1, (atEnd ? dx * 0.25 : dx) / deck.slidePx));
+      deck.cards.forEach(card => placeDeckCard(card, Number(card.dataset.offset) + shift));
     };
 
     const setDeckIndex = index => {
@@ -7961,7 +8186,7 @@ export default {
       deck.stage.classList.remove('dragging');
       deck.suppressClickUntil = performance.now() + DECK_CLICK_GUARD_MS;
       const flick = Math.abs(drag.dx) > drag.flickPx && Math.abs(drag.speed) > DECK_FLICK_SPEED && Math.sign(drag.speed) === Math.sign(drag.dx);
-      if (!cancelled && (flick || Math.abs(drag.dx) > deck.stage.clientWidth * DECK_COMMIT_SHARE)) stepDeck(drag.dx < 0 ? 1 : -1);
+      if (!cancelled && (flick || Math.abs(drag.dx) > deck.slidePx * DECK_COMMIT_SHARE)) stepDeck(drag.dx < 0 ? 1 : -1);
       else layoutDeck();
     };
 
@@ -8000,7 +8225,7 @@ export default {
       controls.append(prev, counter, next);
       const hint = document.createElement('div');
       hint.className = 'deck-hint';
-      hint.textContent = 'Swipe or use ← → · tap the card for details';
+      hint.textContent = 'Swipe or tap a side card to turn · tap the front card for details';
       view.append(stage, controls, hint);
       Object.assign(deck, { stage, counter, prev, next });
 
@@ -8041,16 +8266,23 @@ export default {
           dragDeck(deckDrag.dx);
         });
       });
-      // Capture lost without a pointerup (the browser took the pointer): the drag ends where it is.
-      stage.addEventListener('lostpointercapture', event => endDeckDrag(event, true));
+      // Capture lost without a pointerup (the browser took the pointer): the drag ends where it is. Only the stage's
+      // own capture counts: taking it over from a card (a touch is captured to the card it lands on) makes the card
+      // fire lostpointercapture, which bubbles here before the pointerup and cancelled every touch swipe.
+      stage.addEventListener('lostpointercapture', event => {
+        if (event.target === stage) endDeckDrag(event, true);
+      });
       stage.addEventListener('pointerup', event => endDeckDrag(event, false));
       stage.addEventListener('pointercancel', event => endDeckDrag(event, true));
       stage.addEventListener('dragstart', event => event.preventDefault());
-      // A drag that ends over the card must not also open it or follow its link.
+      // A drag that ends over the card must not also open it or follow its link; a tap on a card at the side of the
+      // arc brings it round to the front instead of opening it.
       stage.addEventListener('click', event => {
-        if (performance.now() >= deck.suppressClickUntil) return;
+        const side = event.target.closest('.item-card.carousel.behind');
+        if (performance.now() >= deck.suppressClickUntil && !side) return;
         event.preventDefault();
         event.stopPropagation();
+        if (side && performance.now() >= deck.suppressClickUntil) stepDeck(Number(side.dataset.offset));
       }, true);
       return view;
     };
@@ -8066,7 +8298,15 @@ export default {
       if (filterState.view === 'carousel') layoutDeck();
     });
 
+    // The list's scrollbar width, for the control wheel to stand clear of (0 with overlay scrollbars).
+    const measureScrollbar = () => {
+      if (filterState.view === 'graph') return;
+      const width = Math.max(0, collectionView.offsetWidth - collectionView.clientWidth);
+      document.documentElement.style.setProperty('--scrollbar-w', width + 'px');
+    };
+    window.addEventListener('resize', measureScrollbar);
     const renderCollection = () => {
+      requestAnimationFrame(measureScrollbar);
       const nodes = currentVisibleNodes.filter(matchesPlatform);
       const isTimeline = filterState.view === 'timeline';
       const isBoard = filterState.view === 'board';

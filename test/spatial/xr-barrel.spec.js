@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAP_M, HUB_M, MARK_ANGLE, STEP_M, WIDTH_M, barrelLayout, dialAngle, labelAngle, ringPitch, tapOffset } from "../../public/js/spatial/xr-barrel.js";
+import { GAP_M, HUB_M, MARK_ANGLE, STEP_M, WIDTH_M, barrelLayout, bendPoint, dialAngle, labelAngle, ringPitch, tapOffset } from "../../public/js/spatial/xr-barrel.js";
 import { createDial } from "../../public/js/spatial/dial.js";
 
 // Innermost first, as the barrel orders them.
@@ -61,5 +61,24 @@ describe("ring angles", () => {
 
 	it("spaces stops wider on the smaller inner rings", () => {
 		expect(ringPitch(8, "inner", 0.03)).toBeGreaterThan(ringPitch(8, "inner", 0.06));
+	});
+});
+
+describe("bendPoint", () => {
+	it("keeps the label's middle where it is and curves its ends down around the ring", () => {
+		expect(bendPoint(0, 0, 0.05)).toEqual({ x: 0, y: 0 });
+		const end = bendPoint(0.01, 0, 0.05);
+		// On the ring: the same distance from its centre, straight below the label.
+		expect(Math.hypot(end.x, end.y + 0.05)).toBeCloseTo(0.05, 9);
+		expect(end.y).toBeLessThan(0);
+		// The text keeps its length along the arc.
+		expect(Math.atan2(end.x, end.y + 0.05) * 0.05).toBeCloseTo(0.01, 9);
+		// Height above the baseline stays out from the ring.
+		const top = bendPoint(0.01, 0.002, 0.05);
+		expect(Math.hypot(top.x, top.y + 0.05)).toBeCloseTo(0.052, 9);
+	});
+
+	it("leaves a label flat when there is no ring", () => {
+		expect(bendPoint(0.01, 0.002, 0)).toEqual({ x: 0.01, y: 0.002 });
 	});
 });

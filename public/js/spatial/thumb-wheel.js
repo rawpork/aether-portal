@@ -41,6 +41,14 @@ const el = (name, attrs = {}) => {
   Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
   return node;
 };
+// Each label runs along its own arc (a textPath), so the text bends with the ring; the arcs need document-unique ids.
+let arcIds = 0;
+// A clockwise arc of radius r around (cx, cy) from angle a0 to a1 (screen, y down): the direction the labels read in,
+// with the tops of the letters facing out from the centre.
+const arcPath = (cx, cy, r, a0, a1) => {
+  const p = a => (cx + r * Math.cos(a)).toFixed(2) + ' ' + (cy + r * Math.sin(a)).toFixed(2);
+  return 'M' + p(a0) + ' A' + r.toFixed(2) + ' ' + r.toFixed(2) + ' 0 ' + (a1 - a0 > Math.PI ? 1 : 0) + ' 1 ' + p(a1);
+};
 // An annulus sector around (cx, cy) from angle a0 to a1 (radians, screen, y down).
 const bandPath = (cx, cy, inner, outer, a0, a1) => {
   const p = (r, a) => (cx + r * Math.cos(a)).toFixed(2) + ' ' + (cy + r * Math.sin(a)).toFixed(2);
@@ -87,7 +95,9 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   hub.append(hubShape, hubLabel);
   // One index mark for every ring, like a camera dial's: a small teal wedge just outside the rim, on the diagonal.
   const mark = el('path', { fill: ACCENT, class: 'thumb-wheel-mark' });
-  svg.append(bandsLayer, hub, mark);
+  // The labels' arcs (never drawn themselves).
+  const defs = el('defs');
+  svg.append(defs, bandsLayer, hub, mark);
   mount.append(svg);
 
   // Per ring: its dial and drawing, created when the ring first shows. Each layer's band width tweens, so rings fold in
@@ -110,12 +120,20 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     const group = el('g', { class: 'thumb-wheel-ring', role: 'slider', tabindex: '0', 'aria-label': rings[id].name });
     const band = el('path', { stroke: EDGE, 'stroke-width': '1' });
     const ticks = el('path', { stroke: 'rgba(255,255,255,0.14)', 'stroke-width': '1', fill: 'none' });
+    // Each label is a textPath centred on its own arc, which draw() moves around the ring.
     const labels = rings[id].stops.map(stop => {
-      const text = el('text', { 'text-anchor': 'middle', 'dominant-baseline': 'central' });
-      text.textContent = stop.label;
-      return text;
+      const arcId = 'thumb-wheel-arc-' + (++arcIds);
+      const arc = el('path', { id: arcId, fill: 'none' });
+      defs.append(arc);
+      const text = el('text', { 'text-anchor': 'middle' });
+      const run = el('textPath', { href: '#' + arcId, startOffset: '50%' });
+      // Older Safari only follows the xlink form.
+      run.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + arcId);
+      run.textContent = stop.label;
+      text.append(run);
+      return { text, arc, run };
     });
-    group.append(band, ticks, ...labels);
+    group.append(band, ticks, ...labels.map(label => label.text));
     group.addEventListener('keydown', event => {
       const delta = event.key === 'ArrowUp' || event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 0;
       if (!delta) return;
@@ -200,8 +218,8 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       const tickStep = pitch / 3;
       const phase = -display * pitch + gear;
       const first = Math.ceil((Math.PI - MARK - phase) / tickStep);
-      for (let k = first; ; k++) {
-        const a = MARK + phase + k * tickStep;
+      for (let n = first; ; n++) {
+        const a = MARK + phase + n * tickStep;
         if (a > Math.PI * 1.5) break;
         const r0 = layer.outer - 3 * k;
         ticks += 'M' + (cx + r0 * Math.cos(a)).toFixed(1) + ' ' + (cy + r0 * Math.sin(a)).toFixed(1)
@@ -209,7 +227,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       }
       layer.ticks.setAttribute('d', ticks);
       const selected = layer.dial.nearest;
-      layer.labels.forEach((text, index) => {
+      layer.labels.forEach(({ text, arc, run }, index) => {
         const a = MARK + (index - display) * pitch;
         // Off the quarter: skip drawing (the screen edges would clip it anyway).
         if (a < Math.PI * 0.9 || a > Math.PI * 1.6) {
@@ -217,16 +235,16 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
           return;
         }
         text.style.display = '';
-        const x = cx + mid * Math.cos(a);
-        const y = cy + mid * Math.sin(a);
-        text.setAttribute('x', x.toFixed(1));
-        text.setAttribute('y', y.toFixed(1));
-        text.setAttribute('transform', 'rotate(' + ((a * 180) / Math.PI + 90).toFixed(2) + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')');
-        text.setAttribute('font-size', String(font * Math.min(1, layer.width / (WIDTH[role] * k))));
+        const size = font * Math.min(1, layer.width / (WIDTH[role] * k));
+        // The arc is the label's baseline, a little inside the band's middle so the letters sit centred on it (no
+        // dominant-baseline, which Safari ignores on a textPath). It spans a whole pitch either side of the stop,
+        // longer than any label, so the text is never cut off at the arc's ends.
+        arc.setAttribute('d', arcPath(cx, cy, Math.max(1, mid - size * 0.34), a - pitch, a + pitch));
+        text.setAttribute('font-size', String(size));
         text.setAttribute('font-weight', index === selected ? '700' : role === 'view' ? '600' : '500');
         text.setAttribute('fill', index === selected ? ACCENT : TEXT);
         text.setAttribute('letter-spacing', role === 'view' ? '0.06em' : '0');
-        text.textContent = role === 'view' ? rings[id].stops[index].label.toUpperCase() : rings[id].stops[index].label;
+        run.textContent = role === 'view' ? rings[id].stops[index].label.toUpperCase() : rings[id].stops[index].label;
       });
       layer.group.setAttribute('aria-valuetext', rings[id].stops[selected].label);
     });

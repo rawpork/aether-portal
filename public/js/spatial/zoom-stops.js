@@ -14,13 +14,15 @@ export const DEFAULT_ZOOM_STOP = 'horizon';
 // Stop 3 on screens. The camera stands inside the arc, looking straight at one card on the wall: that card fills
 // ARC_FILL of the free width (at most ARC_HEIGHT_FILL of the free height), and the arc is wide enough that the next
 // cards left and right only just show, their inner edges at ARC_EDGE of the way from the middle to the edge of the
-// free area. The camera stands a little above the card and looks slightly down at it.
-export const ARC_FILL = 0.62;
-export const ARC_HEIGHT_FILL = 0.7;
-export const ARC_EDGE = 0.88;
+// free area. The camera stands a little above the card and looks slightly down at it. Close (2026-09-29): the card
+// fills most of the view and its neighbours start just inside the edges and run off them, rather than the wall reading
+// as something far away.
+export const ARC_FILL = 0.8;
+export const ARC_HEIGHT_FILL = 0.9;
+export const ARC_EDGE = 0.94;
 // A wall the layout makes wider than that puts its neighbours further out; the camera then steps back to show their
 // edges, but never so far that the card drops under this share of the free width.
-export const ARC_MIN_FILL = 0.5;
+export const ARC_MIN_FILL = 0.74;
 export const ARC_ELEVATION = 0.1;
 
 // Share of the half-width at which a card's inner edge shows, seen from `distance` in front of the middle card of an
