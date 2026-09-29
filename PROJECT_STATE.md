@@ -6,7 +6,7 @@
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
 - **Latest code commit:** `931177a` "feat: zoom stops step 1 - launch into the 180 wall, 4-stop slider, pointer-only rays", pushed to `main`.
-- **Live version:** `3419f724-aafe-4f98-863a-7d2efdf3d3d5` (deployed 2026-09-28).
+- **Live version:** `7a62b549-b5e8-42bb-9efa-dff5b3d833ea` (deployed 2026-09-29, after `e929537` renamed stop 3 to Horizon).
 - **Zoom stops in progress:** step 1 (desktop and screens) is live. Step 2 is the headset: four placements, a scale glide between them, a ZOOM row on the dashboard, one stop per stick push, and launching into the arc at 1.3 m. Step 3 is phones: a vertical rail and a collapsed group tab at stop 3.
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
