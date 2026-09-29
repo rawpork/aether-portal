@@ -77,14 +77,14 @@ describe("stops", () => {
 	it("reads the stop from the view", () => {
 		expect(stopFor({})).toBe("space");
 		expect(stopFor({ cluster: true })).toBe("cluster");
-		expect(stopFor({ gallery: true })).toBe("zoom");
+		expect(stopFor({ gallery: true })).toBe("horizon");
 		expect(stopFor({ gallery: true, focused: true })).toBe("atomic");
 	});
 
 	it("steps one stop at a time and stops at the ends", () => {
-		expect(ZOOM_STOPS).toEqual(["space", "cluster", "zoom", "atomic"]);
-		expect(stepStop("zoom", 1)).toBe("atomic");
-		expect(stepStop("zoom", -3)).toBe("cluster");
+		expect(ZOOM_STOPS).toEqual(["space", "cluster", "horizon", "atomic"]);
+		expect(stepStop("horizon", 1)).toBe("atomic");
+		expect(stepStop("horizon", -3)).toBe("cluster");
 		expect(stepStop("atomic", 1)).toBe("atomic");
 		expect(stepStop("space", -1)).toBe("space");
 	});

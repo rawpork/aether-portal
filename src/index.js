@@ -1271,7 +1271,7 @@ export default {
     }
     .depth-stops { display: flex; justify-content: space-between; width: 150px; font-size: 9px; line-height: 1; color: #8a93a6; }
     .depth-stops span.active { color: var(--accent); font-weight: 700; }
-    /* Spatial zoom: a four-stop slider in the top bar (Space, Cluster, Zoom, Atomic), styled like the depth slider. */
+    /* Spatial zoom: a four-stop slider in the top bar (Space, Cluster, Horizon, Atomic), styled like the depth slider. */
     .zoom-control {
       display: inline-flex;
       flex-direction: column;
@@ -2371,9 +2371,9 @@ export default {
       <input type="range" id="depth-slider" min="0" max="2" step="1" value="1" aria-label="Connection depth" aria-valuetext="Logical">
       <div class="depth-stops" aria-hidden="true"><span data-depth="obvious">Obvious</span><span data-depth="logical">Logical</span><span data-depth="abstract">Abstract</span></div>
     </div>
-    <div class="zoom-control" id="zoom-control" title="Spatial zoom: Space (everything), Cluster (one group), Zoom (the group's 180° wall), Atomic (one card). The mouse wheel steps between them too.">
+    <div class="zoom-control" id="zoom-control" title="Spatial zoom: Space (everything), Cluster (one group), Horizon (the group's 180° wall), Atomic (one card). The mouse wheel steps between them too.">
       <input type="range" id="zoom-slider" min="0" max="3" step="1" value="2" aria-label="Spatial zoom" aria-valuetext="Zoom">
-      <div class="zoom-stops"><span data-stop="space">Space</span><span data-stop="cluster">Cluster</span><span data-stop="zoom">Zoom</span><span data-stop="atomic">Atomic</span></div>
+      <div class="zoom-stops"><span data-stop="space">Space</span><span data-stop="cluster">Cluster</span><span data-stop="horizon">Horizon</span><span data-stop="atomic">Atomic</span></div>
     </div>
     <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
     <div class="xr-wrap">
@@ -4456,11 +4456,11 @@ export default {
       if (cameraRig.active) rigFrame = requestAnimationFrame(stepRig);
       else finishFlight();
     };
-    // ---- Spatial zoom stops (public/js/spatial/zoom-stops.js): Space (the whole cloud), Cluster (one island), Zoom (its
+    // ---- Spatial zoom stops (public/js/spatial/zoom-stops.js): Space (the whole cloud), Cluster (one island), Horizon (its
     // 180-degree wall, the default on launch) and Atomic (one card). The slider and the mouse wheel move between them;
     // every camera move reports the stop it lands on, so the slider always shows where the view is. ----
-    const ZOOM_STOP_ORDER = ['space', 'cluster', 'zoom', 'atomic'];
-    const ZOOM_STOP_NAMES = { space: 'Space', cluster: 'Cluster', zoom: 'Zoom', atomic: 'Atomic' };
+    const ZOOM_STOP_ORDER = ['space', 'cluster', 'horizon', 'atomic'];
+    const ZOOM_STOP_NAMES = { space: 'Space', cluster: 'Cluster', horizon: 'Horizon', atomic: 'Atomic' };
     // Free zoom in Space and Cluster steps to the next stop past these multiples of the stop's own framing distance.
     const STOP_PUSH_IN = 0.6;
     const STOP_PULL_BACK = 1.8;
@@ -4477,7 +4477,7 @@ export default {
     renderZoomStop();
     const setAtomicLayout = on => document.body.classList.toggle('zoom-atomic', on);
     const noteZoomStop = state => {
-      const next = state === 'macro' ? 'space' : state === 'node' ? 'atomic' : gallery ? 'zoom' : 'cluster';
+      const next = state === 'macro' ? 'space' : state === 'node' ? 'atomic' : gallery ? 'horizon' : 'cluster';
       if (next !== 'atomic') setAtomicLayout(false);
       if (next === zoomStop) return;
       zoomStop = next;
@@ -5069,7 +5069,7 @@ export default {
         else flyToCluster(key);
         return;
       }
-      if (stop === 'zoom') {
+      if (stop === 'horizon') {
         if (gallery) {
           if (focus.node) hideNodeCard();
           flyToArc();
@@ -5108,7 +5108,7 @@ export default {
       if (filterState.view !== 'graph' || filterState.flat || gallery || focus.node || (cameraRig && cameraRig.active) || xrPresenting()) return;
       const distance = Graph.camera().position.distanceTo(Graph.controls().target);
       if (zoomStop === 'cluster' && clusterFrame) {
-        if (distance < clusterFrame.distance * STOP_PUSH_IN) setZoomStop('zoom');
+        if (distance < clusterFrame.distance * STOP_PUSH_IN) setZoomStop('horizon');
         else if (distance > clusterFrame.distance * STOP_PULL_BACK) setZoomStop('space');
       } else if (zoomStop === 'space' && distance < getMacroFraming().distance * STOP_PUSH_IN) {
         setZoomStop('cluster');

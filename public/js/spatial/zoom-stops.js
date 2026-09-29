@@ -4,12 +4,12 @@
 //
 //   1 space    the whole cloud (Macro)
 //   2 cluster  one cluster framed as an island, its neighbours around it
-//   3 zoom     that cluster opened as the 180-degree wall, one card large in the middle (the default on launch)
+//   3 horizon  that cluster opened as the 180-degree wall, one card large in the middle (the default on launch)
 //   4 atomic   one card focused, with its details open
 
-export const ZOOM_STOPS = ['space', 'cluster', 'zoom', 'atomic'];
-export const ZOOM_STOP_LABELS = { space: 'Space', cluster: 'Cluster', zoom: 'Zoom', atomic: 'Atomic' };
-export const DEFAULT_ZOOM_STOP = 'zoom';
+export const ZOOM_STOPS = ['space', 'cluster', 'horizon', 'atomic'];
+export const ZOOM_STOP_LABELS = { space: 'Space', cluster: 'Cluster', horizon: 'Horizon', atomic: 'Atomic' };
+export const DEFAULT_ZOOM_STOP = 'horizon';
 
 // Stop 3 on screens. The camera stands inside the arc, looking straight at one card on the wall: that card fills
 // ARC_FILL of the free width (at most ARC_HEIGHT_FILL of the free height), and the arc is wide enough that the next
@@ -85,10 +85,10 @@ export function wallPose({ origin, radius, yaw, y = origin.y, distance, elevatio
   };
 }
 
-// The stop the view is at: a focused card on the wall is atomic, an open wall is zoom, a framed cluster is cluster,
+// The stop the view is at: a focused card on the wall is atomic, an open wall is horizon, a framed cluster is cluster,
 // anything else space.
 export function stopFor({ gallery = false, focused = false, cluster = false } = {}) {
-  if (gallery) return focused ? 'atomic' : 'zoom';
+  if (gallery) return focused ? 'atomic' : 'horizon';
   if (focused) return 'atomic';
   return cluster ? 'cluster' : 'space';
 }

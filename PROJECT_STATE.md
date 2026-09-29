@@ -106,7 +106,7 @@
 
 - **Opening scope:** the portal opens on the shortest recent time span with at least 5 cards. Pulling back from Space widens the span: day, week, month, groups, then all.
 - **Launch view (zoom stops, 2026-09-28):** once the first layout settles, the portal opens the newest card's cluster as its 180° wall (stop 3), not the distant cloud. It waits up to 6 s for the cards, then falls back to the whole-graph view; a deep link still opens its card.
-- **Spatial zoom stops** (`public/js/spatial/zoom-stops.js`): Space (whole cloud), Cluster (one island), Zoom (the 180° wall), Atomic (one card).
+- **Spatial zoom stops** (`public/js/spatial/zoom-stops.js`): Space (whole cloud), Cluster (one island), Horizon (the 180° wall; named Zoom until 2026-09-29), Atomic (one card).
   - **Top-bar slider** next to the depth slider; its labels are clickable too. It is hidden on phones until the vertical rail (step 3) and on the 2D board.
   - **Stays in sync:** every camera move reports its stop (`noteZoomStop` in `cameraGoTo`).
   - **Wheel:** on the wall, one flick = one stop (a trackpad's inertia included; the whole flick is kept from the orbit controls). In Space and Cluster the wheel zooms freely and steps on past 0.6× or 1.8× the stop's framing distance. The time span only widens from Space.
