@@ -38,10 +38,13 @@ export async function xrSupport() {
 
 // renderer: the graph's WebGLRenderer. camera: the graph's camera, already inside `dolly` (createViewer). frame is
 // called on every XR frame with (time, frame) and must render. pick(ray) returns { distance } (graph units) or null.
-export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, onHover, onSelect, onBack, onEnd, onMenu, onScale }) {
+// Holding things (the lens barrel's rings): onGrab(ray, hand) is asked when the trigger or grip goes down and returns
+// whether it took hold; while held, onDrag(ray, hand) runs every frame, and onRelease(hand) when the button comes up.
+// A press that took hold is not also a select (or, for the grip, a back).
+export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, onHover, onSelect, onBack, onEnd, onMenu, onScale, onGrab, onDrag, onRelease }) {
   let session = null;
   let mode = null;
-  const temp = { matrix: new THREE.Matrix4(), origin: new THREE.Vector3(), direction: new THREE.Vector3(), quaternion: new THREE.Quaternion() };
+  const temp = { matrix: new THREE.Matrix4(), origin: new THREE.Vector3(), direction: new THREE.Vector3() };
 
   // ---- Rays: one per controller or tracked hand ----
   const hands = [0, 1].map(index => {
@@ -55,21 +58,39 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     const cursor = new THREE.Mesh(new THREE.SphereGeometry(CURSOR_M, 12, 8), new THREE.MeshBasicMaterial({ color: RAY_COLOR }));
     cursor.raycast = () => {};
     cursor.visible = false;
-    const hand = { index, controller, grip, line, cursor, source: null, stickLatched: false, buttons: [] };
+    const hand = { index, controller, grip, line, cursor, source: null, stickLatched: false, buttons: [], holding: null };
+    // Takes hold on the way down (the trigger, or the grip); lets go on the way up. The session sends 'select' and
+    // 'squeeze' before their 'end' events, so the hold is still set when those are skipped.
+    const takeHold = button => {
+      if (hand.holding || !onGrab) return;
+      if (onGrab(rayOf(hand), hand.index)) hand.holding = button;
+    };
+    const letGo = button => {
+      if (hand.holding !== button) return;
+      hand.holding = null;
+      if (onRelease) onRelease(hand.index);
+    };
+    controller.addEventListener('selectstart', () => takeHold('select'));
+    controller.addEventListener('selectend', () => letGo('select'));
+    controller.addEventListener('squeezestart', () => takeHold('squeeze'));
+    controller.addEventListener('squeezeend', () => letGo('squeeze'));
     controller.addEventListener('connected', event => {
       hand.source = event.data || null;
       line.visible = true;
     });
     controller.addEventListener('disconnected', () => {
+      if (hand.holding) letGo(hand.holding);
       hand.source = null;
       line.visible = false;
       cursor.visible = false;
       if (onHover) onHover(hand.index, null);
     });
     controller.addEventListener('select', () => {
+      if (hand.holding === 'select') return;
       if (onSelect) onSelect(rayOf(hand), hand.index);
     });
     controller.addEventListener('squeeze', () => {
+      if (hand.holding === 'squeeze') return;
       if (onBack) onBack(hand.index);
     });
     return hand;
@@ -82,11 +103,13 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
   });
 
   // World-space ray from a controller: origin and forward (-Z) direction of its target ray space.
+  // The direction is read straight off the matrix's Z column: the controller sits in the dolly, whose scale (graph units
+  // per metre) is in that matrix, and setFromRotationMatrix only works on an unscaled one (it gave a ray pointing well
+  // away from the drawn line whenever the world was scaled).
   const rayOf = hand => {
     temp.matrix.copy(hand.controller.matrixWorld);
     temp.origin.setFromMatrixPosition(temp.matrix);
-    temp.quaternion.setFromRotationMatrix(temp.matrix);
-    temp.direction.set(0, 0, -1).applyQuaternion(temp.quaternion).normalize();
+    temp.direction.setFromMatrixColumn(temp.matrix, 2).negate().normalize();
     return { origin: temp.origin.clone(), direction: temp.direction.clone() };
   };
 
@@ -215,7 +238,9 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
   const updateRays = () => {
     hands.forEach(hand => {
       if (!hand.source) return;
-      const hit = pick ? pick(rayOf(hand)) : null;
+      const ray = rayOf(hand);
+      if (hand.holding && onDrag) onDrag(ray, hand.index);
+      const hit = pick ? pick(ray) : null;
       const metres = hit ? hit.distance / Math.max(1e-6, dolly.scale.x) : RAY_M;
       hand.line.scale.z = Math.max(0.01, metres);
       hand.cursor.visible = Boolean(hit);
@@ -281,6 +306,8 @@ export function createXR({ THREE, renderer, scene, camera, dolly, frame, pick, o
     restoreCulling();
     setFade(0);
     hands.forEach(hand => {
+      if (hand.holding && onRelease) onRelease(hand.index);
+      hand.holding = null;
       hand.source = null;
       hand.line.visible = false;
       hand.cursor.visible = false;

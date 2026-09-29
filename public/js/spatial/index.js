@@ -14,7 +14,7 @@ import { boardLayout, columnAt } from './layout-2d.js';
 import { mapLayout, wirePoints } from './layout-map.js';
 import { galleryPlacement, overviewPlacement } from './xr-math.js';
 import { createXR, xrSupport } from './xr.js';
-import { createDashboard } from './xr-dashboard.js';
+import { createBarrel } from './xr-barrel.js';
 import { DEPTHS, primaryGroup, visibleLinks } from './depth.js';
 import { isPlayable, parseMedia } from './media.js';
 import { FACE_HEIGHT, FACE_WIDTH, MEDIA_BAND } from './card-faces.js';
@@ -41,7 +41,7 @@ window.AetherSpatial = {
   wirePoints,
   xrSupport,
   createXR,
-  createDashboard,
+  createBarrel,
   DEPTHS,
   primaryGroup,
   visibleLinks,

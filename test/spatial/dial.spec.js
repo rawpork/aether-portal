@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDial, detentPosition, gearTurn, wheelRings } from "../../public/js/spatial/dial.js";
+import { barrelRings, createDial, createScrollTurner, detentPosition, gearTurn, wheelRings } from "../../public/js/spatial/dial.js";
 
 // Runs the physics until the dial rests (or `seconds` pass), collecting events.
 const run = (dial, seconds = 3, dt = 1 / 60) => {
@@ -94,6 +94,40 @@ describe("wheelRings", () => {
 
 	it("folds to the rim and the primary ring when idle", () => {
 		expect(wheelRings({ view: "board", collapsed: true })).toEqual(["view", "layout"]);
+	});
+
+	it("keeps to the rim and the primary ring in Simple mode, even when open", () => {
+		expect(wheelRings({ view: "space", scale: "cluster", simple: true })).toEqual(["view", "scale"]);
+		expect(wheelRings({ view: "list", simple: true })).toEqual(["view", "time"]);
+	});
+});
+
+describe("barrelRings", () => {
+	it("leads the headset's spatial views with Time, and the Board with its Layout", () => {
+		expect(barrelRings({ view: "space" })).toEqual(["view", "time", "depth", "filters"]);
+		expect(barrelRings({ view: "gallery" })).toEqual(["view", "time", "filters"]);
+		expect(barrelRings({ view: "board" })).toEqual(["view", "layout", "filters", "time"]);
+	});
+
+	it("retracts the inner rings in Simple mode", () => {
+		expect(barrelRings({ view: "board", simple: true })).toEqual(["view", "layout"]);
+	});
+});
+
+describe("createScrollTurner", () => {
+	it("turns one stop per mouse-wheel notch", () => {
+		const turn = createScrollTurner();
+		expect(turn(100, 0)).toBe(1);
+		expect(turn(100, 30)).toBe(1);
+		expect(turn(-100, 60)).toBe(-1);
+	});
+
+	it("adds up a trackpad's small steps and drops the remainder after a pause", () => {
+		const turn = createScrollTurner({ threshold: 60, idleMs: 200 });
+		const stops = [20, 20, 30, 40].reduce((sum, delta, i) => sum + turn(delta, i * 16), 0);
+		expect(stops).toBe(1);
+		expect(turn(40, 64)).toBe(1);
+		expect(turn(40, 1000)).toBe(0);
 	});
 });
 

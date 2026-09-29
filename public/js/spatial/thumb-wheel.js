@@ -1,18 +1,21 @@
-// Thumb wheel (PROJECT_STATE.md, radial controls): the phone's concentric rings, a quarter wheel pivoting on the
-// bottom-right corner of the screen. Solid, matte bands in the navy and teal system: no glass, blur or glow. Each ring
+// Thumb wheel (PROJECT_STATE.md, radial controls): the concentric rings, a quarter wheel pivoting on the bottom-right
+// corner of the screen. On phones it is thumb-sized; on desktop the same wheel is drawn larger (everything scales with
+// the mount, which is BASE_PX square on a phone) and also turns under the mouse wheel. Solid, matte bands in the navy and teal system: no glass, blur or glow. Each ring
 // turns like a dial under the thumb (dial.js does the physics), clicks into every stop with a short vibration (or, where
 // the browser cannot vibrate, as on iPhone, a visual click and an optional soft tick sound), and reads its value at the
 // index mark on the diagonal. The + Add button is the hub. Idle, the wheel folds to the View rim and the primary ring;
-// a tap opens it again.
+// a tap opens it again. In the Simple mode it never shows more than those two rings.
 //
 // The page gives it the rings' stops and a state() function, and hears back through onChange(ringId, value).
 
-import { createDial, gearTurn, wheelRings } from './dial.js';
+import { createDial, createScrollTurner, gearTurn, wheelRings } from './dial.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 // Where the value is read: the diagonal, up and left of the corner (screen angles, y down, 0 to 2 pi: the quarter the
 // wheel shows runs from pi, straight left, to 1.5 pi, straight up).
 const MARK = (5 * Math.PI) / 4;
+// The phone's mount size; sizes below are at this size and scale with the mount.
+const BASE_PX = 164;
 // Band widths (px) by role, the gap between bands, and the hub.
 const WIDTH = { view: 22, primary: 32, inner: 25 };
 const GAP = 3;
@@ -69,10 +72,12 @@ const tickSound = strong => {
 
 // rings: { id: { name, stops: [{ value, label }] } }. state(): { view, scale, layout, time, depth, filters } (values).
 // onChange(ringId, value) when a ring comes to rest on a new stop; onAdd() for the hub. sound(): whether to tick
-// audibly where the device cannot vibrate.
-export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound = () => true }) {
+// audibly where the device cannot vibrate. simple(): whether the wheel is in the Simple mode.
+export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound = () => true, simple = () => false }) {
   const canVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
   const size = { w: 0, h: 0 };
+  // The mount's size over the phone's: every width, gap and font is multiplied by it.
+  let k = 1;
   const svg = el('svg', { class: 'thumb-wheel-svg', role: 'group', 'aria-label': 'Controls wheel' });
   const bandsLayer = el('g');
   const hub = el('g', { class: 'thumb-wheel-hub', role: 'button', tabindex: '0', 'aria-label': 'Add node' });
@@ -128,7 +133,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   // The rings to show now, and the band width each is heading for.
   const arrange = () => {
     const values = state();
-    const list = wheelRings({ view: values.view, scale: values.scale, collapsed });
+    const list = wheelRings({ view: values.view, scale: values.scale, collapsed, simple: simple() });
     list.forEach(id => { if (!layers.has(id)) makeLayer(id); });
     // Inside-out order: the rings on the list innermost first, and rings folding away kept where they were.
     const next = list.slice().reverse();
@@ -139,7 +144,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     order = next;
     layers.forEach(layer => {
       layer.role = roleOf(layer.id, list);
-      layer.target = list.includes(layer.id) ? WIDTH[layer.role] : 0;
+      layer.target = list.includes(layer.id) ? WIDTH[layer.role] * k : 0;
     });
     kick();
   };
@@ -171,7 +176,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     let depth = 0;
     order.forEach(id => {
       const layer = layers.get(id);
-      layer.inner = radius + (layer.width > 0.5 ? GAP : 0);
+      layer.inner = radius + (layer.width > 0.5 ? GAP * k : 0);
       layer.outer = layer.inner + layer.width;
       radius = layer.outer;
       const visible = layer.width > 0.5;
@@ -179,10 +184,10 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       if (!visible) return;
       const role = layer.role;
       const mid = (layer.inner + layer.outer) / 2;
-      const font = FONT[role];
+      const font = FONT[role] * k;
       // Stops spaced so the longest label fits along the arc at this radius.
       const longest = Math.max(...rings[id].stops.map(stop => stop.label.length));
-      layer.dial.setPitch(Math.max(0.36, (longest * font * 0.6 + LABEL_PAD) / Math.max(mid, 1)));
+      layer.dial.setPitch(Math.max(0.36, (longest * font * 0.6 + LABEL_PAD * k) / Math.max(mid, 1)));
       const pitch = layer.dial.pitch;
       const display = layer.dial.display;
       const fill = role === 'inner' ? FILL.inner[depth % 2] : FILL[role];
@@ -198,7 +203,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       for (let k = first; ; k++) {
         const a = MARK + phase + k * tickStep;
         if (a > Math.PI * 1.5) break;
-        const r0 = layer.outer - 3;
+        const r0 = layer.outer - 3 * k;
         ticks += 'M' + (cx + r0 * Math.cos(a)).toFixed(1) + ' ' + (cy + r0 * Math.sin(a)).toFixed(1)
           + 'L' + (cx + layer.outer * Math.cos(a)).toFixed(1) + ' ' + (cy + layer.outer * Math.sin(a)).toFixed(1);
       }
@@ -217,7 +222,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
         text.setAttribute('x', x.toFixed(1));
         text.setAttribute('y', y.toFixed(1));
         text.setAttribute('transform', 'rotate(' + ((a * 180) / Math.PI + 90).toFixed(2) + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')');
-        text.setAttribute('font-size', String(font * Math.min(1, layer.width / WIDTH[role])));
+        text.setAttribute('font-size', String(font * Math.min(1, layer.width / (WIDTH[role] * k))));
         text.setAttribute('font-weight', index === selected ? '700' : role === 'view' ? '600' : '500');
         text.setAttribute('fill', index === selected ? ACCENT : TEXT);
         text.setAttribute('letter-spacing', role === 'view' ? '0.06em' : '0');
@@ -226,9 +231,9 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       layer.group.setAttribute('aria-valuetext', rings[id].stops[selected].label);
     });
     // The wedge points in at the rim from just outside it.
-    const tip = radius + 1.5;
-    const base = radius + 8;
-    const spread = 4.5 / Math.max(base, 1);
+    const tip = radius + 1.5 * k;
+    const base = radius + 8 * k;
+    const spread = (4.5 * k) / Math.max(base, 1);
     const point = (r, a) => (cx + r * Math.cos(a)).toFixed(1) + ' ' + (cy + r * Math.sin(a)).toFixed(1);
     mark.setAttribute('d', 'M' + point(tip, MARK) + ' L' + point(base, MARK - spread) + ' L' + point(base, MARK + spread) + ' Z');
     hubShape.setAttribute('d', bandPath(cx, cy, 0.01, hubRadius, Math.PI * 0.98, Math.PI * 1.52));
@@ -249,7 +254,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       if (Math.abs(layer.target - layer.width) < 0.3) layer.width = layer.target;
       if (layer.dial.moving || layer.width !== layer.target) busy = true;
     });
-    const hubTarget = collapsed ? HUB_COLLAPSED : HUB;
+    const hubTarget = (collapsed ? HUB_COLLAPSED : HUB) * k;
     hubRadius += (hubTarget - hubRadius) * (1 - Math.exp(-FOLD_RATE * dt));
     if (Math.abs(hubTarget - hubRadius) < 0.2) hubRadius = hubTarget;
     else busy = true;
@@ -291,8 +296,8 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   };
   const ringAt = point => {
     const r = Math.hypot(point.x - size.w, point.y - size.h);
-    if (r <= hubRadius + GAP / 2) return 'hub';
-    const layer = order.map(id => layers.get(id)).find(item => item.width > 4 && r >= item.inner - GAP && r <= item.outer + GAP);
+    if (r <= hubRadius + (GAP * k) / 2) return 'hub';
+    const layer = order.map(id => layers.get(id)).find(item => item.width > 4 && r >= item.inner - GAP * k && r <= item.outer + GAP * k);
     return layer || null;
   };
   svg.addEventListener('pointerdown', event => {
@@ -311,7 +316,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   svg.addEventListener('pointermove', event => {
     if (!press || event.pointerId !== press.id || press.target === 'hub') return;
     const point = local(event);
-    if (!press.moved && Math.hypot(point.x - press.start.x, point.y - press.start.y) < TAP_PX) return;
+    if (!press.moved && Math.hypot(point.x - press.start.x, point.y - press.start.y) < TAP_PX * k) return;
     press.moved = true;
     handle(press.target, press.target.dial.move(angleOf(point), event.timeStamp));
     kick();
@@ -341,6 +346,22 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   };
   svg.addEventListener('pointerup', event => endPress(event));
   svg.addEventListener('pointercancel', event => endPress(event, true));
+  // The mouse wheel (desktop): over a ring it turns that ring (down = the next stop, like turning a dial toward you);
+  // over the hub or between rings it does nothing, and the page does not scroll either way.
+  const turners = new Map();
+  svg.addEventListener('wheel', event => {
+    const target = ringAt(local(event));
+    if (!target) return;
+    event.preventDefault();
+    if (target === 'hub' || press) return;
+    const pixels = event.deltaMode === 1 ? event.deltaY * 40 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY;
+    if (!turners.has(target.id)) turners.set(target.id, createScrollTurner());
+    const stops = turners.get(target.id)(pixels, event.timeStamp);
+    if (!stops) return;
+    wake();
+    target.dial.set((target.dial.dragging ? target.dial.nearest : target.dial.index) + stops);
+    kick();
+  }, { passive: false });
   hub.addEventListener('keydown', event => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -352,6 +373,13 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     const rect = mount.getBoundingClientRect();
     size.w = rect.width;
     size.h = rect.height;
+    const nextK = Math.max(1, Math.min(rect.width, rect.height) / BASE_PX);
+    if (Math.abs(nextK - k) > 0.001) {
+      k = nextK;
+      hubRadius = (collapsed ? HUB_COLLAPSED : HUB) * k;
+      layers.forEach(layer => { layer.width = layer.target ? WIDTH[layer.role] * k : 0; });
+      arrange();
+    }
     svg.setAttribute('width', String(rect.width));
     svg.setAttribute('height', String(rect.height));
     svg.setAttribute('viewBox', '0 0 ' + rect.width + ' ' + rect.height);

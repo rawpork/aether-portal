@@ -1304,30 +1304,70 @@ export default {
     body.collection-mode .depth-control,
     body.collection-mode #view-toggle,
     body.collection-mode #legend { display: none !important; }
-    /* Thumb wheel (phones): the concentric control rings in the bottom-right corner (public/js/spatial/thumb-wheel.js).
-       It takes over the view switch, 2D toggle, Add, time stepper, depth slider, platform pills and board layouts. */
-    #thumb-wheel { display: none; }
+    /* Control wheel: the concentric control rings in the bottom-right corner (public/js/spatial/thumb-wheel.js), thumb-
+       sized on phones, where it takes over the view switch, 2D toggle, Add, time stepper, depth slider, platform pills
+       and board layouts, and a larger widget beside the toolbars on desktop (mouse drag, scroll wheel). */
+    #thumb-wheel {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      z-index: 15;
+      width: 232px;
+      height: 232px;
+      touch-action: none;
+      transition: right 300ms cubic-bezier(0.25, 1, 0.5, 1), bottom 300ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    body.xr-presenting #thumb-wheel { display: none; }
+    .thumb-wheel-svg { display: block; overflow: hidden; pointer-events: none; font-family: inherit; user-select: none; -webkit-user-select: none; }
+    .thumb-wheel-svg path, .thumb-wheel-svg text { pointer-events: auto; cursor: grab; }
+    .thumb-wheel-svg .thumb-wheel-hub path, .thumb-wheel-svg .thumb-wheel-hub text { cursor: pointer; }
+    .thumb-wheel-svg .thumb-wheel-mark { pointer-events: none; }
+    .thumb-wheel-svg g:focus { outline: none; }
+    .thumb-wheel-svg g:focus-visible path:first-child { stroke: var(--accent-line); }
+    /* The visual click (the only one where the phone cannot vibrate): the index marks flick wider for a moment. */
+    .thumb-wheel-svg .thumb-wheel-mark { transform-box: fill-box; transform-origin: center; }
+    .thumb-wheel-svg.clicked .thumb-wheel-mark { animation: wheel-click 120ms ease-out; }
+    @keyframes wheel-click { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+    /* Wheel mode: Simple keeps to the View rim and the primary ring; Advanced telescopes the inner rings out. The switch
+       rides just above the wheel's corner. */
+    #wheel-mode {
+      position: absolute;
+      top: -28px;
+      right: 6px;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 22px;
+      padding: 0 8px 0 4px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 11px;
+      background: #0a111c;
+      color: #8a93a6;
+      font-family: inherit;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    #wheel-mode .wheel-mode-track { position: relative; width: 20px; height: 12px; border-radius: 6px; background: #122033; }
+    #wheel-mode .wheel-mode-knob { position: absolute; top: 2px; left: 2px; width: 8px; height: 8px; border-radius: 50%; background: #8a93a6; transition: left 160ms ease-out, background 160ms ease-out; }
+    #wheel-mode[aria-checked="true"] { color: var(--accent); }
+    #wheel-mode[aria-checked="true"] .wheel-mode-knob { left: 10px; background: var(--accent); }
+    #wheel-mode:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 1px; }
+    /* Desktop: the card sidebar comes down the right edge, so the wheel moves to its left while a card is open. */
+    @media (min-width: 768px) {
+      body.card-open #thumb-wheel { right: calc(clamp(340px, 27vw, 420px) + 24px); }
+      body.collection-mode #collection-view { padding-bottom: 240px; }
+    }
     @media (max-width: 767px) {
       #thumb-wheel {
-        display: block;
-        position: fixed;
-        right: 0;
         bottom: env(safe-area-inset-bottom, 0px);
-        z-index: 15;
         width: 164px;
         height: 164px;
-        touch-action: none;
-        transition: bottom 300ms cubic-bezier(0.25, 1, 0.5, 1);
       }
-      .thumb-wheel-svg { display: block; overflow: hidden; pointer-events: none; font-family: inherit; user-select: none; -webkit-user-select: none; }
-      .thumb-wheel-svg path, .thumb-wheel-svg text { pointer-events: auto; }
-      .thumb-wheel-svg .thumb-wheel-mark { pointer-events: none; }
-      .thumb-wheel-svg g:focus { outline: none; }
-      .thumb-wheel-svg g:focus-visible path:first-child { stroke: var(--accent-line); }
-      /* The visual click (the only one where the phone cannot vibrate): the index marks flick wider for a moment. */
-      .thumb-wheel-svg .thumb-wheel-mark { transform-box: fill-box; transform-origin: center; }
-      .thumb-wheel-svg.clicked .thumb-wheel-mark { animation: wheel-click 120ms ease-out; }
-      @keyframes wheel-click { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
       /* The graph library's mouse hint means nothing on a touch screen, and sits under the wheel. */
       .scene-nav-info { display: none; }
       /* Above the node card's peek sheet; out of the way while a sheet is expanded. */
@@ -2646,7 +2686,7 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
-  <div id="thumb-wheel"></div>
+  <div id="thumb-wheel"><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div>
   <div id="media-player" hidden>
     <div id="media-frame"></div>
     <button type="button" id="media-close" title="Close video" aria-label="Close video">×</button>
@@ -3126,8 +3166,8 @@ export default {
     if (window.matchMedia('(max-width: 768px)').matches) legend.open = false;
     // Matches the CSS breakpoint where the node card becomes a bottom sheet.
     const compactLayout = window.matchMedia('(max-width: 767px)');
-    // The phone thumb wheel (created once the spatial modules load); every control it mirrors calls this when its value
-    // changes elsewhere, so the rings turn to match.
+    // The control wheel (created once the spatial modules load); every control it mirrors calls this when its value
+    // changes elsewhere, so the rings turn to match (the headset barrel follows the same values every frame).
     let thumbWheel = null;
     const syncThumbWheel = () => {
       if (thumbWheel) thumbWheel.sync();
@@ -5550,10 +5590,10 @@ export default {
       if (!xrRaycaster) xrRaycaster = new THREE.Raycaster();
       xrRaycaster.set(ray.origin, ray.direction);
       xrRaycaster.camera = Graph.camera();
-      // The dashboard is in front of everything, so it takes the ray first.
-      if (xrDashboard) {
-        const panel = xrDashboard.pick(xrRaycaster);
-        if (panel) return { distance: panel.distance, panelId: panel.id };
+      // The lens barrel's rings, hub and keys take the ray first: they ride on the wrist, in front of the cards.
+      if (xrBarrel) {
+        const part = xrBarrel.pick(xrRaycaster);
+        if (part) return { distance: part.distance, barrel: part };
       }
       const roots = Graph.graphData().nodes.map(node => node.__threeObj).filter(Boolean);
       const hit = xrRaycaster.intersectObjects(roots, true)[0];
@@ -5562,17 +5602,17 @@ export default {
       while (object && !object.__data) object = object.parent;
       return object ? { distance: hit.distance, node: object.__data } : null;
     };
-    const xrPanelHover = new Map();
+    const xrBarrelHover = new Map();
     const xrOnHover = (hand, hit) => {
-      const onPanel = Boolean(hit && hit.panelId !== undefined);
-      if (onPanel) {
-        // A light buzz when the ray moves onto another button.
-        if (hit.panelId && xrPanelHover.get(hand) !== hit.panelId) xr.pulse(hand, 0.15, 15);
-        xrPanelHover.set(hand, hit.panelId);
+      if (hit && hit.barrel) {
+        // A light buzz when the ray moves onto another ring, key or the hub.
+        const before = xrBarrelHover.get(hand);
+        if (!before || before.kind !== hit.barrel.kind || before.id !== hit.barrel.id) xr.pulse(hand, 0.15, 15);
+        xrBarrelHover.set(hand, hit.barrel);
       } else {
-        xrPanelHover.delete(hand);
+        xrBarrelHover.delete(hand);
       }
-      if (xrDashboard) xrDashboard.setHover(xrPanelHover.get(1) || xrPanelHover.get(0) || null);
+      if (xrBarrel) xrBarrel.setHover(xrBarrelHover.get(1) || xrBarrelHover.get(0) || null);
       if (hit && hit.node) xrHovered.set(hand, hit.node);
       else xrHovered.delete(hand);
       const node = xrHovered.get(1) || xrHovered.get(0) || null;
@@ -5613,10 +5653,11 @@ export default {
     };
     const xrOnSelect = (ray, hand) => {
       const hit = xrPick(ray);
-      if (hit && hit.panelId !== undefined) {
-        if (hit.panelId) {
+      // Rings are turned by holding them (xrOnGrab); a click on the hub or a key acts.
+      if (hit && hit.barrel) {
+        if (hit.barrel.kind !== 'ring') {
           xr.pulse(hand, 0.5, 30);
-          xrDashboardAction(hit.panelId);
+          xrAction(hit.barrel.id);
         }
         return;
       }
@@ -5639,9 +5680,9 @@ export default {
     };
     const xrFrame = time => {
       if (cardField) cardStep(time);
-      if (xrDashboard) {
-        xrDashboard.setState(xrDashboardState());
-        xrDashboard.frame(xr.gripFor('left'), time);
+      if (xrBarrel) {
+        xrBarrel.sync();
+        xrBarrel.frame(xr.gripFor('left'), time);
       }
       syncXrBoardLabels();
       // One cycle of the graph (layout tick, controls, render); the cycle schedules its own animation frame, which is
@@ -5744,10 +5785,23 @@ export default {
         onSelect: xrOnSelect,
         onBack: xrOnBack,
         onEnd: xrOnEnd,
-        onMenu: () => { if (xrDashboard) xrDashboard.toggle(); },
-        onScale: xrOnScale
+        onMenu: () => { if (xrBarrel) xrBarrel.toggle(); },
+        onScale: xrOnScale,
+        onGrab: xrOnGrab,
+        onDrag: xrOnDrag,
+        onRelease: hand => { if (xrBarrel) xrBarrel.release(hand); }
       });
-      xrDashboard = window.AetherSpatial.createDashboard({ THREE, dolly: viewer.getDolly(), camera: Graph.camera() });
+      xrBarrel = window.AetherSpatial.createBarrel({
+        THREE,
+        dolly: viewer.getDolly(),
+        camera: Graph.camera(),
+        rings: xrBarrelRingDefs(),
+        state: xrBarrelState,
+        onChange: xrBarrelChange,
+        onAction: xrAction,
+        // One click per stop through the hand turning the ring (the right one when the ring turned by itself).
+        onTick: (hand, end) => xr.pulse(hand === null || hand === undefined ? 1 : hand, end ? 0.6 : 0.3, end ? 24 : 12)
+      });
       xrBothModes = support.ar && support.vr;
       xrButton.querySelector('.bar-label').textContent = xrBothModes ? 'Enter XR' : support.ar ? 'Enter MR' : 'Enter VR';
       xrButton.dataset.short = xrBothModes ? 'XR' : support.ar ? 'MR' : 'VR';
@@ -5910,10 +5964,11 @@ export default {
       return true;
     };
 
-    // ---- Headset dashboard (PROJECT_STATE.md): a panel above the left wrist, or pinned at waist height, with the views
-    // (spatial versions: Space, the Board wall in its four layouts, the Gallery), time span, depth, platforms and the
-    // session actions. X shows or hides it; the right hand's ray and trigger (or pinch) use it. ----
-    let xrDashboard = null;
+    // ---- Headset lens barrel (PROJECT_STATE.md, radial controls; public/js/spatial/xr-barrel.js): solid rings above the
+    // left wrist, or pinned at waist height. View rim (Space, Gallery, Board), then the Board's Layout or Time, then
+    // Depth and Show; the hub switches Simple and Advanced; keys below hold Back, Recenter, Zoom, Room (MR), Pin and
+    // Exit. X shows or hides it. The right hand's ray takes hold of a ring with the trigger or grip and turns it. ----
+    let xrBarrel = null;
     let xrPlacementKind = 'overview';
     let xrDarkRoom = false;
     let xrDarkShell = null;
@@ -5924,13 +5979,46 @@ export default {
     const XR_BOARD_DISTANCE_M = 1.7;
     const XR_BOARD_LABEL_BOOST = 1.4;
     const XR_ZOOM_STEP = 1.4;
-    const xrDashboardState = () => ({
-      view: gallery ? 'gallery' : filterState.flat ? filterState.boardMode : 'space',
-      scopeLabel: scopeLabel.textContent,
+    const xrBarrelRingDefs = () => {
+      const defs = wheelRingDefs();
+      defs.view = { name: 'View', stops: [
+        { value: 'space', label: 'Space' },
+        { value: 'gallery', label: 'Gallery' },
+        { value: 'board', label: 'Board' }
+      ] };
+      return defs;
+    };
+    const xrBarrelState = () => ({
+      view: gallery ? 'gallery' : filterState.flat ? 'board' : 'space',
+      layout: filterState.boardMode,
+      time: filterState.horizon,
       depth: filterState.depth,
-      platform: filterState.platform,
+      filters: filterState.platform,
+      simple: wheelSimple(),
       passthrough: xr && xr.mode() === 'immersive-ar' ? !xrDarkRoom : null
     });
+    const xrOnGrab = (ray, hand) => {
+      if (!xrBarrel) return false;
+      xrPick(ray);
+      return xrBarrel.grab(xrRaycaster, hand);
+    };
+    const xrOnDrag = (ray, hand) => {
+      if (!xrBarrel || !xrRaycaster) return;
+      xrRaycaster.set(ray.origin, ray.direction);
+      xrBarrel.drag(xrRaycaster, hand);
+    };
+    const xrBarrelChange = (ring, value) => {
+      if (ring === 'view') xrSetView(value === 'board' ? filterState.boardMode : value);
+      else if (ring === 'layout') xrSetView(value);
+      else if (ring === 'time') {
+        setScope(value);
+        xrRecenter();
+      } else if (ring === 'depth') setDepth(value);
+      else if (ring === 'filters') {
+        const pill = document.querySelector('.platform-pill[data-platform="' + value + '"]');
+        if (pill && !pill.disabled) pill.click();
+      }
+    };
     const setFlat = on => {
       if (filterState.flat !== on) viewToggle.click();
     };
@@ -6005,38 +6093,34 @@ export default {
       if (hovered) return hovered;
       return Graph.graphData().nodes.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null;
     };
-    const xrDashboardAction = id => {
-      const [kind, value] = id.split(':');
-      if (kind === 'view') {
-        if (value === 'space') {
-          if (gallery || focus.node) resetSelection();
-          setFlat(false);
-          xrPlaceOverview();
-        } else if (value === 'gallery') {
-          const node = xrGalleryCard();
-          setFlat(false);
-          if (!node) return;
-          focusCard(node);
-          if (gallery) {
-            cardField.setGallerySlide(gallery.radius * XR_FOCUS_SLIDE);
-            xrPlaceGallery();
-          }
-        } else {
-          if (gallery || focus.node) resetSelection();
-          const button = boardModeButtons.find(item => item.dataset.boardMode === value);
-          if (button && filterState.boardMode !== value) button.click();
-          setFlat(true);
-          layoutBoard();
-          xrPlaceBoard();
+    // A spatial view: 'space', 'gallery', or a Board layout ('groups', 'status', 'map', 'timeline').
+    const xrSetView = value => {
+      if (value === 'space') {
+        if (gallery || focus.node) resetSelection();
+        setFlat(false);
+        xrPlaceOverview();
+      } else if (value === 'gallery') {
+        const node = xrGalleryCard();
+        setFlat(false);
+        if (!node) return;
+        focusCard(node);
+        if (gallery) {
+          cardField.setGallerySlide(gallery.radius * XR_FOCUS_SLIDE);
+          xrPlaceGallery();
         }
-      } else if (kind === 'scope') {
-        stepScope(value === 'widen' ? 1 : -1);
-        xrRecenter();
-      } else if (kind === 'depth') {
-        setDepth(value);
-      } else if (kind === 'platform') {
-        const pill = document.querySelector('.platform-pill[data-platform="' + value + '"]');
-        if (pill && !pill.disabled) pill.click();
+      } else {
+        if (gallery || focus.node) resetSelection();
+        const button = boardModeButtons.find(item => item.dataset.boardMode === value);
+        if (button && filterState.boardMode !== value) button.click();
+        setFlat(true);
+        layoutBoard();
+        xrPlaceBoard();
+      }
+    };
+    // The barrel's hub (the wheel mode) and keys.
+    const xrAction = id => {
+      if (id === 'mode') {
+        setWheelMode(wheelSimple() ? 'advanced' : 'simple');
       } else if (id === 'back') {
         if (gallery || focus.node) xrOnBack();
         else if (filterState.flat) {
@@ -6052,7 +6136,7 @@ export default {
       } else if (id === 'passthrough') {
         setDarkRoom(!xrDarkRoom);
       } else if (id === 'pin') {
-        xrDashboard.setPinned(!xrDashboard.isPinned());
+        xrBarrel.setPinned(!xrBarrel.isPinned());
       } else if (id === 'exit') {
         xr.end();
       }
@@ -8094,9 +8178,10 @@ export default {
     // Restored view applies before the first graph load, so there is no flash of the wrong view.
     renderActiveView();
 
-    // ---- Thumb wheel (phones, public/js/spatial/thumb-wheel.js): View rim outermost (3D Space, List, Timeline, Board,
-    // Carousel), then the primary ring (the Scale in 3D Space, the Layout on the Board, Time elsewhere), then what the
-    // stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: nothing). The hub is + Add. ----
+    // ---- Control wheel (public/js/spatial/thumb-wheel.js; phones and desktop): View rim outermost (3D Space, List,
+    // Timeline, Board, Carousel), then the primary ring (the Scale in 3D Space, the Layout on the Board, Time elsewhere),
+    // then what the stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: nothing). The hub is + Add. In the
+    // Simple mode only the rim and the primary ring show. ----
     const thumbWheelMount = document.getElementById('thumb-wheel');
     const WHEEL_TIME_LABELS = { day: 'Today', week: 'Week', month: 'Month', groups: 'Groups', all: 'All' };
     const WHEEL_BOARD_LABELS = { groups: 'Groups', status: 'Status', map: 'Map', timeline: 'Timeline' };
@@ -8162,26 +8247,49 @@ export default {
       try { localStorage.setItem(DIAL_SOUND_KEY, dialSoundOn() ? 'off' : 'on'); } catch (err) {}
       renderDialSound();
     });
+    // Wheel mode (Simple or Advanced), remembered per browser; the headset barrel's hub switches the same mode.
+    const WHEEL_MODE_KEY = 'aetherWheelMode';
+    const wheelModeButton = document.getElementById('wheel-mode');
+    let wheelMode = 'advanced';
+    try {
+      if (localStorage.getItem(WHEEL_MODE_KEY) === 'simple') wheelMode = 'simple';
+    } catch (err) {}
+    const wheelSimple = () => wheelMode === 'simple';
+    const renderWheelMode = () => {
+      const advanced = !wheelSimple();
+      wheelModeButton.setAttribute('aria-checked', String(advanced));
+      wheelModeButton.querySelector('.wheel-mode-label').textContent = advanced ? 'Advanced' : 'Simple';
+    };
+    const setWheelMode = mode => {
+      wheelMode = mode === 'simple' ? 'simple' : 'advanced';
+      try { localStorage.setItem(WHEEL_MODE_KEY, wheelMode); } catch (err) {}
+      renderWheelMode();
+      // Open the wheel so the rings are seen telescoping in or out.
+      if (thumbWheel) {
+        thumbWheel.wake();
+        thumbWheel.sync();
+      }
+    };
+    renderWheelMode();
+    wheelModeButton.addEventListener('click', event => {
+      event.stopPropagation();
+      setWheelMode(wheelSimple() ? 'advanced' : 'simple');
+    });
     const mountThumbWheel = () => {
       const spatial = window.AetherSpatial;
-      if (!spatial || !spatial.createThumbWheel) return;
-      if (compactLayout.matches && !thumbWheel) {
-        thumbWheel = spatial.createThumbWheel({
-          mount: thumbWheelMount,
-          rings: wheelRingDefs(),
-          state: wheelState,
-          onChange: onWheelChange,
-          onAdd: () => openAddNodeModal(),
-          sound: dialSoundOn
-        });
-      } else if (!compactLayout.matches && thumbWheel) {
-        thumbWheel.destroy();
-        thumbWheel = null;
-      }
+      if (!spatial || !spatial.createThumbWheel || thumbWheel) return;
+      thumbWheel = spatial.createThumbWheel({
+        mount: thumbWheelMount,
+        rings: wheelRingDefs(),
+        state: wheelState,
+        onChange: onWheelChange,
+        onAdd: () => openAddNodeModal(),
+        sound: dialSoundOn,
+        simple: wheelSimple
+      });
     };
     if (window.AetherSpatial) mountThumbWheel();
     else window.addEventListener('aether-spatial-ready', mountThumbWheel, { once: true });
-    compactLayout.addEventListener('change', mountThumbWheel);
 
     const loginGate = document.getElementById('login-gate');
     const loginError = document.getElementById('login-error');

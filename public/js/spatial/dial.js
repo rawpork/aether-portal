@@ -160,16 +160,50 @@ export function createDial({ count, index = 0, pitch = 0.4 }) {
 // ---- The wheel's rings, outer to inner ----
 // The View rim is outermost; inside it the primary ring for that view (the Scale in 3D Space, the Layout on the Board,
 // Time elsewhere); then the rings the current stop needs. Space opens Time, Cluster opens Depth, Horizon opens Filters
-// and Atomic folds everything. Idle, only the rim and the primary ring show.
+// and Atomic folds everything. Idle, only the rim and the primary ring show. The Simple mode (for getting started)
+// never shows more than those two; Advanced telescopes the inner rings out.
 export const WHEEL_VIEWS = ['space', 'list', 'timeline', 'board', 'carousel'];
+export const WHEEL_MODES = ['simple', 'advanced'];
 const INNER_BY_SCALE = { space: ['time'], cluster: ['depth'], horizon: ['filters'], atomic: [] };
 
-export function wheelRings({ view = 'space', scale = 'horizon', collapsed = false } = {}) {
+export function wheelRings({ view = 'space', scale = 'horizon', collapsed = false, simple = false } = {}) {
   let rings;
   if (view === 'space') rings = ['view', 'scale', ...(INNER_BY_SCALE[scale] || [])];
   else if (view === 'board') rings = ['view', 'layout', 'filters', 'time'];
   else rings = ['view', 'time', 'filters'];
-  return collapsed ? rings.slice(0, 2) : rings;
+  return collapsed || simple ? rings.slice(0, 2) : rings;
+}
+
+// The headset lens barrel's rings, outer to inner. A headset has no web page views, so its View rim holds the spatial
+// ones: Space (the whole cloud), Gallery (a group's wall around the viewer) and Board (the flat wall, whose primary
+// ring is its Layout). Scale stops wait for the headset's own placements, so Space and Gallery lead with Time.
+export const BARREL_VIEWS = ['space', 'gallery', 'board'];
+export function barrelRings({ view = 'space', simple = false } = {}) {
+  let rings;
+  if (view === 'board') rings = ['view', 'layout', 'filters', 'time'];
+  else if (view === 'gallery') rings = ['view', 'time', 'filters'];
+  else rings = ['view', 'time', 'depth', 'filters'];
+  return simple ? rings.slice(0, 2) : rings;
+}
+
+// Scroll input for a ring under the mouse: a mouse wheel's notch (a large pixel step) turns one stop; a trackpad's
+// smooth scroll adds up to one stop per `threshold` pixels, with anything left over dropped after `idleMs`. Returns a
+// function of (deltaY in pixels, time in ms) giving how many stops to turn (positive = down the list).
+export function createScrollTurner({ threshold = 60, notch = 50, idleMs = 200 } = {}) {
+  let travel = 0;
+  let last = -Infinity;
+  return (deltaY, time) => {
+    if (time - last > idleMs) travel = 0;
+    last = time;
+    if (Math.abs(deltaY) >= notch) {
+      travel = 0;
+      return Math.sign(deltaY);
+    }
+    travel += deltaY;
+    const stops = Math.trunc(travel / threshold);
+    travel -= stops * threshold;
+    return stops;
+  };
 }
 
 // Gearing: inner rings turn against the primary ring at a fixed ratio (their knurling only; their labels stay put, so
