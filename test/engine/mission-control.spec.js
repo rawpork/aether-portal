@@ -14,16 +14,18 @@ afterEach(() => {
     mc.breaker.destroy();
     mc.monitor.destroy();
     mc.dock.destroy();
+    mc.blueprints.destroy();
     mc.connection.destroy();
   }
   document.body.replaceChildren();
 });
 
 it('mounts the breaker top-right, the task monitor and Elaron, authenticated by a portal-minted token', async () => {
-  const html = renderMissionControlPage({ assetVersion: 'test' });
+  const html = renderMissionControlPage({ assetVersion: 'test', tier: 'pro' });
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
   document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
 
   let token = null;
   const engineCalls = [];
@@ -63,4 +65,21 @@ it('mounts the breaker top-right, the task monitor and Elaron, authenticated by 
   expect(document.querySelector('#mc-connection form').hidden).toBe(true);
   expect(engineCalls.length).toBeGreaterThanOrEqual(3);
   expect(engineCalls.every((c) => c.auth === 'Bearer ' + PORTAL_JWT)).toBe(true);
+
+  // Workspace tabs: the monitor shows first; Blueprints holds ingestion and the artifact dashboard.
+  const monitorTab = document.getElementById('mc-tab-monitor');
+  const blueprintsTab = document.getElementById('mc-tab-blueprints');
+  expect(document.getElementById('mc-view-monitor').hidden).toBe(false);
+  expect(document.getElementById('mc-view-blueprints').hidden).toBe(true);
+  blueprintsTab.click();
+  expect(blueprintsTab.getAttribute('aria-selected')).toBe('true');
+  expect(document.getElementById('mc-view-blueprints').hidden).toBe(false);
+  expect(document.getElementById('mc-view-monitor').hidden).toBe(true);
+  expect(window.location.hash).toBe('#blueprints');
+  expect(document.querySelector('#mc-blueprints .bp-ingest')).not.toBe(null);
+  expect(document.querySelector('#mc-blueprints .bp-tier').textContent).toBe('Pro Engine');
+  blueprintsTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  expect(monitorTab.getAttribute('aria-selected')).toBe('true');
+  expect(document.activeElement).toBe(monitorTab);
+  expect(window.location.hash).toBe('');
 });

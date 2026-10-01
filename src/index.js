@@ -907,10 +907,17 @@ export default {
       if (request.method !== "GET" && request.method !== "HEAD") {
         return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
       }
-      if (!await getSessionUser(request, env)) {
+      const session = await getSessionUser(request, env);
+      if (!session) {
         return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/mission-control"), 303);
       }
-      return new Response(renderMissionControlPage({ assetVersion: env.CF_VERSION_METADATA?.id || "dev" }), {
+      // Tier gates the blueprint dashboard's Deploy & Execute action (Pro); everything else is open to every tier.
+      const account = await env.DB.prepare("SELECT tier FROM users WHERE id = ?").bind(session.id).first().catch(() => null);
+      return new Response(renderMissionControlPage({
+        assetVersion: env.CF_VERSION_METADATA?.id || "dev",
+        tier: account?.tier || "free",
+        upgradeUrl: env.PRO_UPGRADE_URL || ""
+      }), {
         headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
       });
     }

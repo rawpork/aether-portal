@@ -59,4 +59,13 @@ describe('Mission Control routes', () => {
 		expect(html.match(/<script/g)).toHaveLength(1);
 		expect(html).toContain('src="/js/engine/mission-control.js?v=v1"');
 	});
+
+	it('passes the tier and only an https upgrade URL to the page, escaped', () => {
+		const html = renderMissionControlPage({ tier: 'pro"><script>', upgradeUrl: 'https://billing.example/up?a=1&b=2' });
+		expect(html).toContain('<meta name="aether-tier" content="pro&quot;&gt;&lt;script&gt;">');
+		expect(html).toContain('<meta name="aether-upgrade-url" content="https://billing.example/up?a=1&amp;b=2">');
+		expect(renderMissionControlPage({ upgradeUrl: 'javascript:alert(1)' })).toContain('<meta name="aether-upgrade-url" content="">');
+		expect(renderMissionControlPage()).toContain('<meta name="aether-tier" content="free">');
+		for (const id of ['mc-tab-monitor', 'mc-tab-blueprints', 'mc-view-blueprints', 'mc-blueprints']) expect(html, id).toContain(`id="${id}"`);
+	});
 });

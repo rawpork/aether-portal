@@ -176,6 +176,8 @@ export interface ArtifactSummary {
 	project_name: string;
 	created_at?: string;
 	status: BlueprintStatus;
+	phases?: number;
+	sources?: number;
 }
 
 export interface ArtifactList {
@@ -477,6 +479,12 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			return request<ArtifactList>('GET', '/api/artifacts');
 		},
 
+		// GET /api/artifacts/:blueprintId: one stored blueprint in full (404 if missing).
+		getArtifact(blueprintId: string): Promise<CompiledBlueprint> {
+			requireText('blueprintId', blueprintId);
+			return request<CompiledBlueprint>('GET', '/api/artifacts/' + encodeURIComponent(blueprintId));
+		},
+
 		// POST /api/blueprint/compile. Schema violations throw EngineApiError 400 with body.validation_errors.
 		compileBlueprint(payload: CompileBlueprintRequest): Promise<CompileBlueprintResult> {
 			return request<CompileBlueprintResult>('POST', '/api/blueprint/compile', { body: payload });
@@ -509,3 +517,4 @@ export const getTaskStatus: EngineApi['getTaskStatus'] = (...args) => getEngineA
 export const compileBlueprint: EngineApi['compileBlueprint'] = (...args) => getEngineApi().compileBlueprint(...args);
 export const listTasks: EngineApi['listTasks'] = (...args) => getEngineApi().listTasks(...args);
 export const listArtifacts: EngineApi['listArtifacts'] = () => getEngineApi().listArtifacts();
+export const getArtifact: EngineApi['getArtifact'] = (...args) => getEngineApi().getArtifact(...args);

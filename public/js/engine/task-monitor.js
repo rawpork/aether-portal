@@ -94,6 +94,7 @@ export function mountTaskMonitor(container, options = {}) {
   const idlePollMs = options.idlePollMs || IDLE_POLL_MS;
   const projectsRefreshMs = options.projectsRefreshMs || PROJECTS_REFRESH_MS;
   const now = options.now || Date.now;
+  const onOpenProject = options.onOpenProject || null;
 
   let tasks = [];
   let timer = null;
@@ -257,13 +258,17 @@ export function mountTaskMonitor(container, options = {}) {
     const latest = [...artifacts].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, MAX_PROJECTS);
     projectEmpty.hidden = latest.length > 0;
     projectList.replaceChildren(
-      ...latest.map((a) =>
-        el(doc, 'li', { class: 'mc-project' }, [
+      ...latest.map((a) => {
+        const parts = [
           el(doc, 'span', { class: 'mc-project-name', text: a.project_name || a.blueprint_id }),
           el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: a.status }),
           el(doc, 'span', { class: 'mc-project-meta', text: a.blueprint_id + (a.created_at ? ' · compiled ' + formatAgo(a.created_at, now()) : '') }),
-        ]),
-      ),
+        ];
+        if (!onOpenProject) return el(doc, 'li', { class: 'mc-project' }, parts);
+        const button = el(doc, 'button', { type: 'button', class: 'mc-project mc-project-link', title: 'Open in Blueprints' }, parts);
+        button.addEventListener('click', () => onOpenProject(a.blueprint_id));
+        return el(doc, 'li', {}, [button]);
+      }),
     );
   }
 

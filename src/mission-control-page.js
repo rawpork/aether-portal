@@ -1,10 +1,15 @@
 // /mission-control: the one place the portal talks to the local Aether_Engine. The emergency breaker sits in the
 // top-right corner, the agent task loop monitor fills the main column, and the Elaron chat and voice dock sits beside
-// it. All behaviour lives in public/js/engine/mission-control.js; this template is markup and styles only, so it
-// carries no inline script (and, being a template literal, avoids backslashes and placeholders other than the version).
+// it; a Blueprints tab holds blueprint ingestion and the artifact dashboard. All behaviour lives in
+// public/js/engine/mission-control.js; this template is markup and styles only, so it carries no inline script (and,
+// being a template literal, avoids backslashes). The user's tier and the optional upgrade URL reach the script as
+// meta tags.
 
-export function renderMissionControlPage({ assetVersion = 'dev' } = {}) {
+const escapeAttr = (value) => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '' } = {}) {
 	const v = encodeURIComponent(assetVersion);
+	const safeUpgradeUrl = /^https:[/][/]/i.test(upgradeUrl) ? upgradeUrl : '';
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,6 +19,8 @@ export function renderMissionControlPage({ assetVersion = 'dev' } = {}) {
   <meta name="theme-color" content="#080c14">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="aether-tier" content="${escapeAttr(tier)}">
+  <meta name="aether-upgrade-url" content="${escapeAttr(safeUpgradeUrl)}">
   <style>
     /* DESIGN.md, System 2 (teal accent hybrid): navy surfaces, teal accent, hairline borders, 6-8px corners, no glow.
        Red is reserved for the circuit breaker. */
@@ -176,6 +183,69 @@ export function renderMissionControlPage({ assetVersion = 'dev' } = {}) {
     @keyframes elaron-listen { 0% { transform: scale(0.85); opacity: 0.9; } 100% { transform: scale(1.18); opacity: 0; } }
     @keyframes elaron-speak { from { transform: scale(0.9); } to { transform: scale(1.06); } }
 
+    /* Workspace tabs (main column) */
+    .mc-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    .mc-tabbar { display: flex; align-items: center; gap: 4px; padding: 10px 12px 0; border-bottom: var(--hairline); }
+    .mc-tabbar [role="tab"] { appearance: none; height: 36px; padding: 0 14px; border: 1px solid transparent; border-bottom: none; border-radius: var(--radius-s) var(--radius-s) 0 0; background: none; color: var(--text-muted); font-weight: 600; cursor: pointer; }
+    .mc-tabbar [role="tab"][aria-selected="true"] { color: var(--accent); border-color: rgba(255,255,255,0.08); background: var(--bg-raised); }
+    .mc-tabbar [role="tab"]:focus-visible { outline: 1px solid var(--accent-line); outline-offset: -1px; }
+    .mc-tabbar .mc-muted { margin-left: auto; padding-bottom: 8px; }
+    .mc-view { padding-top: 8px; }
+    .mc-view[hidden] { display: none; }
+
+    /* Blueprints (public/js/engine/blueprints.js) */
+    .bp-card { margin: 8px 16px 16px; padding: 14px; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-raised); display: flex; flex-direction: column; gap: 10px; }
+    .bp-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .bp-card-head h2 { margin: 0; font-size: 14px; color: var(--accent); }
+    .bp-tier { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; background: rgba(255,255,255,0.08); color: var(--text-muted); }
+    .bp-tier[data-tier="pro"] { background: rgba(255,182,39,0.16); color: var(--warn); }
+    .bp-editor { width: 100%; min-height: 180px; padding: 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); color: var(--text); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; resize: vertical; }
+    .bp-editor:focus { outline: none; border-color: var(--accent-line); }
+    .bp-editor[aria-invalid="true"] { border-color: rgba(255,77,109,0.6); }
+    .bp-editor.bp-drop { border-style: dashed; border-color: var(--accent); }
+    .bp-actions, .bp-deploy-row, .bp-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .bp-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border: 1px solid var(--accent); border-radius: var(--radius-s); background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer; }
+    .bp-primary:disabled { opacity: 0.5; cursor: progress; }
+    .bp-pro-badge { padding: 1px 6px; border-radius: 4px; background: var(--warn); color: #241600; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; }
+    .bp-result { margin: 0; padding: 10px 12px; border-radius: var(--radius-s); border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 13px; }
+    .bp-result[data-kind="error"] { border-left-color: var(--danger); background: rgba(255,77,109,0.08); color: #ffb3c1; }
+    .bp-result[data-kind="note"] { border-left-color: rgba(255,255,255,0.2); background: var(--bg-raised); }
+    .bp-result-title { margin: 0; font-weight: 600; }
+    .bp-issues { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+    .bp-issues li[data-level="warning"] { color: var(--warn); }
+    .bp-issues li[data-level="note"] { color: var(--text-muted); }
+    .bp-issues code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+    .bp-browser { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .bp-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 70vh; overflow-y: auto; }
+    .bp-list-item { appearance: none; width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 8px 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); color: var(--text); text-align: left; cursor: pointer; }
+    .bp-list-item[aria-current="true"] { border-color: var(--accent-line); background: var(--accent-soft); }
+    .bp-list-item:focus-visible { outline: 1px solid var(--accent-line); }
+    .bp-list-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .bp-list-meta { grid-column: 1 / -1; color: var(--text-muted); font-size: 11px; }
+    .bp-viewer { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+    .bp-viewer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .bp-viewer-head h3 { margin: 0; font-size: 16px; }
+    .bp-viewer-head p { margin: 2px 0 0; overflow-wrap: anywhere; }
+    .bp-viewer h4 { margin: 6px 0 0; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .bp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+    .bp-fact { padding: 8px 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); }
+    .bp-fact-value { display: block; font-weight: 700; overflow-wrap: anywhere; }
+    .bp-fact-label { color: var(--text-muted); font-size: 11px; }
+    .bp-confirm { padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: var(--radius-s); font-size: 13px; }
+    .bp-confirm[hidden] { display: none; }
+    .bp-deploy-status { margin: 0; }
+    .bp-table-wrap { overflow-x: auto; }
+    .bp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .bp-table caption { text-align: left; color: var(--text-muted); font-size: 11px; padding-bottom: 4px; }
+    .bp-table th, .bp-table td { padding: 6px 8px; border-bottom: var(--hairline); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    .bp-table th { color: var(--text-muted); font-weight: 600; }
+    .bp-table a { color: var(--accent); }
+    .bp-warning { margin: 0; color: var(--warn); font-size: 12px; }
+    .bp-raw summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
+    .bp-raw pre { max-height: 320px; overflow: auto; margin: 6px 0 0; padding: 10px; border-radius: var(--radius-s); background: var(--bg-page); font-size: 11px; }
+    .mc-project.mc-project-link { appearance: none; width: 100%; color: inherit; text-align: left; cursor: pointer; }
+    .mc-project.mc-project-link:hover, .mc-project.mc-project-link:focus-visible { border-color: var(--accent-line); outline: none; }
+
     @media (prefers-reduced-motion: reduce) {
       .engine-badge[data-state="HALTED"] { animation: none; background: rgba(255,77,109,0.7); }
       .elaron-ring, .elaron-core { animation: none !important; }
@@ -187,6 +257,8 @@ export function renderMissionControlPage({ assetVersion = 'dev' } = {}) {
       .mc-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
       .mc-elaron { height: 75vh; }
       .mc-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .bp-browser { grid-template-columns: minmax(0, 1fr); }
+      .bp-list { max-height: 240px; }
     }
     @media (max-width: 600px) {
       .mc-top { padding: 8px 10px; gap: 8px; }
@@ -209,9 +281,15 @@ export function renderMissionControlPage({ assetVersion = 'dev' } = {}) {
     <div id="mc-breaker" class="mc-breaker" role="group" aria-label="Emergency circuit breaker"></div>
   </header>
   <main class="mc-grid">
-    <section class="mc-panel mc-monitor" aria-labelledby="mc-monitor-title">
-      <div class="mc-panel-head"><h1 id="mc-monitor-title">Agent Task Loop Monitor</h1><span id="mc-monitor-status" class="mc-muted" aria-live="polite"></span></div>
-      <div id="mc-monitor"></div>
+    <section class="mc-panel mc-monitor" aria-label="Workspace">
+      <h1 class="mc-visually-hidden">Mission Control</h1>
+      <div class="mc-tabbar" role="tablist" aria-label="Workspace">
+        <button type="button" role="tab" id="mc-tab-monitor" aria-controls="mc-view-monitor" aria-selected="true">Task Loop Monitor</button>
+        <button type="button" role="tab" id="mc-tab-blueprints" aria-controls="mc-view-blueprints" aria-selected="false" tabindex="-1">Blueprints</button>
+        <span id="mc-monitor-status" class="mc-muted" aria-live="polite"></span>
+      </div>
+      <div class="mc-view" id="mc-view-monitor" role="tabpanel" aria-labelledby="mc-tab-monitor"><div id="mc-monitor"></div></div>
+      <div class="mc-view" id="mc-view-blueprints" role="tabpanel" aria-labelledby="mc-tab-blueprints" hidden><div id="mc-blueprints"></div></div>
       <details id="mc-connection" class="mc-connection"></details>
     </section>
     <section class="mc-panel mc-elaron" id="mc-elaron" aria-label="Elaron chat and voice"></section>
