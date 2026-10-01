@@ -7,6 +7,11 @@
 //
 // Types mirror Aether_Engine/src/server.ts and blueprint_schema.json; keep them in sync with the engine.
 
+import { emitState } from './engineEvents.ts';
+import type { AgentExecutionState } from './engineEvents.ts';
+import { connectVoiceStream } from './voiceStream.ts';
+import type { VoiceStream, VoiceStreamHandlers, VoiceStreamOptions } from './voiceStream.ts';
+
 export const DEFAULT_ENGINE_BASE_URL = 'http://localhost:3333';
 export const ENGINE_JWT_STORAGE_KEY = 'aether.engine.jwt';
 export const ENGINE_BASE_URL_STORAGE_KEY = 'aether.engine.baseUrl';
@@ -19,7 +24,7 @@ const CHAT_TIMEOUT_MS = 310_000;
 // Engine contract types
 // ---------------------------------------------------------------------------
 
-export type AgentExecutionState = 'ACTIVE' | 'HALTED';
+export type { AgentExecutionState };
 
 export interface TokenUsage {
 	input: number;
@@ -238,32 +243,12 @@ export class EngineApiError extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// State events
+// State events (shared with the voice stream client)
 // ---------------------------------------------------------------------------
 
-export const ENGINE_STATE_EVENT = 'engine-state';
-
-export interface EngineStateEventDetail {
-	agentId: string;
-	state: AgentExecutionState;
-	reason?: string;
-	// What revealed the state: a poll, a breaker call, or a 423 from any other route.
-	source: 'state' | 'trip' | 'reset' | 'halted-response';
-}
-
-// Every client publishes agent state changes here, so UI (the breaker bar) reacts to a 423 from chat or a
-// task run without waiting for its next poll.
-export const engineEvents = new EventTarget();
-
-function emitState(detail: EngineStateEventDetail): void {
-	engineEvents.dispatchEvent(new CustomEvent<EngineStateEventDetail>(ENGINE_STATE_EVENT, { detail }));
-}
-
-export function onEngineState(listener: (detail: EngineStateEventDetail) => void): () => void {
-	const handler = (event: Event) => listener((event as CustomEvent<EngineStateEventDetail>).detail);
-	engineEvents.addEventListener(ENGINE_STATE_EVENT, handler);
-	return () => engineEvents.removeEventListener(ENGINE_STATE_EVENT, handler);
-}
+export { ENGINE_STATE_EVENT, engineEvents, onEngineState } from './engineEvents.ts';
+export type { EngineStateEventDetail } from './engineEvents.ts';
+export * from './voiceStream.ts';
 
 // ---------------------------------------------------------------------------
 // Client
@@ -444,6 +429,11 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		// POST /api/blueprint/compile. Schema violations throw EngineApiError 400 with body.validation_errors.
 		compileBlueprint(payload: CompileBlueprintRequest): Promise<CompileBlueprintResult> {
 			return request<CompileBlueprintResult>('POST', '/api/blueprint/compile', { body: payload });
+		},
+
+		// WebSocket /api/voice/stream on the same engine, authenticated with the same token.
+		openVoiceStream(options: VoiceStreamOptions, handlers?: VoiceStreamHandlers): VoiceStream {
+			return connectVoiceStream({ ...options, baseUrl, token: getToken() }, handlers);
 		},
 	};
 }

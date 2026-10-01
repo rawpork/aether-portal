@@ -2569,16 +2569,117 @@ export default {
       .engine-trip-long { display: none; }
       .engine-trip-short { display: inline; }
     }
+    /* Master Brain dock (public/js/engine/brain-dock.js): typed chat and the Elaron voice dock. Right-hand panel on
+       wide screens, bottom sheet on phones. Elaron is a gradient orb; its ring and core animate per mode (no glow). */
+    #brain-dock-toggle { display: flex; flex: none; }
+    #brain-dock-toggle:empty { display: none; }
+    .brain-toggle.active { border-color: var(--accent-line); background: var(--accent-soft); }
+    .brain-dock {
+      position: fixed;
+      top: 64px;
+      right: 10px;
+      bottom: 10px;
+      z-index: 35;
+      width: min(400px, calc(100vw - 20px));
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      border: var(--hairline);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+      color: var(--text);
+      touch-action: auto;
+    }
+    .brain-dock[hidden] { display: none; }
+    .brain-head { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: var(--hairline); }
+    .brain-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .brain-title h2 { margin: 0; font-size: 15px; color: var(--accent); }
+    .brain-status { font-size: 12px; color: var(--text-muted); }
+    .elaron[data-mode="halted"] ~ .brain-title .brain-status { color: #ff6b81; }
+    .brain-icon-btn {
+      appearance: none;
+      flex: none;
+      min-width: 36px;
+      height: 36px;
+      padding: 0 10px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .brain-icon-btn:disabled, .brain-send:disabled { opacity: 0.45; cursor: default; }
+    .brain-close { font-size: 20px; line-height: 1; }
+    .brain-mic[aria-pressed="true"] { border-color: #ff4d6d; background: rgba(255,77,109,0.2); }
+    .brain-log { flex: 1; min-height: 0; margin: 0; padding: 12px; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; -webkit-overflow-scrolling: touch; }
+    .brain-empty { margin: auto 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; text-align: center; }
+    .brain-msg { max-width: 88%; display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--radius-m); font-size: 14px; line-height: 1.45; }
+    .brain-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .brain-meta { font-size: 11px; color: var(--text-muted); }
+    .brain-user { align-self: flex-end; border: 1px solid var(--accent-line); background: var(--accent-soft); }
+    .brain-assistant { align-self: flex-start; border: var(--hairline); background: var(--bg-raised); }
+    .brain-system { align-self: center; max-width: 100%; padding: 2px 8px; color: var(--text-muted); font-size: 12px; text-align: center; }
+    .brain-error { align-self: stretch; max-width: 100%; border-left: 3px solid #ff4d6d; background: rgba(255,77,109,0.08); color: #ffb3c1; font-size: 13px; }
+    .brain-interim { margin: 0 12px 6px; color: var(--text-muted); font-size: 13px; font-style: italic; }
+    .brain-interim[hidden] { display: none; }
+    .brain-form { display: flex; align-items: flex-end; gap: 6px; padding: 10px 12px 4px; border-top: var(--hairline); }
+    .brain-input {
+      flex: 1;
+      min-width: 0;
+      max-height: 140px;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+      resize: none;
+    }
+    .brain-input:focus { outline: none; border-color: var(--accent-line); }
+    .brain-send { appearance: none; height: 36px; padding: 0 14px; border: 1px solid var(--accent); border-radius: var(--radius-s); background: var(--accent); color: var(--on-accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .brain-hint { min-height: 1em; margin: 0; padding: 4px 12px 10px; color: var(--text-muted); font-size: 11px; }
+    .elaron { position: relative; flex: none; width: 40px; height: 40px; }
+    .elaron-core, .elaron-ring { position: absolute; border-radius: 50%; box-sizing: border-box; }
+    .elaron-core { inset: 9px; background: radial-gradient(circle at 35% 30%, #b8fff1, #00d4a8 55%, #0b4a52); }
+    .elaron-ring { inset: 2px; border: 2px solid var(--accent-line); opacity: 0.4; }
+    .elaron[data-mode="connecting"] .elaron-ring { border-style: dashed; opacity: 0.8; animation: elaron-spin 2.4s linear infinite; }
+    .elaron[data-mode="listening"] .elaron-ring { border-color: var(--accent); animation: elaron-listen 1.2s ease-out infinite; }
+    .elaron[data-mode="thinking"] .elaron-ring { border-color: transparent; border-top-color: var(--accent); opacity: 1; animation: elaron-spin 0.9s linear infinite; }
+    .elaron[data-mode="speaking"] .elaron-core { animation: elaron-speak 0.5s ease-in-out infinite alternate; }
+    .elaron[data-mode="speaking"] .elaron-ring { opacity: 0.8; }
+    .elaron[data-mode="halted"] .elaron-core { background: radial-gradient(circle at 35% 30%, #ffc2cc, #ff4d6d 55%, #5a1020); }
+    .elaron[data-mode="halted"] .elaron-ring { border-color: #ff4d6d; opacity: 0.9; }
+    .elaron[data-mode="offline"] .elaron-core { background: radial-gradient(circle at 35% 30%, #d0d5df, #6b7385 55%, #262b36); }
+    .elaron[data-mode="offline"] .elaron-ring { border-color: rgba(255,255,255,0.2); }
+    @keyframes elaron-spin { to { transform: rotate(360deg); } }
+    @keyframes elaron-listen { 0% { transform: scale(0.85); opacity: 0.9; } 100% { transform: scale(1.18); opacity: 0; } }
+    @keyframes elaron-speak { from { transform: scale(0.9); } to { transform: scale(1.06); } }
+    @media (prefers-reduced-motion: reduce) {
+      .elaron-ring, .elaron-core { animation: none !important; }
+      .elaron[data-mode="listening"] .elaron-ring, .elaron[data-mode="thinking"] .elaron-ring { opacity: 1; border-color: var(--accent); }
+    }
+    @media (max-width: 900px) {
+      .brain-toggle .bar-label { display: none; }
+    }
+    @media (max-width: 600px) {
+      .brain-dock { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 72vh; border-radius: var(--radius-m) var(--radius-m) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+    }
   </style>
   <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
   <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
   <script type="module" src="/js/spatial/index.js?v=${assetVersion}"></script>
   <script type="module" src="/js/engine/breaker-bar.js?v=${assetVersion}"></script>
+  <script type="module" src="/js/engine/brain-dock.js?v=${assetVersion}"></script>
 </head>
 <body>
   <header id="topbar">
     <span class="brand">Aether Portal</span>
     <div id="engine-bar" role="group" aria-label="Aether Engine circuit breaker"></div>
+    <div id="brain-dock-toggle"></div>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
     <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
     <span class="bar-spacer"></span>
