@@ -37,17 +37,40 @@ export function describeToken(token, now = Date.now()) {
   }
 }
 
-// Checks an engine URL typed by the user. Returns { ok, url, error, warning }.
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+// Cleans up a pasted engine address: drops whitespace (including zero-width and non-breaking spaces), quotes and
+// angle brackets, and trailing slashes, and adds a scheme when there is none: https:// normally, http:// for
+// localhost (a local engine listens on plain http). "xyz.trycloudflare.com" becomes "https://xyz.trycloudflare.com".
+export function sanitizeEngineUrl(value) {
+  let text = String(value || '')
+    .replace(/[\s\u00a0\u200b-\u200d\u2060\ufeff]+/g, '')
+    .replace(/["'`<>]/g, '');
+  if (!text) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) {
+    text = text.replace(/^\/+/, '');
+    const host = text.split(/[/:?#]/)[0].toLowerCase();
+    text = (LOCAL_HOSTS.includes(host) || host === '[' ? 'http://' : 'https://') + text;
+  }
+  return text.replace(/\/+$/, '');
+}
+
+// Checks an engine URL typed by the user (after sanitizeEngineUrl). Returns { ok, url, error, warning }.
 // An https page can't call a plain-http engine unless it is on this device (localhost), so that is refused.
 export function checkEngineUrl(value, pageProtocol = 'https:') {
+  const cleaned = sanitizeEngineUrl(value);
+  if (!cleaned) return { ok: false, error: 'Enter the engine address, like xyz.trycloudflare.com.' };
   let url;
   try {
-    url = new URL(String(value || '').trim());
+    url = new URL(cleaned);
   } catch {
-    return { ok: false, error: 'Enter a full URL, like https://engine.example.com.' };
+    return { ok: false, error: 'That doesn’t look like an address. Try something like xyz.trycloudflare.com.' };
+  }
+  if (!url.hostname.includes('.') && !LOCAL_HOSTS.includes(url.hostname)) {
+    return { ok: false, error: 'That doesn’t look like an address. Try something like xyz.trycloudflare.com.' };
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return { ok: false, error: 'The engine URL must start with http:// or https://.' };
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  const local = LOCAL_HOSTS.includes(url.hostname);
   if (pageProtocol === 'https:' && url.protocol === 'http:' && !local) {
     return { ok: false, error: 'This page is https, so browsers block a plain-http engine on another machine. Use an https address for it (for example a Cloudflare Tunnel).' };
   }
@@ -107,12 +130,15 @@ function el(doc, tag, props = {}, children = []) {
   return node;
 }
 
-function writeStorage(key, value) {
+// Writes (or clears) a setting and reads it back, so a blocked or full storage is reported instead of silently
+// losing the setting on the next reload.
+function writeStorage(storage, key, value) {
   try {
-    if (value) globalThis.localStorage.setItem(key, value);
-    else globalThis.localStorage.removeItem(key);
+    if (value) storage.setItem(key, value);
+    else storage.removeItem(key);
+    return storage.getItem(key) === (value || null);
   } catch {
-    // Storage blocked: the setting just won't stick.
+    return false;
   }
 }
 
@@ -141,6 +167,7 @@ export async function mountConnection(details, options = {}) {
   const setToken = options.setToken || setStoredEngineToken;
   const onChange = options.onChange || (() => {});
   const reload = options.reload || (() => win.location.reload());
+  const storage = options.storage || globalThis.localStorage;
   const pageProtocol = options.pageProtocol || (win.location && win.location.protocol) || 'https:';
   let state = null;
   let refreshTimer = null;
@@ -148,12 +175,26 @@ export async function mountConnection(details, options = {}) {
   const summary = el(doc, 'summary', { text: 'Engine connection' });
 
   // Engine URL
-  const urlInput = el(doc, 'input', { type: 'url', class: 'mc-url-input', value: baseUrl, 'aria-label': 'Engine URL', autocomplete: 'off', spellcheck: 'false', inputmode: 'url' });
+  // A text input (not type=url): the browser's own "Enter a URL" check would block addresses without https://,
+  // which sanitizeEngineUrl adds itself.
+  const urlInput = el(doc, 'input', {
+    type: 'text',
+    class: 'mc-url-input',
+    value: baseUrl,
+    'aria-label': 'Engine URL',
+    placeholder: 'xyz.trycloudflare.com',
+    inputmode: 'url',
+    autocomplete: 'off',
+    autocapitalize: 'off',
+    autocorrect: 'off',
+    spellcheck: 'false',
+    enterkeyhint: 'go',
+  });
   urlInput.value = baseUrl;
   const urlSave = el(doc, 'button', { type: 'submit', class: 'toggle-button', text: 'Use this engine' });
   const urlReset = el(doc, 'button', { type: 'button', class: 'toggle-button', text: 'Back to localhost', hidden: baseUrl === DEFAULT_ENGINE_BASE_URL });
-  const urlError = el(doc, 'p', { class: 'modal-error' });
-  const urlForm = el(doc, 'form', { class: 'mc-connection-url' }, [
+  const urlError = el(doc, 'p', { class: 'modal-error', 'aria-live': 'polite' });
+  const urlForm = el(doc, 'form', { class: 'mc-connection-url', novalidate: '' }, [
     el(doc, 'label', { text: 'Engine URL' }, [urlInput]),
     el(doc, 'p', {
       class: 'mc-muted',
@@ -218,6 +259,16 @@ export async function mountConnection(details, options = {}) {
     return state;
   }
 
+  function saveEngineUrl(url) {
+    if (!writeStorage(storage, ENGINE_BASE_URL_STORAGE_KEY, url === DEFAULT_ENGINE_BASE_URL ? null : url)) {
+      urlError.textContent = 'This browser didn’t let the page save the engine address (storage is blocked or full).';
+      return;
+    }
+    urlError.textContent = 'Saved. Connecting to ' + new URL(url).host + '…';
+    // The engine client reads the address when the page loads, so reconnect with a reload.
+    reload();
+  }
+
   urlForm.addEventListener('submit', (event) => {
     event.preventDefault();
     const checked = checkEngineUrl(urlInput.value, pageProtocol);
@@ -225,15 +276,15 @@ export async function mountConnection(details, options = {}) {
       urlError.textContent = checked.error;
       return;
     }
-    urlError.textContent = '';
-    if (checked.url === baseUrl) return;
-    writeStorage(ENGINE_BASE_URL_STORAGE_KEY, checked.url === DEFAULT_ENGINE_BASE_URL ? null : checked.url);
-    reload();
+    // Show the cleaned-up address so it is clear what will be used.
+    urlInput.value = checked.url;
+    if (checked.url === baseUrl) {
+      urlError.textContent = 'Already using ' + new URL(checked.url).host + '.';
+      return;
+    }
+    saveEngineUrl(checked.url);
   });
-  urlReset.addEventListener('click', () => {
-    writeStorage(ENGINE_BASE_URL_STORAGE_KEY, null);
-    reload();
-  });
+  urlReset.addEventListener('click', () => saveEngineUrl(DEFAULT_ENGINE_BASE_URL));
   refreshButton.addEventListener('click', () => refresh());
   manualForm.addEventListener('submit', (event) => {
     event.preventDefault();
