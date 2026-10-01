@@ -1,0 +1,62 @@
+import { SELF } from 'cloudflare:test';
+import { describe, expect, it } from 'vitest';
+import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from '../src/engine-token.js';
+import { renderMissionControlPage } from '../src/mission-control-page.js';
+
+const fromB64url = (part) => atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '='));
+
+describe('engine token minting', () => {
+	it('mints an HS256 JWT the engine can verify with the shared secret', async () => {
+		const now = Date.UTC(2026, 9, 1, 12);
+		const { token, expires_at } = await mintEngineToken('user_owner', 'engine-secret', now);
+		const [header, payload, signature] = token.split('.');
+		expect(JSON.parse(fromB64url(header))).toEqual({ alg: 'HS256', typ: 'JWT' });
+		const claims = JSON.parse(fromB64url(payload));
+		expect(claims).toMatchObject({ sub: 'portal:user_owner', role: 'authenticated', iss: 'aether-portal', iat: now / 1000, exp: now / 1000 + ENGINE_TOKEN_TTL_SECONDS });
+		expect(expires_at).toBe(new Date(now + ENGINE_TOKEN_TTL_SECONDS * 1000).toISOString());
+
+		const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('engine-secret'), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+		const sig = Uint8Array.from(fromB64url(signature), (c) => c.charCodeAt(0));
+		expect(await crypto.subtle.verify('HMAC', key, sig, new TextEncoder().encode(header + '.' + payload))).toBe(true);
+		const wrong = await crypto.subtle.importKey('raw', new TextEncoder().encode('other'), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+		expect(await crypto.subtle.verify('HMAC', wrong, sig, new TextEncoder().encode(header + '.' + payload))).toBe(false);
+	});
+
+	it('refuses to mint without a secret', async () => {
+		await expect(mintEngineToken('u', '')).rejects.toThrow('ENGINE_JWT_SECRET');
+	});
+});
+
+describe('Mission Control routes', () => {
+	it('sends signed-out visitors to sign in and back', async () => {
+		const response = await SELF.fetch('http://example.com/mission-control', { redirect: 'manual' });
+		expect(response.status).toBe(303);
+		const location = new URL(response.headers.get('Location'));
+		expect(location.pathname).toBe('/');
+		expect(location.searchParams.get('next')).toBe('/mission-control');
+		expect((await SELF.fetch('http://example.com/mission-control', { method: 'POST' })).status).toBe(405);
+	});
+
+	it('only hands engine tokens to signed-in users', async () => {
+		expect((await SELF.fetch('http://example.com/api/engine/token')).status).toBe(401);
+		expect((await SELF.fetch('http://example.com/api/engine/token', { method: 'POST' })).status).toBe(405);
+	});
+
+	it('keeps engine controls out of the main portal header, linking to Mission Control instead', async () => {
+		const html = await (await SELF.fetch('http://example.com/')).text();
+		expect(html).toContain('id="mission-control-tab"');
+		expect(html).toContain('href="/mission-control"');
+		for (const gone of ['engine-bar', 'brain-dock', 'breaker-bar.js', 'engine-badge', 'aether.engine.jwt']) {
+			expect(html, gone).not.toContain(gone);
+		}
+	});
+
+	it('renders the workspace with the breaker in the header and one module script', () => {
+		const html = renderMissionControlPage({ assetVersion: 'v1' });
+		const header = /<header class="mc-top">([\s\S]*?)<\/header>/.exec(html)[1];
+		expect(header).toContain('id="mc-breaker"');
+		for (const id of ['mc-monitor', 'mc-elaron', 'mc-connection']) expect(html, id).toContain(`id="${id}"`);
+		expect(html.match(/<script/g)).toHaveLength(1);
+		expect(html).toContain('src="/js/engine/mission-control.js?v=v1"');
+	});
+});

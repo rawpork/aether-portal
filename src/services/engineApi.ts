@@ -147,6 +147,43 @@ export interface TaskRecord {
 	failure?: { step_index: number; status: number; error: string };
 }
 
+// GET /api/tasks: one entry per task (latest run), without per-step results.
+export interface TaskListItem {
+	task_id: string;
+	agent_id: string;
+	run_id: string;
+	status: TaskStatus;
+	total_steps: number;
+	completed_steps: number;
+	current_step: { index: number; step_id: string } | null;
+	interrupted_step_index: number | null;
+	total_tokens: TokenUsage;
+	started_at: string;
+	finished_at: string | null;
+	halt?: { halted_at: string; reason?: string };
+	failure?: { step_index: number; status: number; error: string };
+}
+
+export interface TaskList {
+	tasks: TaskListItem[];
+	counts: { running: number; completed: number; halted: number; failed: number };
+}
+
+// GET /api/artifacts: compiled blueprints stored by the engine.
+export interface ArtifactSummary {
+	filename: string;
+	blueprint_id: string;
+	project_name: string;
+	created_at?: string;
+	status: BlueprintStatus;
+}
+
+export interface ArtifactList {
+	success: true;
+	count: number;
+	artifacts: ArtifactSummary[];
+}
+
 // blueprint_schema.json#/definitions/compile_request
 export interface CompileBlueprintRequest {
 	links: Array<{ url: string; title?: string; rawSnippet?: string }>;
@@ -426,6 +463,20 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			return request<TaskRecord>('GET', agentPath(agentId) + '/tasks/' + encodeURIComponent(taskId));
 		},
 
+		// GET /api/tasks: the caller's task runs, newest first (optionally one agent's).
+		listTasks(opts: { agentId?: string; limit?: number } = {}): Promise<TaskList> {
+			const query = new URLSearchParams();
+			if (opts.agentId) query.set('agent_id', opts.agentId);
+			if (opts.limit) query.set('limit', String(opts.limit));
+			const qs = query.toString();
+			return request<TaskList>('GET', '/api/tasks' + (qs ? '?' + qs : ''));
+		},
+
+		// GET /api/artifacts: compiled blueprints (project status).
+		listArtifacts(): Promise<ArtifactList> {
+			return request<ArtifactList>('GET', '/api/artifacts');
+		},
+
 		// POST /api/blueprint/compile. Schema violations throw EngineApiError 400 with body.validation_errors.
 		compileBlueprint(payload: CompileBlueprintRequest): Promise<CompileBlueprintResult> {
 			return request<CompileBlueprintResult>('POST', '/api/blueprint/compile', { body: payload });
@@ -456,3 +507,5 @@ export const sendMasterBrainChat: EngineApi['sendMasterBrainChat'] = (...args) =
 export const executeSubAgentTask: EngineApi['executeSubAgentTask'] = (...args) => getEngineApi().executeSubAgentTask(...args);
 export const getTaskStatus: EngineApi['getTaskStatus'] = (...args) => getEngineApi().getTaskStatus(...args);
 export const compileBlueprint: EngineApi['compileBlueprint'] = (...args) => getEngineApi().compileBlueprint(...args);
+export const listTasks: EngineApi['listTasks'] = (...args) => getEngineApi().listTasks(...args);
+export const listArtifacts: EngineApi['listArtifacts'] = () => getEngineApi().listArtifacts();

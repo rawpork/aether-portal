@@ -1,7 +1,9 @@
-// Engine breaker bar: live agent state badge, TRIP BREAKER panic button, RESET AGENT, and the engine token modal.
-// Mounted into #engine-bar in the portal top bar. Talks to the local Aether_Engine through the bundled client
-// (public/js/engine-api.bundle.js, built from src/services/engineApi.ts by `npm run build:client`).
-import { getEngineApi, getStoredEngineToken, onEngineState, setStoredEngineToken } from '../engine-api.bundle.js';
+// Emergency circuit breaker for Mission Control: live agent state badge, TRIP BREAKER panic button and RESET AGENT.
+// Mounted by mission-control.js into the workspace's top-right corner. Talks to the local Aether_Engine through the
+// bundled client (public/js/engine-api.bundle.js, built from src/services/engineApi.ts by `npm run build:client`).
+// Tokens are handled by connection.js; when the engine answers 401 the badge reads TOKEN NEEDED and a click calls
+// options.onAuthNeeded.
+import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 
 export const BREAKER_AGENT_ID = 'master-brain';
 export const MANUAL_TRIP_REASON = 'Operator manual trip from Portal UI';
@@ -30,43 +32,20 @@ function el(doc, tag, props = {}, children = []) {
   return node;
 }
 
-// Reads the claims of a JWT for display only; the engine is what verifies the signature.
-export function describeToken(token) {
-  if (!token) return { present: false };
-  const parts = token.split('.');
-  if (parts.length !== 3) return { present: true, malformed: true };
-  try {
-    const json = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(parts[1].length / 4) * 4, '='));
-    const claims = JSON.parse(json);
-    const expiresAt = typeof claims.exp === 'number' ? new Date(claims.exp * 1000) : null;
-    return {
-      present: true,
-      malformed: false,
-      sub: typeof claims.sub === 'string' ? claims.sub : null,
-      expiresAt,
-      expired: expiresAt ? expiresAt.getTime() < Date.now() : false,
-      preview: token.slice(0, 10) + '…' + token.slice(-6),
-    };
-  } catch {
-    return { present: true, malformed: true };
-  }
-}
-
 export function mountBreakerBar(container, options = {}) {
   const doc = container.ownerDocument;
   const api = options.api || getEngineApi();
   const agentId = options.agentId || BREAKER_AGENT_ID;
   const pollMs = options.pollIntervalMs || POLL_INTERVAL_MS;
   const offlinePollMs = options.offlinePollIntervalMs || OFFLINE_POLL_INTERVAL_MS;
-  const readToken = options.getToken || getStoredEngineToken;
-  const writeToken = options.setToken || setStoredEngineToken;
+  const onAuthNeeded = options.onAuthNeeded || null;
 
   const view = { state: 'CONNECTING', reason: null, detail: null, busy: false };
   let timer = null;
   let polling = false;
   let destroyed = false;
 
-  // --- top bar controls
+  // --- controls
   const badgeLabel = el(doc, 'span', { class: 'engine-badge-label', text: BADGE_TEXT.CONNECTING });
   const badge = el(doc, 'button', { type: 'button', class: 'engine-badge', 'data-state': 'CONNECTING', 'aria-live': 'polite' }, [
     el(doc, 'span', { class: 'engine-dot', 'aria-hidden': 'true' }),
@@ -77,15 +56,7 @@ export function mountBreakerBar(container, options = {}) {
     el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: 'TRIP' }),
   ]);
   const resetButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-reset', text: 'RESET AGENT', hidden: true });
-  const tokenButton = el(doc, 'button', {
-    type: 'button',
-    class: 'bar-btn engine-token',
-    title: 'Engine token',
-    'aria-label': 'Engine token settings',
-    'aria-haspopup': 'dialog',
-    text: '🔑',
-  });
-  container.replaceChildren(badge, tripButton, resetButton, tokenButton);
+  container.replaceChildren(badge, tripButton, resetButton);
 
   // --- trip confirmation dialog
   const confirmError = el(doc, 'p', { class: 'modal-error' });
@@ -102,24 +73,7 @@ export function mountBreakerBar(container, options = {}) {
       el(doc, 'div', { class: 'modal-actions' }, [confirmCancel, confirmTrip]),
     ]),
   ]);
-
-  // --- token settings dialog
-  const tokenStatus = el(doc, 'p', { class: 'engine-modal-text engine-token-status' });
-  const tokenInput = el(doc, 'textarea', { rows: '3', class: 'engine-token-input', placeholder: 'Paste a Supabase JWT', spellcheck: 'false', autocomplete: 'off' });
-  const tokenError = el(doc, 'p', { class: 'modal-error' });
-  const tokenClear = el(doc, 'button', { type: 'button', class: 'toggle-button', text: 'Clear' });
-  const tokenCancel = el(doc, 'button', { type: 'button', class: 'toggle-button', text: 'Cancel' });
-  const tokenSave = el(doc, 'button', { type: 'submit', class: 'toggle-button active', text: 'Save Token' });
-  const tokenForm = el(doc, 'form', { class: 'modal-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'engine-token-title', autocomplete: 'off' }, [
-    el(doc, 'h3', { id: 'engine-token-title', text: 'Engine Token' }),
-    tokenStatus,
-    el(doc, 'label', { text: 'New token' }, [tokenInput]),
-    tokenError,
-    el(doc, 'div', { class: 'modal-actions' }, [tokenClear, tokenCancel, tokenSave]),
-  ]);
-  const tokenModal = el(doc, 'div', { class: 'modal-backdrop engine-modal', hidden: true }, [tokenForm]);
-
-  doc.body.append(confirmModal, tokenModal);
+  doc.body.append(confirmModal);
 
   // --- rendering
   function render() {
@@ -130,7 +84,7 @@ export function mountBreakerBar(container, options = {}) {
     if (halted && view.reason) lines.push('Reason: ' + view.reason);
     if (view.detail) lines.push(view.detail);
     if (view.state === 'OFFLINE' || view.state === 'ERROR') lines.push('Click to retry now.');
-    if (view.state === 'AUTH') lines.push('Click to set the engine token.');
+    if (view.state === 'AUTH') lines.push('Click to check the engine connection.');
     badge.title = lines.join('\n');
     badge.setAttribute('aria-label', 'Engine agent ' + agentId + ': ' + BADGE_TEXT[view.state]);
 
@@ -186,30 +140,10 @@ export function mountBreakerBar(container, options = {}) {
   }
   doc.addEventListener('visibilitychange', onVisibility);
 
-  // --- dialogs
-  function openModal(modal, focusTarget) {
-    modal.hidden = false;
-    focusTarget.focus();
-  }
-
-  function closeModal(modal, returnFocus) {
-    modal.hidden = true;
-    if (returnFocus && !returnFocus.disabled && !returnFocus.hidden) returnFocus.focus();
-  }
-
-  function openTokenModal() {
-    const info = describeToken(readToken());
-    if (!info.present) {
-      tokenStatus.textContent = 'No token stored. Requests go without auth, which only works if the engine runs with REQUIRE_AUTH=false.';
-    } else if (info.malformed) {
-      tokenStatus.textContent = 'Stored token is not a valid JWT.';
-    } else {
-      const expiry = info.expiresAt ? (info.expired ? 'expired ' : 'expires ') + info.expiresAt.toLocaleString() : 'no expiry';
-      tokenStatus.textContent = 'Stored: ' + info.preview + ' · subject ' + (info.sub || 'unknown') + ' · ' + expiry;
-    }
-    tokenInput.value = '';
-    tokenError.textContent = '';
-    openModal(tokenModal, tokenInput);
+  // --- dialog
+  function closeConfirm() {
+    confirmModal.hidden = true;
+    if (!tripButton.disabled) tripButton.focus();
   }
 
   // --- actions
@@ -221,7 +155,8 @@ export function mountBreakerBar(container, options = {}) {
     try {
       await api.tripBreaker(agentId, MANUAL_TRIP_REASON);
       setState('HALTED', { reason: MANUAL_TRIP_REASON });
-      closeModal(confirmModal, resetButton);
+      confirmModal.hidden = true;
+      resetButton.focus();
     } catch (error) {
       confirmError.textContent = 'Trip failed: ' + ((error && error.message) || 'unknown error');
     } finally {
@@ -250,45 +185,23 @@ export function mountBreakerBar(container, options = {}) {
 
   tripButton.addEventListener('click', () => {
     confirmError.textContent = '';
+    confirmModal.hidden = false;
     // Cancel takes focus so an accidental Enter does not trip the breaker.
-    openModal(confirmModal, confirmCancel);
+    confirmCancel.focus();
   });
-  confirmCancel.addEventListener('click', () => closeModal(confirmModal, tripButton));
+  confirmCancel.addEventListener('click', closeConfirm);
   confirmTrip.addEventListener('click', trip);
   resetButton.addEventListener('click', reset);
   badge.addEventListener('click', () => {
-    if (view.state === 'AUTH') openTokenModal();
+    if (view.state === 'AUTH' && onAuthNeeded) onAuthNeeded();
     else poll();
   });
-
-  tokenButton.addEventListener('click', openTokenModal);
-  tokenCancel.addEventListener('click', () => closeModal(tokenModal, tokenButton));
-  tokenClear.addEventListener('click', () => {
-    writeToken(null);
-    closeModal(tokenModal, tokenButton);
-    poll();
+  confirmModal.addEventListener('click', (event) => {
+    if (event.target === confirmModal) closeConfirm();
   });
-  tokenForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const value = tokenInput.value.trim();
-    const info = describeToken(value);
-    if (!info.present || info.malformed) {
-      tokenError.textContent = 'Paste a JWT: three base64url parts separated by dots.';
-      return;
-    }
-    writeToken(value);
-    closeModal(tokenModal, tokenButton);
-    poll();
+  confirmModal.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeConfirm();
   });
-
-  for (const modal of [confirmModal, tokenModal]) {
-    modal.addEventListener('click', (event) => {
-      if (event.target === modal) closeModal(modal, modal === confirmModal ? tripButton : tokenButton);
-    });
-    modal.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeModal(modal, modal === confirmModal ? tripButton : tokenButton);
-    });
-  }
 
   render();
   poll();
@@ -296,19 +209,14 @@ export function mountBreakerBar(container, options = {}) {
   return {
     refresh: poll,
     getState: () => view.state,
-    elements: { badge, tripButton, resetButton, tokenButton, confirmModal, confirmTrip, confirmCancel, tokenModal, tokenInput, tokenForm, tokenStatus, tokenError, tokenClear },
+    elements: { badge, tripButton, resetButton, confirmModal, confirmTrip, confirmCancel },
     destroy() {
       destroyed = true;
       clearTimeout(timer);
       unsubscribe();
       doc.removeEventListener('visibilitychange', onVisibility);
       confirmModal.remove();
-      tokenModal.remove();
       container.replaceChildren();
     },
   };
 }
-
-// Portal page: mount into the top bar slot when present.
-const slot = typeof document !== 'undefined' ? document.getElementById('engine-bar') : null;
-if (slot) mountBreakerBar(slot);

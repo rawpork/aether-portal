@@ -1,0 +1,18 @@
+{
+  "pipeline_name": "Aether Suite Cascading Sync",
+  "master_root": "D:\\TitainSolutions_MD\\AI_Projects\\Proprietary\\",
+  "sync_targets": [
+    {
+      "source_app": "Aether_Engine",
+      "target_app": "Aether_Portal",
+      "trigger_events": ["api_schema_change", "breaker_endpoint_update"],
+      "action": "propagate_types_and_routes"
+    },
+    {
+      "source_app": "Aether_Engine",
+      "target_app": "Miserly.io",
+      "trigger_events": ["token_telemetry_schema_update", "budget_cap_rule_change"],
+      "action": "sync_proxy_headers"
+    }
+  ]
+}

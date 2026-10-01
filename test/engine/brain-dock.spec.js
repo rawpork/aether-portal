@@ -193,14 +193,17 @@ afterEach(() => {
 });
 
 describe('dock shell', () => {
-  it('opens and closes from the top bar toggle and Escape', () => {
-    const { toggle, panel } = mount().elements;
-    expect(panel.hidden).toBe(true);
-    toggle.click();
+  it('renders inline into its container, always open, with no toggle or close button', () => {
+    const { panel } = mount().elements;
+    expect(slot.firstChild).toBe(panel);
     expect(panel.hidden).toBe(false);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(panel.hidden).toBe(true);
+    expect(panel.querySelector('h2').textContent).toBe('Elaron · Master Brain');
+    expect([...panel.querySelectorAll('button')].map((b) => b.className)).toEqual([
+      'brain-icon-btn brain-new',
+      'brain-icon-btn brain-mic',
+      'brain-icon-btn brain-speak',
+      'brain-send',
+    ]);
   });
 
   it('keeps one session id across reloads and starts a new one on demand', async () => {
@@ -212,7 +215,6 @@ describe('dock shell', () => {
     mount();
     expect(dock.getSessionId()).toBe(first);
 
-    dock.open();
     await type('hello');
     dock.elements.newButton.click();
     expect(dock.getSessionId()).not.toBe(first);
@@ -223,7 +225,7 @@ describe('dock shell', () => {
 
 describe('typed chat', () => {
   it('sends to /api/master-brain/chat and shows the reply with token usage (200)', async () => {
-    mount().open();
+    mount();
     await type('What is the breaker state?');
     const chat = engine.calls.find((c) => c.path === '/api/master-brain/chat');
     expect(chat.body).toEqual({ session_id: dock.getSessionId(), message: 'What is the breaker state?', agent_id: AGENT });
@@ -236,7 +238,7 @@ describe('typed chat', () => {
   it('shows HALTED on a 423, locks input, and recovers when the agent is reset', async () => {
     engine.state = 'HALTED';
     engine.reason = 'Operator manual trip from Portal UI';
-    mount().open();
+    mount();
     await type('Are you there?');
     expect(dock.getMode()).toBe('halted');
     expect(dock.elements.avatar.dataset.mode).toBe('halted');
@@ -253,7 +255,7 @@ describe('typed chat', () => {
   });
 
   it('explains auth, busy and offline failures', async () => {
-    mount().open();
+    mount();
     engine.chatStatus = 401;
     await type('a');
     expect(messages().at(-1)).toBe('error: The engine rejected the token. Set it with 🔑 in the top bar.');
@@ -269,7 +271,7 @@ describe('typed chat', () => {
 
 describe('Elaron voice dock', () => {
   it('uses browser speech recognition when the engine has no STT, then speaks the reply', async () => {
-    mount().open();
+    mount();
     dock.elements.micButton.click();
     await flush();
 
@@ -303,7 +305,7 @@ describe('Elaron voice dock', () => {
 
   it('streams microphone audio when the engine reports STT, ending the utterance on stop', async () => {
     FakeSocket.readyFrame = { stt: true, tts: false };
-    mount().open();
+    mount();
     dock.elements.micButton.click();
     await flush();
     const recorder = FakeRecorder.last;
@@ -322,7 +324,7 @@ describe('Elaron voice dock', () => {
 
   it('plays the engine’s TTS audio instead of browser speech when available', async () => {
     FakeSocket.readyFrame = { stt: false, tts: true };
-    mount().open();
+    mount();
     dock.elements.micButton.click();
     await flush();
     FakeRecognition.last.say('hello');
@@ -334,7 +336,7 @@ describe('Elaron voice dock', () => {
   });
 
   it('stays quiet when spoken replies are muted', async () => {
-    mount().open();
+    mount();
     dock.elements.speakButton.click();
     expect(store.get(SPEAK_STORAGE_KEY)).toBe('false');
     dock.elements.micButton.click();
@@ -346,7 +348,7 @@ describe('Elaron voice dock', () => {
   });
 
   it('goes HALTED when the engine halts the stream (AGENT_HALTED + close 4423)', async () => {
-    mount().open();
+    mount();
     dock.elements.micButton.click();
     await flush();
     FakeSocket.autoReply = false;
@@ -364,7 +366,7 @@ describe('Elaron voice dock', () => {
 
   it('does not open a stream when the pre-check finds the agent HALTED', async () => {
     engine.state = 'HALTED';
-    mount().open();
+    mount();
     dock.elements.micButton.click();
     await flush();
     expect(FakeSocket.instances).toHaveLength(0);
@@ -372,25 +374,25 @@ describe('Elaron voice dock', () => {
   });
 
   it('reports engine voice errors such as STT_UNAVAILABLE', async () => {
-    mount().open();
+    mount();
     dock.elements.micButton.click();
     await flush();
     FakeSocket.instances[0].serverSend({ type: 'error', code: 'STT_UNAVAILABLE', message: 'No speech-to-text provider is configured.' });
     expect(messages().at(-1)).toBe('error: The engine has no speech-to-text yet. Type instead.');
   });
 
-  it('closes the voice stream and stops listening when the dock closes', async () => {
-    mount().open();
+  it('closes the voice stream and stops listening when the page is hidden', async () => {
+    mount();
     dock.elements.micButton.click();
     await flush();
-    dock.close();
+    window.dispatchEvent(new Event('pagehide'));
     expect(FakeRecognition.last.aborted).toBe(true);
     expect(FakeSocket.instances[0].readyState).toBe(3);
     expect(dock.getMode()).toBe('idle');
   });
 
   it('explains when neither the browser nor the engine can transcribe', async () => {
-    mount({ Recognition: null }).open();
+    mount({ Recognition: null });
     dock.elements.micButton.click();
     await flush();
     expect(messages().at(-1)).toMatch(/^error: Voice input needs speech recognition/);

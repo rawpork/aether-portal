@@ -1,10 +1,7 @@
 // Breaker bar against the real client bundle, with fetch answered by a simulated engine.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { BREAKER_AGENT_ID, MANUAL_TRIP_REASON, describeToken, mountBreakerBar } from '../../public/js/engine/breaker-bar.js';
-
-const b64url = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
-const makeJwt = (claims) => b64url({ alg: 'HS256', typ: 'JWT' }) + '.' + b64url(claims) + '.sig';
+import { BREAKER_AGENT_ID, MANUAL_TRIP_REASON, mountBreakerBar } from '../../public/js/engine/breaker-bar.js';
 
 // Simulated Aether_Engine: one agent record, plus switches for outages.
 function createEngine() {
@@ -56,19 +53,12 @@ function createEngine() {
 const STATE_PATH = '/api/agents/' + BREAKER_AGENT_ID + '/state';
 const flush = () => vi.advanceTimersByTimeAsync(0);
 
-let engine, token, api, bar, slot;
+let engine, token, api, bar, slot, authNeeded;
 
 function mount() {
   slot = document.createElement('div');
-  slot.id = 'engine-bar-test';
   document.body.append(slot);
-  bar = mountBreakerBar(slot, {
-    api,
-    getToken: () => token,
-    setToken: (value) => {
-      token = value;
-    },
-  });
+  bar = mountBreakerBar(slot, { api, onAuthNeeded: () => authNeeded++ });
   return bar;
 }
 
@@ -76,6 +66,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   engine = createEngine();
   token = null;
+  authNeeded = 0;
   api = createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine.fetch, getToken: () => token });
 });
 
@@ -143,13 +134,20 @@ describe('status bar state', () => {
     expect(elements.badge.dataset.state).toBe('ACTIVE');
   });
 
-  it('shows TOKEN NEEDED on 401 and opens the token modal from the badge', async () => {
+  it('shows TOKEN NEEDED on 401 and hands the badge click to onAuthNeeded', async () => {
     engine.mode = 'unauthorized';
     const { elements } = mount();
     await flush();
     expect(elements.badge.dataset.state).toBe('AUTH');
     elements.badge.click();
-    expect(elements.tokenModal.hidden).toBe(false);
+    expect(authNeeded).toBe(1);
+  });
+
+  it('has no token or key controls of its own', async () => {
+    mount();
+    await flush();
+    expect(slot.querySelectorAll('button')).toHaveLength(3);
+    expect(document.querySelector('textarea, input')).toBe(null);
   });
 });
 
@@ -231,44 +229,6 @@ describe('RESET AGENT', () => {
     await flush();
     expect(elements.badge.dataset.state).toBe('ACTIVE');
     expect(elements.resetButton.hidden).toBe(true);
-  });
-});
-
-describe('engine token modal', () => {
-  it('reports no stored token, rejects a non-JWT, and saves a valid one that later polls send', async () => {
-    const { elements } = mount();
-    await flush();
-    elements.tokenButton.click();
-    expect(elements.tokenModal.hidden).toBe(false);
-    expect(elements.tokenStatus.textContent).toContain('No token stored');
-
-    elements.tokenInput.value = 'not-a-jwt';
-    elements.tokenForm.dispatchEvent(new Event('submit', { cancelable: true }));
-    expect(elements.tokenError.textContent).toContain('Paste a JWT');
-    expect(token).toBe(null);
-
-    const jwt = makeJwt({ sub: 'operator-1', exp: Math.floor(Date.now() / 1000) + 3600 });
-    elements.tokenInput.value = '  ' + jwt + '\n';
-    elements.tokenForm.dispatchEvent(new Event('submit', { cancelable: true }));
-    await flush();
-    expect(token).toBe(jwt);
-    expect(elements.tokenModal.hidden).toBe(true);
-    expect(engine.calls.at(-1).auth).toBe('Bearer ' + jwt);
-
-    elements.tokenButton.click();
-    expect(elements.tokenStatus.textContent).toContain('subject operator-1');
-    elements.tokenClear.click();
-    await flush();
-    expect(token).toBe(null);
-    expect(engine.calls.at(-1).auth).toBeUndefined();
-  });
-
-  it('describes token claims for display', () => {
-    expect(describeToken(null)).toEqual({ present: false });
-    expect(describeToken('a.b')).toEqual({ present: true, malformed: true });
-    const info = describeToken(makeJwt({ sub: 'u', exp: 1 }));
-    expect(info.sub).toBe('u');
-    expect(info.expired).toBe(true);
   });
 });
 

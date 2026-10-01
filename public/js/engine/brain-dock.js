@@ -1,6 +1,6 @@
-// Master Brain dock: typed chat (POST /api/master-brain/chat) and the Elaron voice dock
+// Elaron dock for Mission Control: typed chat (POST /api/master-brain/chat) and the voice dock
 // (ws /api/voice/stream) sharing one engine session, so typed and spoken turns are one conversation.
-// The toggle button mounts into #brain-dock-toggle in the portal top bar; the dock panel is appended to <body>.
+// mission-control.js mounts it into the workspace's Elaron panel; it is always open there.
 //
 // Voice input: when the engine reports STT (ready.stt), the mic streams webm-opus audio to it. Until an engine
 // STT provider exists (engine Step 2.4a), the browser's SpeechRecognition transcribes and the text is sent as a
@@ -99,8 +99,8 @@ export function playEngineAudio(frame) {
   });
 }
 
-export function mountBrainDock(toggleSlot, options = {}) {
-  const doc = toggleSlot.ownerDocument;
+export function mountBrainDock(container, options = {}) {
+  const doc = container.ownerDocument;
   const win = doc.defaultView || globalThis;
   const api = options.api || getEngineApi();
   const agentId = options.agentId || BRAIN_AGENT_ID;
@@ -121,20 +121,9 @@ export function mountBrainDock(toggleSlot, options = {}) {
   storage.set(SESSION_STORAGE_KEY, sessionId);
   let speakReplies = storage.get(SPEAK_STORAGE_KEY) !== 'false';
 
-  const view = { open: false, mode: 'idle', busy: false, halted: false };
+  const view = { mode: 'idle', busy: false, halted: false };
   // Voice session: the open stream, its ready frame, and whichever capture is running.
   const voice = { stream: null, ready: null, recognition: null, recorder: null, media: null, closing: false };
-
-  // --- top bar toggle
-  const toggle = el(doc, 'button', {
-    type: 'button',
-    class: 'bar-btn brain-toggle',
-    title: 'Master Brain chat and voice',
-    'aria-label': 'Master Brain chat and voice',
-    'aria-expanded': 'false',
-    'aria-controls': 'brain-dock',
-  }, [el(doc, 'span', { 'aria-hidden': 'true', text: '🧠' }), el(doc, 'span', { class: 'bar-label', text: 'Master Brain' })]);
-  toggleSlot.replaceChildren(toggle);
 
   // --- dock panel
   const avatar = el(doc, 'div', { class: 'elaron', 'data-mode': 'idle', 'aria-hidden': 'true' }, [
@@ -143,7 +132,6 @@ export function mountBrainDock(toggleSlot, options = {}) {
   ]);
   const status = el(doc, 'span', { class: 'brain-status', 'aria-live': 'polite', text: MODE_TEXT.idle });
   const newButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-new', title: 'Start a new session', text: 'New' });
-  const closeButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-close', title: 'Close', 'aria-label': 'Close Master Brain', text: '×' });
   const log = el(doc, 'ol', { class: 'brain-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation' });
   const empty = el(doc, 'li', { class: 'brain-empty', text: 'Ask the Master Brain about blueprints, agents, budgets or breaker state. Type, or tap the mic to talk to Elaron.' });
   log.append(empty);
@@ -154,19 +142,18 @@ export function mountBrainDock(toggleSlot, options = {}) {
   const sendButton = el(doc, 'button', { type: 'submit', class: 'brain-send', text: 'Send' });
   const form = el(doc, 'form', { class: 'brain-form', autocomplete: 'off' }, [input, micButton, speakButton, sendButton]);
   const hint = el(doc, 'p', { class: 'brain-hint' });
-  const panel = el(doc, 'aside', { id: 'brain-dock', class: 'brain-dock', 'aria-label': 'Master Brain', hidden: true }, [
+  const panel = el(doc, 'div', { class: 'brain-dock' }, [
     el(doc, 'header', { class: 'brain-head' }, [
       avatar,
-      el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Master Brain' }), status]),
+      el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Elaron · Master Brain' }), status]),
       newButton,
-      closeButton,
     ]),
     log,
     interim,
     form,
     hint,
   ]);
-  doc.body.append(panel);
+  container.replaceChildren(panel);
 
   // --- rendering
   function setMode(mode) {
@@ -507,47 +494,25 @@ export function mountBrainDock(toggleSlot, options = {}) {
     setMode(view.halted ? 'halted' : 'idle');
   });
 
-  function setOpen(open) {
-    view.open = open;
-    panel.hidden = !open;
-    toggle.setAttribute('aria-expanded', String(open));
-    toggle.classList.toggle('active', open);
-    if (open) {
-      if (!input.disabled) input.focus();
-    } else {
-      stopCapture(false);
-      stopSpeaking();
-      closeVoice();
-      toggle.focus();
-    }
-    render();
+  // Leaving the page (or switching away on a phone) ends listening and the voice stream; the next mic tap reconnects.
+  function onPageHide() {
+    stopCapture(false);
+    stopSpeaking();
+    closeVoice();
   }
-
-  toggle.addEventListener('click', () => setOpen(!view.open));
-  closeButton.addEventListener('click', () => setOpen(false));
-  panel.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setOpen(false);
-  });
+  win.addEventListener('pagehide', onPageHide);
 
   render();
 
   return {
-    open: () => setOpen(true),
-    close: () => setOpen(false),
     getMode: () => view.mode,
     getSessionId: () => sessionId,
-    elements: { toggle, panel, avatar, status, log, input, form, micButton, speakButton, sendButton, newButton, closeButton, interim, hint },
+    elements: { panel, avatar, status, log, input, form, micButton, speakButton, sendButton, newButton, interim, hint },
     destroy() {
-      stopCapture(false);
-      stopSpeaking();
-      closeVoice();
+      onPageHide();
+      win.removeEventListener('pagehide', onPageHide);
       unsubscribe();
-      panel.remove();
-      toggleSlot.replaceChildren();
+      container.replaceChildren();
     },
   };
 }
-
-// Portal page: mount into the top bar slot when present.
-const slot = typeof document !== 'undefined' ? document.getElementById('brain-dock-toggle') : null;
-if (slot) mountBrainDock(slot);

@@ -1,0 +1,28 @@
+{
+  "ecosystem_name": "Aether Suite",
+  "workspace_root": "D:\\TitainSolutions_MD\\AI_Projects\\Proprietary\\",
+  "components": {
+    "portal": {
+      "name": "Aether_Portal",
+      "directory": ".\\Aether_Portal",
+      "role": "Frontend UI, PWA Voice, and Master Brain Chat Dock",
+      "standalone_capable": true
+    },
+    "engine": {
+      "name": "Aether_Engine",
+      "directory": ".\\Aether_Engine",
+      "role": "Core Compiler, IPC Server, and Agent Orchestrator (Port 3333)",
+      "standalone_capable": true
+    },
+    "proxy": {
+      "name": "Miserly.io",
+      "directory": ".\\Miserly.io",
+      "role": "Edge-Proxy API Gateway & Token Budget Ledger",
+      "standalone_capable": true
+    }
+  },
+  "interoperability": {
+    "strict_vendor_lock": false,
+    "fallback_mode": "direct_local_bypass"
+  }
+}
