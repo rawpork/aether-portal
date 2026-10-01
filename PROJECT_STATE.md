@@ -1,10 +1,16 @@
 # Project State
 
-> **Handoff snapshot, updated 2026-09-29 (radial controls and spatial refinements committed, not deployed).** Read this first when resuming. It covers what is live, how the codebase is configured, what was built, and exactly what comes next. Design detail lives in [SPATIAL_ARCHITECTURE.md](SPATIAL_ARCHITECTURE.md) (the "As built" notes in sections 3.6, 5.5, 6.6 and 8.7), and visual rules in [DESIGN.md](DESIGN.md).
+> **Handoff snapshot, updated 2026-10-01 (swipe scopes and view-relative Home deployed as `3d585480`).** Read this first when resuming. It covers what is live, how the codebase is configured, what was built, and exactly what comes next. Design detail lives in [SPATIAL_ARCHITECTURE.md](SPATIAL_ARCHITECTURE.md) (the "As built" notes in sections 3.6, 5.5, 6.6 and 8.7), and visual rules in [DESIGN.md](DESIGN.md).
 
 ## Next session (start here)
 
-**Where we stopped (2026-09-29):** the three commits below are **deployed and pushed**: live version `2a2a1b0c-1e3a-4369-96e6-579fef9006a0`.
+**Latest (2026-10-01):** `eac271b` "feat: swipe scopes and view-relative Home recentre" is **deployed and pushed**: live version `3d585480-2a9c-4974-bc96-d8c8e1737fa6`. Roll back with `npx wrangler rollback 2a2a1b0c-1e3a-4369-96e6-579fef9006a0` if needed.
+- **Project folder moved** to `D:TitainSolutions_MDAI_ProjectsProprietaryAether_Portal` (from `C:UserskolsoDocuments_OnlineAI_MiscClaudeProjectsaether-portal`). Git history, the remote and the local D1 state came across; the npm package name stays `aether-portal` (npm names can't hold capitals).
+- **Swipe scopes** (supersedes the group swipes below): a sideways swipe on the 3D view steps cards on the open wall, as the ◀ ▶ arrows do (`swipeCard` → `stepGallery`): a touch flick, a trackpad two-finger swipe, or a mouse drag in Atomic. With no wall up (Space, Cluster) a swipe on the view does nothing. Changing group is a swipe on the bottom-left overlays, the Categories legend (`#legend`) or the phone group tab (`#cluster-drawer .drawer-head`), via `bindGroupSwipe` → `swipeGroup` (touch events, 40 px, no click after a swipe). A sideways-scrolling chip row (phones, many categories) keeps its own scrolling; the pill below it still swipes.
+- **Home / recentre** (supersedes `goHome` below): the Home pill and the Home / H key recentre the current view without leaving it (`recentreView`). List, Timeline, Board and Carousel scroll to the top-left (`resetCollectionScroll`, scrolled panes inside too); the 2D board drops its pan and zoom (`resetCameraView`). In 3D: Space looks at the origin (0, 0, 0) from the default angle (theta 0, phi π/2) at the macro distance; Cluster re-frames the framed group; Horizon turns back to the wall's middle card (`gallery.homeLook`); Atomic re-frames the open card. There is no one-tap way back to the launch view any more.
+- **Checked:** 257 tests pass (none cover these gestures); the page script parses and the local and live pages load. **Not yet checked by hand** on a phone, a trackpad or a headset: do that first.
+
+**Previous stop (2026-09-29):** the three commits below were deployed and pushed as version `2a2a1b0c-1e3a-4369-96e6-579fef9006a0`.
 
 | Commit | What it adds |
 | --- | --- |
@@ -14,7 +20,7 @@
 
 **What the spatial refinements changed:**
 - **Curved typography:** wheel labels run along their ring (SVG `textPath`), and the headset barrel's labels are bent onto their ring (`bendPoint` in `xr-barrel.js`). Also fixed: the wheel's knurl ticks grew longer one by one, because the loop variable shadowed the scale.
-- **Group swipes:** in Cluster, Horizon and Atomic, a sideways swipe flies in the next or previous group at the same stop, with no zoom out. This works as a touch flick, a trackpad swipe, or a mouse drag in Atomic. Groups are ordered around the vertical axis (`orderedGroupKeys`, `swipeGroup`).
+- **Group swipes (replaced 2026-10-01 by swipe scopes, above):** in Cluster, Horizon and Atomic, a sideways swipe flies in the next or previous group at the same stop, with no zoom out. This works as a touch flick, a trackpad swipe, or a mouse drag in Atomic. Groups are ordered around the vertical axis (`orderedGroupKeys`, `swipeGroup`).
   - Cards within a wall step with the ◀ ▶ arrows (now also shown on phones, above the group tab), the keyboard, a desktop drag along the wall, or a swipe on the card sheet.
   - Double-tapping empty space or turning the Scale ring still leaves the view.
 - **Carousel:** touch swipes work again. A card's `lostpointercapture` bubbled to the stage and cancelled every touch drag. The deck is now the curved 180° Horizon arc: the viewer is at the arc's centre (CSS `perspective` = the radius), side cards turn in and run off the edges, and a tap on a side card turns the arc to it.
@@ -28,7 +34,7 @@
 - **Orbit pivot:** a tap on empty space after anything was selected (a card, a wall, a framed cluster, a highlight) unselects the group and moves the orbit's pivot back to the scene origin (0, 0, 0) (`recentreOrbit`). Turning off the last highlighted category does the same. A single tap in Horizon now does this instead of backing out to that group's Cluster view.
 
 **Review fixes (after the first hands-on test):**
-- **Home:** a Home pill beside the wheel's Simple / Advanced switch (and the Home or H key) goes back to the launch view, the newest card's wall at Horizon, from any view (`goHome`). Free zoom in Space and Cluster now goes toward the pointer (`zoomToCursor`), so scrolling no longer flies past cards or away from them.
+- **Home (replaced 2026-10-01 by the view-relative recentre, above):** a Home pill beside the wheel's Simple / Advanced switch (and the Home or H key) goes back to the launch view, the newest card's wall at Horizon, from any view (`goHome`). Free zoom in Space and Cluster now goes toward the pointer (`zoomToCursor`), so scrolling no longer flies past cards or away from them.
 - **Horizon video:** a click anywhere on a playable card plays it in place; only a click on the picture used to. A second click on the playing card opens Atomic, and the video keeps playing.
 - **Player look:** on a card, the player takes the thumbnail's place (`MEDIA_BAND`, 16:9, the thumbnail's small corners, no border), so the card's own frame stays round it. Before, a card-sized black box with its own border and large corners covered the card.
 - **Headset:** each controller shows a matte handle with a teal ring, and tracked hands show a dot on each joint (`xr.js`); before, only the rays were drawn. The controls start **pinned in front at waist height** (22 cm below the eyes) on every entry, where they are seen at once; Unpin moves them to the left wrist. The Show ring's labels no longer overlap: labels were hidden by their wrapped angle, so a ring with more stops than fit round it drew far stops over near ones.
@@ -38,11 +44,11 @@
 
 **Next steps, in order:**
 1. **Review locally:** `npx wrangler dev --port 8799 --var SESSION_SECRET:local-test-secret`. Things to judge by hand:
-   - whether swipes should switch groups rather than cards;
+   - whether swipes should switch groups rather than cards (decided 2026-10-01: the view steps cards, the Categories bar and group tab switch groups);
    - the closer Horizon framing;
    - the Carousel arc on a real phone.
 2. **Deployed 2026-09-29** as `2a2a1b0c` and pushed. Reload any open tab or installed app once.
-3. **Headset retest: START HERE.** A Quest test of the live build (`2a2a1b0c`) was started on 2026-09-29 but no results were reported; ask how it went first. Check on the Quest, and in the PC browser over Link: the controller and hand models, the pinned controls on entry, the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
+3. **Headset retest** (after the hand check of the 2026-10-01 swipes and Home). A Quest test of the live build (`2a2a1b0c`) was started on 2026-09-29 but no results were reported; ask how it went first. Check on the Quest, and in the PC browser over Link: the controller and hand models, the pinned controls on entry, the barrel (rings, hub, keys, grip-turning), the ray fix (card selection while the world is scaled), and the curved barrel labels.
 4. **Carry-overs:**
    - zoom stops step 2 (headset stop placements, and Scale stops on the barrel) and step 3 (the phone vertical rail);
    - wire `relation` on hover;
@@ -51,8 +57,8 @@
 ## 1. What is live
 
 - **URL:** https://lingering-water-de49.klo377.workers.dev (Cloudflare Worker `lingering-water-de49`).
-- **Latest code commit:** `a5f3722` "fix: review fixes - Home view, zoom to cursor, Horizon video, card-shaped player, XR hands", pushed to `main`.
-- **Live version:** `2a2a1b0c-1e3a-4369-96e6-579fef9006a0` (deployed 2026-09-29, with `741ac90`, `cfca6c0` and `a5f3722`; see Next session).
+- **Latest code commit:** `eac271b` "feat: swipe scopes and view-relative Home recentre", pushed to `main`.
+- **Live version:** `3d585480-2a9c-4974-bc96-d8c8e1737fa6` (deployed 2026-10-01, with `eac271b`). Before it: `2a2a1b0c-1e3a-4369-96e6-579fef9006a0` (2026-09-29, with `741ac90`, `cfca6c0` and `a5f3722`).
 - **Zoom stops in progress:** step 1 (desktop and screens) is live. Step 2 is the headset: four placements, a scale glide between them, a ZOOM row on the dashboard, one stop per stick push, and launching into the arc at 1.3 m. Step 3 is phones: a vertical rail and a collapsed group tab at stop 3.
 - **Remote D1:** migrations `0001` to `0015` applied (`0015_connection_depth.sql` on 2026-09-28; the 79 existing live edges became `logical`, and the owner's depth is `logical`). No migration is pending.
 - **Roadmap status:** phases 1 to 7 of the spatial spec are shipped. Phase 6 (WebXR) has been tested only on a simulated Quest 3 (IWER), **not on a physical headset**.
@@ -141,7 +147,7 @@
 
 ### Local development
 
-- Run `npx wrangler dev --port 8799 --var SESSION_SECRET:local-test-secret`. The local D1 has user `user_owner` with about 15 test nodes and no groups. The test data was left clean.
+- Run `npx wrangler dev --port 8799 --var SESSION_SECRET:local-test-secret`. Google sign-in is not configured locally; sign in by setting an `aether_session` cookie for `user_owner`: `payload.HMAC-SHA256(local-test-secret, payload)`, both base64url, payload `{"sub":"user_owner","exp":<unix seconds>}` (`signSession`), e.g. in the browser console with `document.cookie = "aether_session=<token>; path=/"`. The local D1 has user `user_owner` with about 15 test nodes and no groups. The test data was left clean.
 - Browser checks were done with headless Edge over CDP (port 9333), a signed `aether_session` cookie for `user_owner`, and a SwiftShader GPU. Those scripts lived in the session scratchpad and are **not in the repo**. Headless input latency makes quick double taps and swipes flaky in tests; they work with real input.
 - **WebXR without a headset:** inject IWER (`iwer@2.5.0/build/iwer.module.min.js` from jsdelivr) with `new XRDevice(metaQuest3).installRuntime({ forceInstall: true })`. `forceInstall` is needed because Edge has a native `navigator.xr`.
   - Setting IWER controller quaternions did not aim the target ray as expected (the grip-to-ray mapping is unresolved).
@@ -168,7 +174,7 @@
   - **Top-bar slider** next to the depth slider; its labels are clickable too. It is hidden on phones until the vertical rail (step 3) and on the 2D board.
   - **Stays in sync:** every camera move reports its stop (`noteZoomStop` in `cameraGoTo`).
   - **Wheel:** on the wall, one flick = one stop (a trackpad's inertia included; the whole flick is kept from the orbit controls). In Space and Cluster the wheel zooms freely and steps on past 0.6× or 1.8× the stop's framing distance. The time span only widens from Space.
-  - **Stop 3 framing:** the camera stands inside the arc, 0.1 rad above the card and looking down, close enough that the card fills 80% of the free width (90% of the height at most; on desktop the free area starts below the top bar). The arc is widened (`arcFraming`) so the next cards' inner edges sit at 94% of the half-width and run off the edges; a wall the layout makes wider still is met by stepping back, down to 74%. Desktop drags slide along the wall and settle on the nearest card; the arrows move the view without opening a card, and a swipe changes group (committed 2026-09-29, not deployed).
+  - **Stop 3 framing:** the camera stands inside the arc, 0.1 rad above the card and looking down, close enough that the card fills 80% of the free width (90% of the height at most; on desktop the free area starts below the top bar). The arc is widened (`arcFraming`) so the next cards' inner edges sit at 94% of the half-width and run off the edges; a wall the layout makes wider still is met by stepping back, down to 74%. Desktop drags slide along the wall and settle on the nearest card; the arrows and a swipe on the view move it to the next card without opening it; changing group is a swipe on the Categories bar or group tab (2026-10-01).
   - **Stop 4 framing:** the camera moves along the card's radius until it fills 88% of the free width (86% of the height), below the top bar (it is no longer forced nearer than stop 3, which clipped the card under the top bar). On desktop the group list steps aside (`body.zoom-atomic`) while a card is open on the wall.
 - **Focus:** focusing any card opens its cluster as a 180° gallery. An Outcome Node gets its own gallery with the saves it cites.
 - **Desktop layout:** the group list is a left sidebar and the node card a right sidebar. Outside the wall, the camera frames the focused card in the free centre at up to 58% of the free width and 50% of its height (`FOCUS_FILL_WIDE`); on the wall, stop 4's framing applies. Translucent ◀ ▶ arrows sit below the wall.
@@ -176,7 +182,7 @@
   - A focused card hides the group list and the filter row.
   - The node card is one bottom sheet with a 24vh peek; swipe up or tap the handle to expand it, swipe down to collapse and then close.
   - The camera frames the card at 88% of the width (`FOCUS_FILL_COMPACT`).
-  - A horizontal swipe on the 3D view flies in the next or previous group (committed 2026-09-29, not deployed; before that it stepped cards). The ◀ ▶ arrows step cards and sit above the group tab.
+  - A horizontal swipe on the 3D view steps cards on the wall, like the ◀ ▶ arrows above the group tab; a swipe on the group tab or the Categories pill changes group (2026-10-01; from 2026-09-29 the view swipe changed group).
 - **Focused card:** it gets a 1536×960 "hero" texture, and there is no hover tooltip over wall cards.
 - **Double tap:** it closes the panels and zooms out to the whole graph, even while the gallery is flying out. The glow halos don't take clicks, and the second tap is read from the raw pointer release.
 - **Elarion Q&A:** the input clears on send, and each question is logged above its answer.
