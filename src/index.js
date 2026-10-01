@@ -2781,7 +2781,7 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
-  <div id="thumb-wheel"><div class="wheel-actions"><button type="button" id="wheel-home" title="Home: back to the view the portal opens on (Home or H)" aria-label="Home view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div></div>
+  <div id="thumb-wheel"><div class="wheel-actions"><button type="button" id="wheel-home" title="Home: recentre the current view (Home or H)" aria-label="Recentre view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div></div>
   <div id="media-player" hidden>
     <div id="media-frame"></div>
     <button type="button" id="media-close" title="Close video" aria-label="Close video">×</button>
@@ -4944,7 +4944,9 @@ export default {
       // it is as wide as stop 3's framing asks.
       const minRadius = xrPresenting() ? XR_GALLERY_MIN_RADIUS : arcFramingFor(ids.length).radius;
       const placed = cardField.enterGallery(ids, { origin, yaw, centerId, minRadius });
-      gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids, look: frontSlotLook(placed) };
+      // homeLook: where Home turns the view back to (the middle card).
+      const look = frontSlotLook(placed);
+      gallery = { key, origin, yaw, radius: placed.radius, ids: placed.ids, look, homeLook: look };
       startGalleryNav();
       syncCards();
       Graph.linkVisibility(link => !gallery || !(gallery.ids.has(linkEndId(link.source)) || gallery.ids.has(linkEndId(link.target))));
@@ -4965,7 +4967,7 @@ export default {
       const placed = cardField.enterGallery(ids, { origin: gallery.origin, yaw: gallery.yaw, centerId, minRadius });
       gallery.ids = placed.ids;
       gallery.radius = placed.radius;
-      if (centerId !== null) gallery.look = frontSlotLook(placed);
+      if (centerId !== null) gallery.look = gallery.homeLook = frontSlotLook(placed);
       if (!focus.node && !xrPresenting()) cardField.setGallerySlide(arcDistance() * ARC_HOVER_SLIDE);
       syncCards();
     };
@@ -5102,18 +5104,20 @@ export default {
     const startGalleryNav = () => {
       if (!galleryNavFrame) galleryNavFrame = requestAnimationFrame(placeGalleryNav);
     };
-    // ---- Group swipes (2026-09-29): in Cluster, Horizon and Atomic a sideways swipe on the 3D view flies in the next
-    // (swipe left) or previous (swipe right) group at the same stop, with no zoom out: the next island framed, its wall
-    // put up, or its newest card opened on its wall. Groups run in order around the scene's vertical axis, so going on
-    // swiping one way tours every group and comes back round. A double tap on empty space, or turning the Scale ring,
-    // leaves as before. Cards within a wall step with the arrows below it, the keyboard, a desktop drag along the wall,
-    // or a swipe on the open card's sheet (phones).
-    // Touch: a quick, clearly sideways flick (a slower one-finger drag still turns the view in Cluster). A mouse: a
-    // sideways drag in Atomic, where dragging does nothing else (in Horizon it slides along the wall; in Cluster it
-    // orbits). A trackpad: a two-finger sideways swipe, at any of the three stops (the wheel handler below).
+    // ---- Swipe scopes (2026-10-01): a sideways swipe on the 3D view steps cards within the group on the wall, as the
+    // ◀ ▶ arrows do (swipe left: next card). Changing group is a swipe on the Categories bar or the group tab, the two
+    // overlays in the bottom-left corner: it flies in the next (swipe left) or previous (swipe right) group at the same
+    // stop, with no zoom out: the next island framed, its wall put up, or its newest card opened on its wall. Groups
+    // run in order around the scene's vertical axis, so going on swiping one way tours every group and comes back round.
+    // On the 3D view: a quick, clearly sideways touch flick (a slower one-finger drag still turns the view in Cluster),
+    // a mouse drag in Atomic, where dragging does nothing else (in Horizon it slides along the wall; in Cluster it
+    // orbits), or a trackpad's two-finger sideways swipe (the wheel handler below). Without a wall up there is no card
+    // to step to, so a swipe on the view does nothing.
     const GROUP_SWIPE_PX = 60;
     const GROUP_SWIPE_MS = 450;
     const GROUP_SWIPE_STOPS = ['cluster', 'horizon', 'atomic'];
+    // The Categories bar and the group tab are small, so a shorter swipe counts there.
+    const BAR_SWIPE_PX = 40;
     // The groups with cards on screen, in order of their direction from the scene's centre (a turn about the vertical).
     const orderedGroupKeys = () => {
       const keys = [];
@@ -5146,31 +5150,72 @@ export default {
       }
       return true;
     };
-    let groupSwipe = null;
+    // The next or previous card on the wall, as the arrows step (false with no wall up, or a wall of one card).
+    const swipeCard = delta => {
+      if (filterState.view !== 'graph' || filterState.flat || xrPresenting() || !gallery || gallery.ids.size < 2) return false;
+      stepGallery(delta);
+      return true;
+    };
+    let cardSwipe = null;
     graphElement.addEventListener('pointerdown', event => {
       // A second finger (a pinch) is never a swipe.
       if (!event.isPrimary) {
-        groupSwipe = null;
+        cardSwipe = null;
         return;
       }
       const touch = event.pointerType === 'touch' || event.pointerType === 'pen';
-      const eligible = GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && !xrPresenting()
+      const eligible = gallery && GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && !xrPresenting()
         && (touch || (event.pointerType === 'mouse' && event.button === 0 && zoomStop === 'atomic'));
-      groupSwipe = eligible ? { x: event.clientX, y: event.clientY, time: Date.now(), touch } : null;
+      cardSwipe = eligible ? { x: event.clientX, y: event.clientY, time: Date.now(), touch } : null;
     }, { capture: true, passive: true });
     graphElement.addEventListener('pointerup', event => {
-      const start = groupSwipe;
-      groupSwipe = null;
+      const start = cardSwipe;
+      cardSwipe = null;
       // A desktop drag along the wall is a slide, not a swipe.
       if (!start || !event.isPrimary || (arcDrag && arcDrag.moved)) return;
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       if ((start.touch && Date.now() - start.time > GROUP_SWIPE_MS) || Math.abs(dx) < GROUP_SWIPE_PX || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
-      if (!swipeGroup(dx < 0 ? 1 : -1)) return;
+      if (!swipeCard(dx < 0 ? 1 : -1)) return;
       ignoreClickUntil = Date.now() + 500;
       lastBackgroundTap = null;
     }, { capture: true, passive: true });
-    graphElement.addEventListener('pointercancel', () => { groupSwipe = null; }, { passive: true });
+    graphElement.addEventListener('pointercancel', () => { cardSwipe = null; }, { passive: true });
+    // Group swipes on the Categories bar and the group tab. Touch events, as on the card sheet: a sideways drag there
+    // may be taken by the browser as a pan, which cancels pointer events but still ends the touch. A row of category
+    // chips that scrolls sideways (phones, many categories) keeps its own scrolling; a swipe on the pill below it
+    // still changes group.
+    const bindGroupSwipe = element => {
+      let start = null;
+      let suppressClickUntil = 0;
+      element.addEventListener('touchstart', event => {
+        const target = event.target;
+        const row = target.closest('#legend-items');
+        const scrolls = row && row.scrollWidth > row.clientWidth + 1;
+        start = event.touches.length === 1 && !scrolls && !target.closest('input, textarea, select')
+          ? { x: event.touches[0].clientX, y: event.touches[0].clientY, time: Date.now() }
+          : null;
+      }, { passive: true });
+      element.addEventListener('touchend', event => {
+        const begun = start;
+        start = null;
+        if (!begun) return;
+        const touch = event.changedTouches[0];
+        const dx = touch.clientX - begun.x;
+        const dy = touch.clientY - begun.y;
+        if (Date.now() - begun.time > GROUP_SWIPE_MS || Math.abs(dx) < BAR_SWIPE_PX || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
+        // The swipe must not also toggle a chip, the Categories list or the group tab.
+        if (swipeGroup(dx < 0 ? 1 : -1)) suppressClickUntil = Date.now() + 400;
+      }, { passive: true });
+      element.addEventListener('touchcancel', () => { start = null; }, { passive: true });
+      element.addEventListener('click', event => {
+        if (Date.now() >= suppressClickUntil) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }, { capture: true });
+    };
+    bindGroupSwipe(legend);
+    bindGroupSwipe(clusterDrawer.querySelector('.drawer-head'));
 
     const exitGallery = (options = {}) => {
       if (!gallery) return;
@@ -5404,18 +5449,19 @@ export default {
     const WHEEL_GESTURE_MS = 250;
     let wheelStepper = null;
     let wheelGestureUntil = 0;
-    // A trackpad's two-finger sideways swipe changes group (Cluster, Horizon, Atomic), one per flick like the stops.
-    let groupWheelStepper = null;
-    let groupWheelUntil = 0;
+    // A trackpad's two-finger sideways swipe on the view steps cards on the wall (Horizon, Atomic), one per flick like
+    // the stops.
+    let cardWheelStepper = null;
+    let cardWheelUntil = 0;
     window.addEventListener('wheel', event => {
       if (xrPresenting() || !window.AetherSpatial || !graphElement.contains(event.target)) return;
       const sideways = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-      if (GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && (sideways || performance.now() < groupWheelUntil) && event.deltaX) {
+      if (gallery && GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && (sideways || performance.now() < cardWheelUntil) && event.deltaX) {
         event.stopPropagation();
-        groupWheelUntil = performance.now() + WHEEL_GESTURE_MS;
-        if (!groupWheelStepper) groupWheelStepper = window.AetherSpatial.createWheelStepper({ threshold: 90, idleMs: WHEEL_GESTURE_MS });
-        const step = groupWheelStepper(event.deltaX, performance.now());
-        if (step) swipeGroup(step);
+        cardWheelUntil = performance.now() + WHEEL_GESTURE_MS;
+        if (!cardWheelStepper) cardWheelStepper = window.AetherSpatial.createWheelStepper({ threshold: 90, idleMs: WHEEL_GESTURE_MS });
+        const step = cardWheelStepper(event.deltaX, performance.now());
+        if (step) swipeCard(step);
         return;
       }
       const now = performance.now();
@@ -5452,27 +5498,41 @@ export default {
       fitTimer = setTimeout(attempt, delay);
     };
 
-    // Home: back to the view the portal opens on (the newest card's wall at Horizon), from wherever the camera has
-    // got to: panels closed, video stopped, in 3D Space. With no cards it frames the whole graph.
-    const goHome = () => {
+    // Home / recentre (2026-10-01): sets the current view straight again without leaving it (it used to go back to the
+    // launch view in 3D from anywhere). List, Timeline, Board and Carousel scroll back to the top-left; the 2D board
+    // drops its pan and zoom. In 3D the camera re-frames the current stop: Space looks at the scene origin (0, 0, 0)
+    // from the default angle and distance, Cluster re-frames the framed group, Horizon turns back to the middle of the
+    // wall, and Atomic re-frames the open card.
+    const resetCollectionScroll = () => {
+      // Scrolled panes inside the view too (the Board's columns, a sideways Timeline).
+      [collectionView, ...collectionView.querySelectorAll('*')].forEach(element => {
+        if (element.scrollTop || element.scrollLeft) element.scrollTo({ top: 0, left: 0 });
+      });
+    };
+    const recentreView = () => {
       if (xrPresenting()) return;
-      stopMedia();
-      const wasShown = filterState.view === 'graph' && !filterState.flat;
-      if (filterState.view !== 'graph') setView('graph');
-      if (filterState.flat) setFlat(false);
-      if (focus.node) hideNodeCard();
-      closeClusterDrawer({ fly: false });
-      clusterFrame = null;
-      if (filterState.highlighted.size) {
-        filterState.highlighted = new Set();
-        applyGraphFilters();
+      if (filterState.view !== 'graph') {
+        resetCollectionScroll();
+        return;
       }
-      // Coming back from another view or the board, the cards need a moment to be placed (scheduleLaunch waits).
-      scheduleLaunch(wasShown ? 0 : 400);
+      cancelPendingFit();
+      if (filterState.flat) {
+        resetCameraView();
+      } else if (focus.node) {
+        flyToNode(focus.node);
+      } else if (gallery) {
+        gallery.look = gallery.homeLook || gallery.look;
+        flyToArc();
+      } else if (zoomStop === 'cluster' && clusterFrame) {
+        flyToCluster(clusterFrame.key);
+      } else {
+        clusterFrame = null;
+        cameraGoTo({ target: { x: 0, y: 0, z: 0 }, distance: getMacroFraming().distance, theta: 0, phi: Math.PI / 2, state: 'macro' });
+      }
     };
     document.getElementById('wheel-home').addEventListener('click', event => {
       event.stopPropagation();
-      goHome();
+      recentreView();
     });
     document.addEventListener('keydown', event => {
       if (event.key !== 'Home' && event.key !== 'h' && event.key !== 'H') return;
@@ -5480,7 +5540,7 @@ export default {
       if (event.target.closest && event.target.closest('input, textarea, select, [contenteditable]')) return;
       if (document.querySelector('.modal-backdrop:not([hidden])') || !loginGate.hidden) return;
       event.preventDefault();
-      goHome();
+      recentreView();
     });
     // Free zoom (Space and Cluster) goes toward what the pointer is on, not the orbit's pivot, so scrolling at a card
     // brings it nearer instead of flying past it or away.
