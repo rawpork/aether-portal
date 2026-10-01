@@ -7,6 +7,11 @@
   "triggers": {
     "crons": ["0 0 * * *"]
   },
+  // Bundles src/services/engineApi.ts into public/js/engine-api.bundle.js before every deploy and dev session.
+  "build": {
+    "command": "npm run build:client",
+    "watch_dir": "src/services"
+  },
   // PWA files (manifest, service worker, icons). Paths without a matching file fall through to the Worker.
   "assets": {
     "directory": "./public"

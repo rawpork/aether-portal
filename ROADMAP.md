@@ -1,5 +1,13 @@
 # Aether Portal — Pipeline & Memory Update (MU)
 
+## Phase 3: Aether_Engine Integration (ACTIVE)
+Wires the portal to the local Aether_Engine IPC server (`http://localhost:3333`, Phase 2 complete 2026-10-01).
+- [x] Step 3.1: Engine IPC Gateway Client Service (`http://localhost:3333`) (COMPLETED 2026-10-01) - typed client `src/services/engineApi.ts` for all Phase 2 engine routes; bearer JWT auto-attached from localStorage `aether.engine.jwt` (no header = engine `REQUIRE_AUTH=false` bypass); 423 task halts resolve as `HALTED` outcomes, other failures throw `EngineApiError`. Verified: `tsc --noEmit` clean, 8 unit tests, 18/18 live checks against the engine on port 3333 (JWT + bypass)
+- [x] Step 3.2: Emergency Circuit Breaker Panic Button & Agent State Status Bar (COMPLETED 2026-10-01) - `#engine-bar` in the top bar (`public/js/engine/breaker-bar.js`): `master-brain` state badge polled every 5s (green ACTIVE, pulsing red HALTED, plus offline/token-needed states; instant HALTED on any 423 via client state events), TRIP BREAKER with confirmation dialog, RESET AGENT when halted, engine token modal. `npm run build:client` bundles the client to `public/js/engine-api.bundle.js` (also run by wrangler before deploy/dev). Verified: build + typecheck clean, 14 UI tests (simulated 200/423/401/409/offline), 279/279 suite, 9/9 live checks against the engine on 3333
+- [ ] Step 3.3: Master Brain Interactive Chat & Elaron Voice Dock (`ws://localhost:3333/api/voice/stream`)
+- [ ] Step 3.4: Blueprint Ingestion & Artifact Compilation Dashboard
+
+
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev
 - **Environment:** Cloudflare Workers + D1 (aether_context_db) + static assets (public/) + Gemini 3.x API, optional Anthropic API (Claude Sonnet share tier)

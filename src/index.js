@@ -2522,14 +2522,63 @@ export default {
       .board-view { grid-template-columns: repeat(4, 82vw); scroll-snap-type: x proximity; }
       .board-column { scroll-snap-align: start; }
     }
+    /* Engine breaker bar (public/js/engine/breaker-bar.js): agent state badge, TRIP BREAKER and RESET AGENT for the
+       local Aether_Engine. Red is reserved for the breaker; HALTED pulses its fill (no glow), static under reduced motion. */
+    #engine-bar { display: flex; flex: none; align-items: center; gap: 6px; }
+    #engine-bar:empty { display: none; }
+    .engine-badge {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+      box-sizing: border-box;
+      padding: 0 10px;
+      border: var(--hairline);
+      border-radius: 15px;
+      background: var(--bg-raised);
+      color: var(--text-muted);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .engine-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+    .engine-badge[data-state="ACTIVE"] { color: #2ee59d; border-color: rgba(46,229,157,0.5); background: rgba(46,229,157,0.1); }
+    .engine-badge[data-state="HALTED"] { color: #fff; border-color: #ff4d6d; background: rgba(255,77,109,0.35); animation: engine-pulse 1.1s ease-in-out infinite; }
+    .engine-badge[data-state="AUTH"], .engine-badge[data-state="ERROR"] { color: #ffb627; border-color: rgba(255,182,39,0.5); }
+    @keyframes engine-pulse { 0%, 100% { background-color: rgba(255,77,109,0.35); } 50% { background-color: rgba(255,77,109,0.85); } }
+    .engine-trip, .engine-trip-confirm { border-color: #ff4d6d; background: #d7263d; color: #fff; font-weight: 800; letter-spacing: 0.04em; }
+    .engine-trip:hover:not(:disabled), .engine-trip:focus-visible { background: #ef3350; outline: none; }
+    .engine-trip:disabled { opacity: 0.4; cursor: default; }
+    .engine-trip-short { display: none; }
+    .engine-reset { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: 800; letter-spacing: 0.04em; }
+    .engine-reset:disabled { opacity: 0.5; cursor: progress; }
+    .engine-token { padding: 0 8px; }
+    .engine-danger-title { color: #ff6b81 !important; }
+    .engine-modal-text { margin: 0; font-size: 13px; line-height: 1.45; color: rgba(223,253,247,0.8); overflow-wrap: anywhere; }
+    .engine-token-input { font-family: ui-monospace, Menlo, Consolas, monospace !important; font-size: 16px !important; word-break: break-all; }
+    @media (prefers-reduced-motion: reduce) {
+      .engine-badge[data-state="HALTED"] { animation: none; background: rgba(255,77,109,0.7); }
+    }
+    @media (max-width: 600px) {
+      .engine-badge:not([data-state="HALTED"]) .engine-badge-label { display: none; }
+      .engine-badge { padding: 0 9px; }
+      .engine-trip-long { display: none; }
+      .engine-trip-short { display: inline; }
+    }
   </style>
   <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
   <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
   <script type="module" src="/js/spatial/index.js?v=${assetVersion}"></script>
+  <script type="module" src="/js/engine/breaker-bar.js?v=${assetVersion}"></script>
 </head>
 <body>
   <header id="topbar">
     <span class="brand">Aether Portal</span>
+    <div id="engine-bar" role="group" aria-label="Aether Engine circuit breaker"></div>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
     <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
     <span class="bar-spacer"></span>

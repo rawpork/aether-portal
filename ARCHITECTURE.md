@@ -80,3 +80,22 @@ Set with `wrangler secret put <NAME>`:
 - **Bounded work per request** — recluster batch size keeps each request within Workers subrequest and D1 limits.
 - **Validate before write** — Gemini output is JSON-parsed, title trimmed to 200 chars, category passed through `normalizeCategory()`.
 - **Template-literal UI** — the client script lives inside a JS template literal; avoid backslashes and `${ }` in it.
+
+## Aether_Engine IPC client (Phase 3)
+- `src/services/engineApi.ts` - typed client for the local Aether_Engine server (default `http://localhost:3333`; override with localStorage `aether.engine.baseUrl` or `createEngineApi({ baseUrl })`). It is browser code: the deployed Worker cannot reach the operator's localhost.
+- Helpers: `getEngineHealth`, `tripBreaker`, `resetBreaker`, `getAgentState`, `sendMasterBrainChat`, `executeSubAgentTask`, `getTaskStatus`, `compileBlueprint` (shared default client), or `createEngineApi({ baseUrl, getToken, fetch, timeoutMs })` for a custom instance.
+- Auth: every `/api/*` call sends `Authorization: Bearer <jwt>` from `getToken` or localStorage `aether.engine.jwt` (`setStoredEngineToken`). With no token the header is omitted, which only works against an engine started with `REQUIRE_AUTH=false`. The engine expects a Supabase HS256 JWT, not the portal's Google session.
+- Errors: non-2xx responses throw `EngineApiError` (`status`, `body`, `isHalted` for 423, `isUnauthorized`, `isUnreachable` for status 0 = offline/CORS/timeout). `executeSubAgentTask` resolves a 423 as a `HALTED` outcome carrying `interrupted_step_index` and partial results.
+- Timeouts: 5s health, 15s default, 310s chat, none for task runs (pass an `AbortSignal`).
+- Build: `npm run build:client` (esbuild) bundles it to `public/js/engine-api.bundle.js` (ESM, generated, git-ignored). `wrangler.jsonc` `build.command` runs it before every `wrangler deploy`/`dev`, and `npm test` runs it first (`pretest`). `npm run typecheck` checks `src/services` and `test/services`. Tests: `test/services/engineApi.spec.ts` (vitest project `services`, mocked fetch).
+- State events: `onEngineState(listener)` / `engineEvents` publish `{ agentId, state, reason, source }` whenever a client reads state, trips, resets, or gets a 423 from any route, so UI updates without waiting for a poll.
+
+## Engine breaker bar (Phase 3, Step 3.2)
+- `#engine-bar` slot in `#topbar` (src/index.js), filled by `public/js/engine/breaker-bar.js` (module script, auto-mounts; `mountBreakerBar(container, { api, agentId, pollIntervalMs, getToken, setToken })` for tests).
+- Badge for agent `master-brain`: polls `getAgentState` every 5s (30s while the engine is offline; paused while the tab is hidden, re-polled when it returns) and listens to client state events. States: CONNECTING, ACTIVE (green), HALTED (pulsing red fill, static under reduced motion), ENGINE OFFLINE, TOKEN NEEDED (401, click opens the token modal), ENGINE ERROR. Click retries.
+- TRIP BREAKER (red) opens a confirmation alertdialog with Cancel focused; confirming calls `tripBreaker('master-brain', 'Operator manual trip from Portal UI')`. Failures stay in the dialog. Disabled only while the agent is already HALTED, never because a poll failed.
+- RESET AGENT (teal) shows only while HALTED and calls `resetBreaker('master-brain')`; a 409 (already reset elsewhere) re-reads the state.
+- Key button opens the engine token modal: shows the stored JWT (preview, subject, expiry), saves a pasted JWT or clears it via `setStoredEngineToken`, then re-polls.
+- Phones (600px and below): badge collapses to its dot except when HALTED; the trip button reads TRIP.
+- Tests: `test/engine/breaker-bar.spec.js` (vitest project `engine-ui`, happy-dom, real bundle, simulated engine responses).
+- Browser note: the production page is HTTPS and the engine is `http://localhost:3333`. Chrome and Firefox allow that as a local network request (Chrome may ask for local network access permission); Safari blocks it, so use Chrome/Firefox or `wrangler dev` for the breaker bar.

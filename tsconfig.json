@@ -1,0 +1,17 @@
+{
+	// Type-checks the TypeScript services only; the Worker (src/*.js) and public/js stay plain JavaScript.
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"strict": true,
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true
+	},
+	"include": ["src/services/**/*.ts", "test/services/**/*.ts"]
+}
