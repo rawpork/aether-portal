@@ -55,7 +55,10 @@ export function mountBreakerBar(container, options = {}) {
     el(doc, 'span', { class: 'engine-trip-long', text: 'TRIP BREAKER' }),
     el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: 'TRIP' }),
   ]);
-  const resetButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-reset', text: 'RESET AGENT', hidden: true });
+  const resetButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-reset', 'aria-label': 'Reset agent', hidden: true }, [
+    el(doc, 'span', { class: 'engine-trip-long', text: 'RESET AGENT' }),
+    el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: 'RESET' }),
+  ]);
   container.replaceChildren(badge, tripButton, resetButton);
 
   // --- trip confirmation dialog

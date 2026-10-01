@@ -66,6 +66,18 @@ describe('Mission Control routes', () => {
 		expect(html).toContain('<meta name="aether-upgrade-url" content="https://billing.example/up?a=1&amp;b=2">');
 		expect(renderMissionControlPage({ upgradeUrl: 'javascript:alert(1)' })).toContain('<meta name="aether-upgrade-url" content="">');
 		expect(renderMissionControlPage()).toContain('<meta name="aether-tier" content="free">');
-		for (const id of ['mc-tab-monitor', 'mc-tab-blueprints', 'mc-view-blueprints', 'mc-blueprints']) expect(html, id).toContain(`id="${id}"`);
+		for (const id of ['mc-tab-monitor', 'mc-tab-blueprints', 'mc-tab-elaron', 'mc-view-blueprints', 'mc-blueprints']) expect(html, id).toContain(`id="${id}"`);
+	});
+
+	it('keeps the header clear of the iPhone status bar and honors the hidden attribute', () => {
+		const html = renderMissionControlPage();
+		expect(html).toContain('viewport-fit=cover');
+		expect(html).toMatch(/\.mc-top \{[^}]*padding: calc\(8px \+ env\(safe-area-inset-top/);
+		expect(html).toContain('[hidden] { display: none !important; }');
+	});
+
+	it('gives outcome cards an Open in Mission Control link', async () => {
+		const html = await (await SELF.fetch('http://example.com/')).text();
+		expect(html).toContain('id="outcome-mission-control"');
 	});
 });

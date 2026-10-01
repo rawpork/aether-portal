@@ -391,10 +391,19 @@ export function mountBlueprintWorkspace(container, options = {}) {
   renderViewer();
   refresh();
 
+  // Puts a spec into the editor and validates it (used for outcome blueprints sent from the main portal).
+  function loadSpec(text) {
+    editor.value = text;
+    const result = validate();
+    editor.focus();
+    return result;
+  }
+
   return {
     refresh,
     select,
     validate,
+    loadSpec,
     getSelected: () => selected,
     elements: { form, editor, fileInput, uploadButton, exampleButton, validateButton, compileButton, feedback, list, listEmpty, viewer, upgradeModal, refreshButton },
     destroy() {

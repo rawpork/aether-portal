@@ -16,11 +16,37 @@ afterEach(() => {
     mc.dock.destroy();
     mc.blueprints.destroy();
     mc.connection.destroy();
+    mc.tabs.destroy();
+    mc = null;
   }
   document.body.replaceChildren();
 });
 
-it('mounts the breaker top-right, the task monitor and Elaron, authenticated by a portal-minted token', async () => {
+// Real template markup plus an always-ACTIVE engine; for the narrower tests below.
+async function mountPage(options = {}) {
+  const html = renderMissionControlPage({ assetVersion: 'test' });
+  document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
+  const reply = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+  const engineFetch = async (url) => {
+    const { pathname } = new URL(url);
+    if (pathname === '/api/agents/master-brain/state') return reply({ agent_id: 'master-brain', state: 'ACTIVE' });
+    if (pathname === '/api/tasks') return reply({ tasks: [], counts: { running: 0, completed: 0, halted: 0, failed: 0 } });
+    if (pathname === '/api/artifacts') return reply({ success: true, count: 0, artifacts: [] });
+    return new Response('{}', { status: 404 });
+  };
+  const store = { getToken: () => null, setToken() {} };
+  const api = createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engineFetch, getToken: store.getToken });
+  mc = await mountMissionControl(document, {
+    api,
+    connection: { fetch: async () => new Response('{}', { status: 404 }), ...store },
+    dock: { storage: { get: () => null, set() {} }, Recognition: null, synth: null },
+    portalFetch: options.portalFetch,
+  });
+  return mc;
+}
+
+it('mounts the breaker top-right, the task monitor and Elarion, authenticated by a portal-minted token', async () => {
   const html = renderMissionControlPage({ assetVersion: 'test', tier: 'pro' });
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
@@ -55,14 +81,14 @@ it('mounts the breaker top-right, the task monitor and Elaron, authenticated by 
   expect(header.querySelector('.engine-trip')).not.toBe(null);
   expect(document.querySelector('a[aria-current="page"]').getAttribute('href')).toBe('/mission-control');
 
-  // Monitor and Elaron are mounted in the workspace.
+  // Monitor and Elarion are mounted in the workspace.
   expect(document.querySelectorAll('#mc-monitor .mc-stat')).toHaveLength(5);
   expect(document.getElementById('mc-monitor-status').textContent).toBe('Up to date');
-  expect(document.querySelector('#mc-elaron .brain-dock h2').textContent).toBe('Elaron · Master Brain');
+  expect(document.querySelector('#mc-elaron .brain-dock h2').textContent).toBe('Elarion · Master Brain');
 
   // No key entry needed: every engine call carried the portal-minted token.
-  expect(document.querySelector('#mc-connection summary').textContent).toBe('Engine connection · portal session token');
-  expect(document.querySelector('#mc-connection form').hidden).toBe(true);
+  expect(document.querySelector('#mc-connection summary').textContent).toBe('Engine connection · localhost:3333 · portal session token');
+  expect(document.querySelector('#mc-connection .mc-connection-manual').hidden).toBe(true);
   expect(engineCalls.length).toBeGreaterThanOrEqual(3);
   expect(engineCalls.every((c) => c.auth === 'Bearer ' + PORTAL_JWT)).toBe(true);
 
@@ -82,4 +108,47 @@ it('mounts the breaker top-right, the task monitor and Elaron, authenticated by 
   expect(monitorTab.getAttribute('aria-selected')).toBe('true');
   expect(document.activeElement).toBe(monitorTab);
   expect(window.location.hash).toBe('');
+
+  // Wide screen: no Elarion tab; the dock stays visible next to every tab.
+  expect(document.getElementById('mc-elaron').hidden).toBe(false);
+  mc.tabs.select('elaron');
+  expect(mc.tabs.getView()).toBe('monitor');
+});
+
+it('on a phone, Elarion is a tab of its own', async () => {
+  window.happyDOM.setViewport({ width: 390, height: 844 });
+  try {
+    await mountPage();
+    const elaronTab = document.getElementById('mc-tab-elaron');
+    expect(document.getElementById('mc-elaron').hidden).toBe(true);
+    elaronTab.click();
+    expect(elaronTab.getAttribute('aria-selected')).toBe('true');
+    expect(document.getElementById('mc-elaron').hidden).toBe(false);
+    expect(document.getElementById('mc-view-monitor').hidden).toBe(true);
+    expect(document.body.dataset.view).toBe('elaron');
+    expect(window.location.hash).toBe('#elaron');
+    // Arrow keys move across all three tabs.
+    elaronTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(mc.tabs.getView()).toBe('monitor');
+  } finally {
+    window.happyDOM.setViewport({ width: 1024, height: 768 });
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+it('loads an outcome blueprint from the portal into the Blueprints editor (?outcome=<id>)', async () => {
+  window.history.replaceState(null, '', '/mission-control?outcome=node_42');
+  const outcome = { schema: 'aether.blueprint/1', title: 'From the portal', steps: [{ n: 1, title: 'Read', sources: [{ id: 'a', title: 'A', url: 'https://a.test' }] }] };
+  const requested = [];
+  try {
+    await mountPage({ portalFetch: async (url) => (requested.push(url), new Response(JSON.stringify(outcome), { status: 200 })) });
+    expect(requested).toEqual(['/api/outcome/node_42/blueprint']);
+    expect(mc.tabs.getView()).toBe('blueprints');
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('#blueprints');
+    expect(JSON.parse(document.querySelector('.bp-editor').value).schema).toBe('aether.blueprint/1');
+    expect(document.getElementById('bp-feedback').textContent).toMatch(/^Valid spec: From the portal · 1 source link\./);
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
 });

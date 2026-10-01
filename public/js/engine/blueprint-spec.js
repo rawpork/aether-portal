@@ -210,6 +210,22 @@ export function parseBlueprintSpec(text) {
     };
   }
 
+  if (isPlainObject(value) && value.schema === OUTCOME_BLUEPRINT_SCHEMA) {
+    const converted = outcomeToCompileRequest(value);
+    if (!converted.spec.links.length) {
+      return {
+        ok: false,
+        spec: null,
+        errors: [{ path: '/steps', message: 'This outcome blueprint has no linked sources. The engine compiles from links; add a saved link to the outcome first.' }],
+        warnings: converted.warnings,
+        notes,
+      };
+    }
+    notes.push('Converted the portal outcome blueprint "' + converted.spec.projectName + '" (' + OUTCOME_BLUEPRINT_SCHEMA + ') into an engine spec.');
+    const { errors, warnings } = validateCompileRequest(converted.spec);
+    return { ok: errors.length === 0, spec: converted.spec, errors, warnings: [...converted.warnings, ...warnings], notes };
+  }
+
   if (Array.isArray(value)) {
     value = { links: value };
     notes.push('Treated the top-level list as "links".');
@@ -221,6 +237,36 @@ export function parseBlueprintSpec(text) {
 
   const { errors, warnings } = validateCompileRequest(value);
   return { ok: errors.length === 0, spec: value, errors, warnings, notes };
+}
+
+// The main portal's outcome blueprints (Export blueprint / GET /api/outcome/<id>/blueprint) use their own format:
+// a plan of steps whose sources are saved nodes. The engine compiles from links, so each linked source becomes a
+// link (deduplicated) and its step titles become the snippet; saved notes without a link are reported, not sent.
+export const OUTCOME_BLUEPRINT_SCHEMA = 'aether.blueprint/1';
+
+export function outcomeToCompileRequest(outcome) {
+  const links = new Map();
+  let unlinked = 0;
+  for (const step of Array.isArray(outcome.steps) ? outcome.steps : []) {
+    for (const source of Array.isArray(step.sources) ? step.sources : []) {
+      if (typeof source.url !== 'string' || !/^https?:\/\//i.test(source.url)) {
+        unlinked++;
+        continue;
+      }
+      const link = links.get(source.url) || { url: source.url, title: source.title || source.url, steps: [] };
+      link.steps.push('Step ' + step.n + ': ' + step.title);
+      links.set(source.url, link);
+    }
+  }
+  const warnings = [];
+  if (unlinked) warnings.push({ path: '/steps', message: unlinked + (unlinked === 1 ? ' saved note has' : ' saved notes have') + ' no link and will not be sent' });
+  return {
+    spec: {
+      projectName: String(outcome.title || 'Untitled outcome'),
+      links: [...links.values()].map((l) => ({ url: l.url, title: l.title, rawSnippet: [outcome.goal, ...l.steps].filter(Boolean).join(' · ') })),
+    },
+    warnings,
+  };
 }
 
 // Rows for the route matrix: how each execution phase is routed (agent role, MCP tools, model route and budget).

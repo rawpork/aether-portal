@@ -197,7 +197,7 @@ describe('dock shell', () => {
     const { panel } = mount().elements;
     expect(slot.firstChild).toBe(panel);
     expect(panel.hidden).toBe(false);
-    expect(panel.querySelector('h2').textContent).toBe('Elaron · Master Brain');
+    expect(panel.querySelector('h2').textContent).toBe('Elarion · Master Brain');
     expect([...panel.querySelectorAll('button')].map((b) => b.className)).toEqual([
       'brain-icon-btn brain-new',
       'brain-icon-btn brain-mic',
@@ -269,7 +269,7 @@ describe('typed chat', () => {
   });
 });
 
-describe('Elaron voice dock', () => {
+describe('Elarion voice dock', () => {
   it('uses browser speech recognition when the engine has no STT, then speaks the reply', async () => {
     mount();
     dock.elements.micButton.click();

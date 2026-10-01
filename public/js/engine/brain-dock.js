@@ -1,6 +1,6 @@
-// Elaron dock for Mission Control: typed chat (POST /api/master-brain/chat) and the voice dock
+// Elarion dock for Mission Control: typed chat (POST /api/master-brain/chat) and the voice dock
 // (ws /api/voice/stream) sharing one engine session, so typed and spoken turns are one conversation.
-// mission-control.js mounts it into the workspace's Elaron panel; it is always open there.
+// mission-control.js mounts it into the workspace's Elarion panel; it is always open there.
 //
 // Voice input: when the engine reports STT (ready.stt), the mic streams webm-opus audio to it. Until an engine
 // STT provider exists (engine Step 2.4a), the browser's SpeechRecognition transcribes and the text is sent as a
@@ -11,7 +11,7 @@ export const BRAIN_AGENT_ID = 'master-brain';
 export const SESSION_STORAGE_KEY = 'aether.engine.sessionId';
 export const SPEAK_STORAGE_KEY = 'aether.brain.speakReplies';
 
-// Elaron avatar modes and the status line shown beside it.
+// Elarion avatar modes and the status line shown beside it.
 export const MODE_TEXT = {
   idle: 'Ready',
   connecting: 'Connecting…',
@@ -133,11 +133,11 @@ export function mountBrainDock(container, options = {}) {
   const status = el(doc, 'span', { class: 'brain-status', 'aria-live': 'polite', text: MODE_TEXT.idle });
   const newButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-new', title: 'Start a new session', text: 'New' });
   const log = el(doc, 'ol', { class: 'brain-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation' });
-  const empty = el(doc, 'li', { class: 'brain-empty', text: 'Ask the Master Brain about blueprints, agents, budgets or breaker state. Type, or tap the mic to talk to Elaron.' });
+  const empty = el(doc, 'li', { class: 'brain-empty', text: 'Ask the Master Brain about blueprints, agents, budgets or breaker state. Type, or tap the mic to talk to Elarion.' });
   log.append(empty);
   const interim = el(doc, 'p', { class: 'brain-interim', hidden: true });
   const input = el(doc, 'textarea', { class: 'brain-input', rows: '1', placeholder: 'Message the Master Brain', 'aria-label': 'Message', maxlength: '32000' });
-  const micButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-mic', 'aria-pressed': 'false', 'aria-label': 'Talk', title: 'Talk to Elaron', text: '🎙' });
+  const micButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-mic', 'aria-pressed': 'false', 'aria-label': 'Talk', title: 'Talk to Elarion', text: '🎙' });
   const speakButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-speak', 'aria-label': 'Speak voice replies' });
   const sendButton = el(doc, 'button', { type: 'submit', class: 'brain-send', text: 'Send' });
   const form = el(doc, 'form', { class: 'brain-form', autocomplete: 'off' }, [input, micButton, speakButton, sendButton]);
@@ -145,7 +145,7 @@ export function mountBrainDock(container, options = {}) {
   const panel = el(doc, 'div', { class: 'brain-dock' }, [
     el(doc, 'header', { class: 'brain-head' }, [
       avatar,
-      el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Elaron · Master Brain' }), status]),
+      el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Elarion · Master Brain' }), status]),
       newButton,
     ]),
     log,
@@ -167,7 +167,7 @@ export function mountBrainDock(container, options = {}) {
     const listening = Boolean(voice.recognition || voice.recorder);
     micButton.setAttribute('aria-pressed', String(listening));
     micButton.disabled = view.halted || (view.busy && !listening);
-    micButton.title = listening ? 'Stop and send' : 'Talk to Elaron';
+    micButton.title = listening ? 'Stop and send' : 'Talk to Elarion';
     sendButton.disabled = view.busy || view.halted;
     input.disabled = view.halted;
     newButton.disabled = view.busy;

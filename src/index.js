@@ -901,7 +901,7 @@ export default {
       }
     }
 
-    // Endpoint 5d: Mission Control (src/mission-control-page.js): Elaron, the agent task monitor and the circuit breaker
+    // Endpoint 5d: Mission Control (src/mission-control-page.js): Elarion, the agent task monitor and the circuit breaker
     // for the local Aether_Engine. Signed-out visitors sign in first and come back here.
     if (url.pathname === "/mission-control") {
       if (request.method !== "GET" && request.method !== "HEAD") {
@@ -1175,6 +1175,7 @@ export default {
     .card-outcome-sources button { appearance: none; max-width: 180px; padding: 2px 6px; overflow: hidden; border: 1px solid rgba(255, 182, 39, 0.35); border-radius: 4px; background: transparent; color: #d9c7a0; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
     .card-outcome-sources button:hover, .card-outcome-sources button:focus-visible { border-color: #ffb627; color: #fff; outline: none; }
     .card-outcome-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .card-outcome-link { display: inline-flex; align-items: center; min-height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--accent-line); border-radius: var(--radius-s); color: var(--accent); font-size: 12px; text-decoration: none; }
     .card-outcome-actions button { appearance: none; min-height: 32px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font-size: 12px; cursor: pointer; }
     .card-outcome-actions #outcome-accept { border-color: #ffb627; background: #ffb627; color: #1a1406; font-weight: 700; }
     .card-outcome-actions button:disabled { opacity: 0.45; cursor: progress; }
@@ -2571,7 +2572,7 @@ export default {
 <body>
   <header id="topbar">
     <span class="brand">Aether Portal</span>
-    <a class="bar-btn mc-tab" id="mission-control-tab" href="/mission-control" title="Mission Control: Elaron, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
+    <a class="bar-btn mc-tab" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
     <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
     <span class="bar-spacer"></span>
@@ -2716,6 +2717,7 @@ export default {
         <button type="button" id="outcome-accept">Accept</button>
         <button type="button" id="outcome-regenerate">Regenerate</button>
         <button type="button" id="outcome-export">Export blueprint</button>
+        <a id="outcome-mission-control" class="card-outcome-link" href="/mission-control#blueprints" title="Load this blueprint into Mission Control to compile it on the Aether Engine">Open in Mission Control</a>
         <button type="button" id="outcome-dismiss">Dismiss</button>
       </div>
       <span id="card-outcome-message" class="card-outcome-message" aria-live="polite"></span>
@@ -3537,6 +3539,8 @@ export default {
       cardOutcomeMeta.textContent = [OUTCOME_TEMPLATE_LABELS[plan.template], OUTCOME_STATUS_LABELS[node.outcome_status] || '', plan.effort].filter(Boolean).join(' · ');
       cardOutcomeGoal.textContent = plan.goal || '';
       cardOutcomeGoal.hidden = !plan.goal;
+      // Mission Control fetches this outcome's blueprint and loads it into its Blueprints editor.
+      document.getElementById('outcome-mission-control').href = '/mission-control?outcome=' + encodeURIComponent(node.id) + '#blueprints';
       cardOutcomeSteps.replaceChildren(...(plan.steps || []).map(step => {
         const item = document.createElement('li');
         const title = document.createElement('strong');

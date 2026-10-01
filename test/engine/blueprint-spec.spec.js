@@ -61,6 +61,35 @@ describe('parseBlueprintSpec', () => {
     expect(result.notes).toEqual(['Treated the top-level list as "links".', 'Turned plain URL strings into { "url": ... } links.']);
   });
 
+  it('converts a portal outcome blueprint (aether.blueprint/1) into an engine spec', () => {
+    const outcome = {
+      schema: 'aether.blueprint/1',
+      title: 'Ship the sync service',
+      goal: 'Keep D1 and Supabase in step',
+      steps: [
+        { n: 1, title: 'Read the D1 docs', detail: '', sources: [{ id: 'a', title: 'D1', url: 'https://developers.cloudflare.com/d1/' }, { id: 'b', title: 'My note', url: null }] },
+        { n: 2, title: 'Wire auth', detail: '', sources: [{ id: 'a', title: 'D1', url: 'https://developers.cloudflare.com/d1/' }, { id: 'c', title: 'JWTs', url: 'https://supabase.com/docs/guides/auth/jwts' }] },
+      ],
+    };
+    const result = parseBlueprintSpec(JSON.stringify(outcome));
+    expect(result.ok).toBe(true);
+    expect(result.spec).toEqual({
+      projectName: 'Ship the sync service',
+      links: [
+        { url: 'https://developers.cloudflare.com/d1/', title: 'D1', rawSnippet: 'Keep D1 and Supabase in step · Step 1: Read the D1 docs · Step 2: Wire auth' },
+        { url: 'https://supabase.com/docs/guides/auth/jwts', title: 'JWTs', rawSnippet: 'Keep D1 and Supabase in step · Step 2: Wire auth' },
+      ],
+    });
+    expect(result.notes).toEqual(['Converted the portal outcome blueprint "Ship the sync service" (aether.blueprint/1) into an engine spec.']);
+    expect(messages(result.warnings)).toEqual(['/steps 1 saved note has no link and will not be sent']);
+  });
+
+  it('explains an outcome blueprint with no linked sources', () => {
+    const result = parseBlueprintSpec(JSON.stringify({ schema: 'aether.blueprint/1', title: 'Notes only', steps: [{ n: 1, title: 'Think', sources: [{ id: 'x', title: 'n', url: null }] }] }));
+    expect(result.ok).toBe(false);
+    expect(result.errors[0].message).toMatch(/no linked sources/);
+  });
+
   it('points out an already compiled blueprint pasted by mistake', () => {
     const result = parseBlueprintSpec(JSON.stringify(COMPILED));
     expect(result.ok).toBe(false);

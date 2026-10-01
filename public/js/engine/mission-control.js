@@ -1,5 +1,5 @@
 // Mission Control entry (/mission-control, src/mission-control-page.js). Gets an engine token first (connection.js),
-// so the breaker, task monitor, blueprint dashboard and Elaron dock all start out authenticated, then mounts them.
+// so the breaker, task monitor, blueprint dashboard and Elarion dock all start out authenticated, then mounts them.
 import { getEngineApi } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
@@ -7,21 +7,32 @@ import { mountBrainDock } from './brain-dock.js';
 import { mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 
-const VIEWS = { monitor: 'mc-tab-monitor', blueprints: 'mc-tab-blueprints' };
+// view -> tab id. The Elarion tab only exists on narrow screens; on wide ones the dock is always on the right.
+const VIEWS = { monitor: 'mc-tab-monitor', blueprints: 'mc-tab-blueprints', elaron: 'mc-tab-elaron' };
+export const NARROW_QUERY = '(max-width: 900px)';
 
-// Workspace tabs (WAI-ARIA tabs pattern): click or arrow keys switch; #blueprints in the URL opens that tab.
+// Workspace tabs (WAI-ARIA tabs pattern): click or arrow keys switch; #blueprints / #elaron in the URL open a tab.
 export function setupTabs(doc, onSelect = () => {}) {
-  const tabs = Object.entries(VIEWS).map(([view, id]) => ({ view, tab: doc.getElementById(id) })).filter((t) => t.tab);
+  const win = doc.defaultView;
+  const narrowQuery = win && win.matchMedia ? win.matchMedia(NARROW_QUERY) : null;
+  const isNarrow = () => Boolean(narrowQuery && narrowQuery.matches);
+  const all = Object.entries(VIEWS).map(([view, id]) => ({ view, tab: doc.getElementById(id) })).filter((t) => t.tab);
+  const visible = () => all.filter((t) => t.view !== 'elaron' || isNarrow());
+  let current = 'monitor';
 
   function select(view, focus = false) {
-    for (const t of tabs) {
+    if (view === 'elaron' && !isNarrow()) view = 'monitor';
+    current = view;
+    for (const t of all) {
       const active = t.view === view;
       t.tab.setAttribute('aria-selected', String(active));
       t.tab.tabIndex = active ? 0 : -1;
-      doc.getElementById(t.tab.getAttribute('aria-controls')).hidden = !active;
+      const panel = doc.getElementById(t.tab.getAttribute('aria-controls'));
+      // The dock is only ever hidden on narrow screens, where it is one of the tabs.
+      panel.hidden = t.view === 'elaron' ? isNarrow() && !active : !active;
       if (active && focus) t.tab.focus();
     }
-    const win = doc.defaultView;
+    doc.body.dataset.view = view;
     if (win && win.history && win.location) {
       const hash = view === 'monitor' ? '' : '#' + view;
       if (win.location.hash !== hash) win.history.replaceState(null, '', win.location.pathname + win.location.search + hash);
@@ -29,9 +40,11 @@ export function setupTabs(doc, onSelect = () => {}) {
     onSelect(view);
   }
 
-  tabs.forEach((t, i) => {
+  all.forEach((t) => {
     t.tab.addEventListener('click', () => select(t.view));
     t.tab.addEventListener('keydown', (event) => {
+      const tabs = visible();
+      const i = tabs.findIndex((x) => x.view === t.view);
       const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
       if (event.key === 'Home') return select(tabs[0].view, true);
       if (event.key === 'End') return select(tabs[tabs.length - 1].view, true);
@@ -40,16 +53,44 @@ export function setupTabs(doc, onSelect = () => {}) {
       select(tabs[(i + step + tabs.length) % tabs.length].view, true);
     });
   });
+  const onResize = () => select(current);
+  if (narrowQuery && narrowQuery.addEventListener) narrowQuery.addEventListener('change', onResize);
 
-  const initial = doc.defaultView && doc.defaultView.location && doc.defaultView.location.hash === '#blueprints' ? 'blueprints' : 'monitor';
-  select(initial);
-  return { select };
+  const hash = win && win.location ? win.location.hash.slice(1) : '';
+  select(hash in VIEWS ? hash : 'monitor');
+  return {
+    select,
+    getView: () => current,
+    destroy() {
+      if (narrowQuery && narrowQuery.removeEventListener) narrowQuery.removeEventListener('change', onResize);
+    },
+  };
 }
 
 const meta = (doc, name) => {
   const tag = doc.querySelector('meta[name="' + name + '"]');
   return tag ? tag.getAttribute('content') || '' : '';
 };
+
+// /mission-control?outcome=<id>: fetch that outcome's blueprint from the portal and load it into the editor.
+async function importOutcome(doc, blueprints, tabs, fetchImpl) {
+  const win = doc.defaultView;
+  const params = new URLSearchParams((win && win.location && win.location.search) || '');
+  const outcomeId = params.get('outcome');
+  if (!outcomeId) return null;
+  params.delete('outcome');
+  if (win.history) win.history.replaceState(null, '', win.location.pathname + (params.toString() ? '?' + params : '') + '#blueprints');
+  tabs.select('blueprints');
+  try {
+    const response = await fetchImpl('/api/outcome/' + encodeURIComponent(outcomeId) + '/blueprint', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    return blueprints.loadSpec(JSON.stringify(await response.json(), null, 2));
+  } catch (error) {
+    blueprints.loadSpec('');
+    blueprints.elements.feedback.textContent = 'Could not load that outcome’s blueprint from the portal (' + error.message + ').';
+    return null;
+  }
+}
 
 export async function mountMissionControl(doc = document, options = {}) {
   const api = options.api || getEngineApi();
@@ -85,10 +126,11 @@ export async function mountMissionControl(doc = document, options = {}) {
     onStarted: () => setTimeout(() => monitor.refresh(), 300),
     onExecuted: () => monitor.refresh(),
   });
+  const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
   tabs = setupTabs(doc, (view) => {
     if (view === 'blueprints') blueprints.refresh();
   });
-  const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
+  await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
   return { connection, breaker, monitor, blueprints, dock, tabs };
 }

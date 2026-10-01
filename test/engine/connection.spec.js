@@ -1,6 +1,6 @@
 // Engine connection: token bootstrap order (portal-minted, stored, none) and the connection panel.
 import { describe, expect, it } from 'vitest';
-import { bootstrapEngineToken, describeToken, mountConnection } from '../../public/js/engine/connection.js';
+import { bootstrapEngineToken, checkEngineUrl, describeToken, mountConnection } from '../../public/js/engine/connection.js';
 
 const b64url = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
 const makeJwt = (claims) => b64url({ alg: 'HS256', typ: 'JWT' }) + '.' + b64url(claims) + '.sig';
@@ -61,6 +61,11 @@ describe('bootstrapEngineToken', () => {
     expect(state).toMatchObject({ source: 'none', portal: 'signed-out' });
   });
 
+  it('keeps the HTTP status when the token endpoint fails', async () => {
+    const state = await bootstrapEngineToken({ fetch: portal(500, { error: 'boom' }).fetchImpl, ...memoryToken() });
+    expect(state).toMatchObject({ source: 'none', portal: 'error', portalStatus: 500 });
+  });
+
   it('describes token claims', () => {
     expect(describeToken(null)).toEqual({ present: false });
     expect(describeToken('a.b')).toEqual({ present: true, malformed: true });
@@ -69,25 +74,27 @@ describe('bootstrapEngineToken', () => {
 });
 
 describe('connection panel', () => {
-  async function panel(status, body, initial) {
+  async function panel(status, body, initial, extra = {}) {
     const details = document.createElement('details');
     document.body.append(details);
     const store = memoryToken(initial);
-    const connection = await mountConnection(details, { baseUrl: 'http://localhost:3333', fetch: portal(status, body).fetchImpl, ...store });
+    const connection = await mountConnection(details, { baseUrl: 'http://localhost:3333', fetch: portal(status, body).fetchImpl, ...store, ...extra });
     return { details, store, connection };
   }
 
   it('shows the portal session token and no manual form', async () => {
     const { details, connection } = await panel(200, { token: makeJwt({ sub: 'portal:u', exp: inSeconds(3600) }) });
-    expect(details.querySelector('summary').textContent).toBe('Engine connection · portal session token');
-    expect(details.querySelector('form').hidden).toBe(true);
+    expect(details.querySelector('summary').textContent).toBe('Engine connection · localhost:3333 · portal session token');
+    expect(details.querySelector('.mc-connection-manual').hidden).toBe(true);
+    expect(details.querySelector('.mc-connection-why').hidden).toBe(true);
     connection.destroy();
   });
 
-  it('offers a pasted-token fallback only when the portal cannot mint tokens', async () => {
+  it('offers a pasted-token fallback, with the reason, when the portal cannot mint tokens', async () => {
     const { details, store, connection } = await panel(404, { configured: false });
-    expect(details.querySelector('summary').textContent).toBe('Engine connection · no token (local bypass)');
-    const form = details.querySelector('form');
+    expect(details.querySelector('summary').textContent).toBe('Engine connection · localhost:3333 · no token');
+    expect(details.querySelector('.mc-connection-why').textContent).toBe('The portal can’t mint engine tokens: ENGINE_JWT_SECRET is not set on the Worker (HTTP 404).');
+    const form = details.querySelector('.mc-connection-manual');
     expect(form.hidden).toBe(false);
 
     const textarea = form.querySelector('textarea');
@@ -100,7 +107,43 @@ describe('connection panel', () => {
     form.dispatchEvent(new Event('submit', { cancelable: true }));
     await new Promise((r) => setTimeout(r, 0));
     expect(store.box.value).toBe(jwt);
-    expect(details.querySelector('summary').textContent).toBe('Engine connection · stored token');
+    expect(details.querySelector('summary').textContent).toBe('Engine connection · localhost:3333 · stored token');
     connection.destroy();
+  });
+
+  it('names other token endpoint failures by status', async () => {
+    const { details, connection } = await panel(500, { error: 'boom' });
+    expect(details.querySelector('.mc-connection-why').textContent).toBe('The portal’s token endpoint failed (HTTP 500).');
+    expect(details.querySelector('.mc-connection-manual').hidden).toBe(false);
+    connection.destroy();
+  });
+
+  it('saves an https engine URL and reloads; rejects plain http to another machine', async () => {
+    let reloads = 0;
+    const { details, connection } = await panel(200, { token: makeJwt({ sub: 'portal:u', exp: inSeconds(3600) }) }, null, { reload: () => reloads++, pageProtocol: 'https:' });
+    const form = details.querySelector('.mc-connection-url');
+    const input = form.querySelector('input');
+    expect(input.value).toBe('http://localhost:3333');
+    input.value = 'http://192.168.1.20:3333';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(form.querySelector('.modal-error').textContent).toMatch(/browsers block a plain-http engine/);
+    expect(reloads).toBe(0);
+    input.value = 'https://engine-abc.trycloudflare.com/';
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(localStorage.getItem('aether.engine.baseUrl')).toBe('https://engine-abc.trycloudflare.com');
+    expect(reloads).toBe(1);
+    localStorage.removeItem('aether.engine.baseUrl');
+    connection.destroy();
+  });
+});
+
+describe('checkEngineUrl', () => {
+  it('accepts https and local http, refuses http elsewhere from an https page', () => {
+    expect(checkEngineUrl('https://e.example.com/x/', 'https:')).toEqual({ ok: true, url: 'https://e.example.com/x', warning: '' });
+    expect(checkEngineUrl('http://localhost:3333', 'https:')).toMatchObject({ ok: true, url: 'http://localhost:3333' });
+    expect(checkEngineUrl('http://10.0.0.5:3333', 'https:').ok).toBe(false);
+    expect(checkEngineUrl('http://10.0.0.5:3333', 'http:').ok).toBe(true);
+    expect(checkEngineUrl('ftp://x', 'https:').ok).toBe(false);
+    expect(checkEngineUrl('not a url', 'https:').ok).toBe(false);
   });
 });

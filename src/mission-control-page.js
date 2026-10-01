@@ -1,5 +1,5 @@
 // /mission-control: the one place the portal talks to the local Aether_Engine. The emergency breaker sits in the
-// top-right corner, the agent task loop monitor fills the main column, and the Elaron chat and voice dock sits beside
+// top-right corner, the agent task loop monitor fills the main column, and the Elarion chat and voice dock sits beside
 // it; a Blueprints tab holds blueprint ingestion and the artifact dashboard. All behaviour lives in
 // public/js/engine/mission-control.js; this template is markup and styles only, so it carries no inline script (and,
 // being a template literal, avoids backslashes). The user's tier and the optional upgrade URL reach the script as
@@ -17,6 +17,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <title>Mission Control - Aether Portal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#080c14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="aether-tier" content="${escapeAttr(tier)}">
@@ -42,13 +44,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --radius-m: 8px;
     }
     * { box-sizing: border-box; }
+    /* Author display rules (.bar-btn, flex rows) would otherwise override the hidden attribute. */
+    [hidden] { display: none !important; }
     html, body { height: 100%; }
     body { margin: 0; background: var(--bg-page); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
     button { font: inherit; }
     a { color: inherit; }
 
     /* Header: tabs on the left, the breaker in the top-right corner. */
-    .mc-top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 16px; border-bottom: var(--hairline); background: var(--bg-panel); }
+    .mc-top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: calc(8px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); border-bottom: var(--hairline); background: var(--bg-panel); }
     .mc-tabs { display: flex; gap: 4px; }
     .mc-tabs a { display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-s); color: var(--text-muted); font-weight: 600; text-decoration: none; white-space: nowrap; }
     .mc-tabs a:hover, .mc-tabs a:focus-visible { color: var(--text); border-color: rgba(255,255,255,0.12); outline: none; }
@@ -83,7 +87,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .toggle-button { appearance: none; height: 34px; padding: 0 14px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); cursor: pointer; }
 
     /* Workspace */
-    .mc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 16px; height: calc(100% - 57px); padding: 16px; }
+    .mc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 16px; height: calc(100% - 57px - env(safe-area-inset-top, 0px)); padding: 16px calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); }
     .mc-panel { min-height: 0; display: flex; flex-direction: column; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-panel); }
     .mc-monitor { overflow-y: auto; }
     .mc-panel-head { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 6px; }
@@ -139,8 +143,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-connection-body p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
     .mc-connection textarea { width: 100%; padding: 8px 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); color: var(--text); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 16px; word-break: break-all; resize: vertical; }
     .mc-connection-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .mc-connection-url, .mc-connection-manual { display: flex; flex-direction: column; gap: 6px; }
+    .mc-connection-url label { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); }
+    .mc-url-input { width: 100%; padding: 8px 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); color: var(--text); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 16px; }
+    .mc-url-input:focus { outline: none; border-color: var(--accent-line); }
 
-    /* Elaron dock (public/js/engine/brain-dock.js), embedded in the right column. */
+    /* Elarion dock (public/js/engine/brain-dock.js), embedded in the right column. */
     .brain-dock { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .brain-head { display: flex; align-items: center; gap: 10px; padding: 12px; border-bottom: var(--hairline); }
     .brain-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -190,6 +198,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-tabbar [role="tab"][aria-selected="true"] { color: var(--accent); border-color: rgba(255,255,255,0.08); background: var(--bg-raised); }
     .mc-tabbar [role="tab"]:focus-visible { outline: 1px solid var(--accent-line); outline-offset: -1px; }
     .mc-tabbar .mc-muted { margin-left: auto; padding-bottom: 8px; }
+    .mc-tabbar .mc-tab-narrow { display: none; }
     .mc-view { padding-top: 8px; }
     .mc-view[hidden] { display: none; }
 
@@ -256,6 +265,11 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     @media (max-width: 900px) {
       .mc-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
       .mc-elaron { height: 75vh; }
+      /* One panel at a time: the Elarion tab joins the workspace tabs and the dock replaces the tab content. */
+      .mc-tabbar { flex-wrap: wrap; }
+      .mc-tabbar .mc-tab-narrow { display: inline-flex; align-items: center; }
+      .mc-tabbar .mc-muted { flex-basis: 100%; margin-left: 0; padding: 4px 4px 8px; order: 5; }
+      body[data-view="elaron"] .mc-connection { display: none; }
       .mc-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .bp-browser { grid-template-columns: minmax(0, 1fr); }
       .bp-list { max-height: 240px; }
@@ -266,8 +280,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .engine-badge:not([data-state="HALTED"]) .engine-badge-label { display: none; }
       .engine-trip-long { display: none; }
       .engine-trip-short { display: inline; }
+      /* While halted the trip button is disabled anyway; give its room to RESET. */
+      .mc-breaker:has(.engine-reset:not([hidden])) .engine-trip { display: none; }
+      .mc-tabbar [role="tab"] { padding: 0 10px; }
       .mc-grid { padding: 10px; gap: 10px; }
       .mc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      /* Elarion's message box gets its own row; mic, speaker and Send sit under it. */
+      .brain-form { flex-wrap: wrap; }
+      .brain-input { flex-basis: 100%; }
+      .brain-send { margin-left: auto; }
     }
   </style>
 </head>
@@ -286,13 +307,14 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <div class="mc-tabbar" role="tablist" aria-label="Workspace">
         <button type="button" role="tab" id="mc-tab-monitor" aria-controls="mc-view-monitor" aria-selected="true">Task Loop Monitor</button>
         <button type="button" role="tab" id="mc-tab-blueprints" aria-controls="mc-view-blueprints" aria-selected="false" tabindex="-1">Blueprints</button>
+        <button type="button" role="tab" id="mc-tab-elaron" class="mc-tab-narrow" aria-controls="mc-elaron" aria-selected="false" tabindex="-1">Elarion</button>
         <span id="mc-monitor-status" class="mc-muted" aria-live="polite"></span>
       </div>
       <div class="mc-view" id="mc-view-monitor" role="tabpanel" aria-labelledby="mc-tab-monitor"><div id="mc-monitor"></div></div>
       <div class="mc-view" id="mc-view-blueprints" role="tabpanel" aria-labelledby="mc-tab-blueprints" hidden><div id="mc-blueprints"></div></div>
       <details id="mc-connection" class="mc-connection"></details>
     </section>
-    <section class="mc-panel mc-elaron" id="mc-elaron" aria-label="Elaron chat and voice"></section>
+    <section class="mc-panel mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section>
   </main>
   <noscript><p class="mc-section">Mission Control needs JavaScript.</p></noscript>
   <script type="module" src="/js/engine/mission-control.js?v=${v}"></script>
