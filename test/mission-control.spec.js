@@ -68,7 +68,20 @@ describe('Mission Control routes', () => {
 		expect(html).toContain('<meta name="aether-upgrade-url" content="https://billing.example/up?a=1&amp;b=2">');
 		expect(renderMissionControlPage({ upgradeUrl: 'javascript:alert(1)' })).toContain('<meta name="aether-upgrade-url" content="">');
 		expect(renderMissionControlPage()).toContain('<meta name="aether-tier" content="free">');
-		for (const id of ['mc-tab-monitor', 'mc-tab-blueprints', 'mc-tab-elaron', 'mc-tab-connect', 'mc-view-blueprints', 'mc-blueprints', 'mc-view-connect', 'mc-connect']) expect(html, id).toContain(`id="${id}"`);
+		for (const id of ['mc-nav-overview', 'mc-nav-monitor', 'mc-nav-blueprints', 'mc-nav-elaron', 'mc-nav-connect', 'mc-workforce', 'mc-view-blueprints', 'mc-blueprints', 'mc-view-connect', 'mc-connect']) expect(html, id).toContain(`id="${id}"`);
+	});
+
+	it('greets the signed-in user by name, escaped, with their initials in the rail', () => {
+		const html = renderMissionControlPage({ userName: 'alex.morgan"><b>' });
+		expect(html).toContain('<meta name="aether-user" content="Alex.morgan&quot;&gt;&lt;b&gt;">');
+		expect(html).not.toContain('"><b>');
+		expect(renderMissionControlPage({ userName: 'alex.morgan' })).toContain('<span class="rail-avatar" aria-hidden="true">AM</span>');
+		expect(renderMissionControlPage()).toContain('<span class="rail-user-name">Operator</span>');
+	});
+
+	it('only serves the AEPS skills registry to signed-in users', async () => {
+		expect((await SELF.fetch('http://example.com/api/skills/aeps')).status).toBe(401);
+		expect((await SELF.fetch('http://example.com/api/skills/aeps', { method: 'POST' })).status).toBe(405);
 	});
 
 	it('keeps the header clear of the iPhone status bar and honors the hidden attribute', () => {
@@ -76,7 +89,7 @@ describe('Mission Control routes', () => {
 		// Matches the main portal page, which iOS keeps below the status bar: no viewport-fit=cover.
 		expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
 		expect(html).not.toContain('viewport-fit=cover');
-		expect(html).toMatch(/\.mc-top \{[^}]*padding: calc\(8px \+ env\(safe-area-inset-top/);
+		expect(html).toMatch(/\.mc-top \{[^}]*padding: calc\(\d+px \+ env\(safe-area-inset-top/);
 		expect(html).toContain('[hidden] { display: none !important; }');
 	});
 

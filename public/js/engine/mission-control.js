@@ -1,5 +1,6 @@
 // Mission Control entry (/mission-control, src/mission-control-page.js). Gets an engine token first (connection.js),
-// so the breaker, task monitor, blueprint dashboard and Elarion dock all start out authenticated, then mounts them.
+// so the breaker, workforce overview, task monitor, blueprint dashboard and Elarion dock all start out authenticated,
+// then mounts them. The dark sidebar rail switches between the views.
 import { getEngineApi } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
@@ -7,65 +8,57 @@ import { ENGINE_PARAM, mountConnectionWizard } from './connection-wizard.js';
 import { mountBrainDock } from './brain-dock.js';
 import { mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
+import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 
-// view -> tab id. The Elarion tab only exists on narrow screens; on wide ones the dock is always on the right.
-const VIEWS = { monitor: 'mc-tab-monitor', blueprints: 'mc-tab-blueprints', elaron: 'mc-tab-elaron', connect: 'mc-tab-connect' };
-export const NARROW_QUERY = '(max-width: 900px)';
+// view -> sidebar button id (its aria-controls names the view's panel). #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
+const VIEWS = { overview: 'mc-nav-overview', elaron: 'mc-nav-elaron', blueprints: 'mc-nav-blueprints', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
+const VIEW_TITLES = { overview: 'Mission Control', elaron: 'Elarion', blueprints: 'Projects', monitor: 'Run history', connect: 'Settings' };
 
-// Workspace tabs (WAI-ARIA tabs pattern): click or arrow keys switch; #blueprints / #elaron / #connect open a tab.
+// Sidebar views: each rail button shows its view and is marked aria-current="page" while it is open.
 export function setupTabs(doc, onSelect = () => {}) {
   const win = doc.defaultView;
-  const narrowQuery = win && win.matchMedia ? win.matchMedia(NARROW_QUERY) : null;
-  const isNarrow = () => Boolean(narrowQuery && narrowQuery.matches);
   const all = Object.entries(VIEWS).map(([view, id]) => ({ view, tab: doc.getElementById(id) })).filter((t) => t.tab);
-  const visible = () => all.filter((t) => t.view !== 'elaron' || isNarrow());
-  let current = 'monitor';
+  const crumb = doc.getElementById('mc-crumb-view');
+  let current = 'overview';
 
   function select(view, focus = false) {
-    if (view === 'elaron' && !isNarrow()) view = 'monitor';
+    if (!(view in VIEWS)) view = 'overview';
     current = view;
     for (const t of all) {
       const active = t.view === view;
-      t.tab.setAttribute('aria-selected', String(active));
-      t.tab.tabIndex = active ? 0 : -1;
-      const panel = doc.getElementById(t.tab.getAttribute('aria-controls'));
-      // The dock is only ever hidden on narrow screens, where it is one of the tabs.
-      panel.hidden = t.view === 'elaron' ? isNarrow() && !active : !active;
+      if (active) t.tab.setAttribute('aria-current', 'page');
+      else t.tab.removeAttribute('aria-current');
+      doc.getElementById(t.tab.getAttribute('aria-controls')).hidden = !active;
       if (active && focus) t.tab.focus();
     }
+    if (crumb) crumb.textContent = VIEW_TITLES[view];
     doc.body.dataset.view = view;
     if (win && win.history && win.location) {
-      const hash = view === 'monitor' ? '' : '#' + view;
+      const hash = view === 'overview' ? '' : '#' + view;
       if (win.location.hash !== hash) win.history.replaceState(null, '', win.location.pathname + win.location.search + hash);
     }
     onSelect(view);
   }
 
-  all.forEach((t) => {
-    t.tab.addEventListener('click', () => select(t.view));
-    t.tab.addEventListener('keydown', (event) => {
-      const tabs = visible();
-      const i = tabs.findIndex((x) => x.view === t.view);
-      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-      if (event.key === 'Home') return select(tabs[0].view, true);
-      if (event.key === 'End') return select(tabs[tabs.length - 1].view, true);
-      if (!step) return;
-      event.preventDefault();
-      select(tabs[(i + step + tabs.length) % tabs.length].view, true);
-    });
-  });
-  const onResize = () => select(current);
-  if (narrowQuery && narrowQuery.addEventListener) narrowQuery.addEventListener('change', onResize);
-
+  all.forEach((t) => t.tab.addEventListener('click', () => select(t.view)));
   const hash = win && win.location ? win.location.hash.slice(1) : '';
-  select(hash in VIEWS ? hash : 'monitor');
-  return {
-    select,
-    getView: () => current,
-    destroy() {
-      if (narrowQuery && narrowQuery.removeEventListener) narrowQuery.removeEventListener('change', onResize);
-    },
+  select(hash in VIEWS ? hash : 'overview');
+  return { select, getView: () => current, destroy() {} };
+}
+
+// Header: time-of-day greeting with the signed-in user's name, and the LIVE clock.
+function startHeader(doc) {
+  const name = meta(doc, 'aether-user');
+  const greeting = doc.getElementById('mc-greeting');
+  const clock = doc.getElementById('mc-clock');
+  const tick = () => {
+    const now = new Date();
+    if (greeting) greeting.textContent = greetingFor(now) + (name ? ', ' + name : '');
+    if (clock) clock.textContent = clockTime(now);
   };
+  tick();
+  const timer = setInterval(tick, 1000);
+  return () => clearInterval(timer);
 }
 
 const meta = (doc, name) => {
@@ -141,13 +134,43 @@ export async function mountMissionControl(doc = document, options = {}) {
   });
   const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
   const wizard = mountConnectionWizard(byId('mc-connect'), { api, ...options.wizard });
+  const agentBadge = byId('mc-agent-count');
+  const computeValue = byId('mc-compute-value');
+  const computeSub = byId('mc-compute-sub');
+  const computeBar = byId('mc-compute-bar');
+  const workforce = mountWorkforce(byId('mc-workforce'), {
+    api,
+    portalFetch: options.portalFetch,
+    onConnect: () => tabs.select('connect', true),
+    onOpenElarion: () => tabs.select('elaron', true),
+    // Sidebar: agent count, and the compute card (tokens spent; the bar is the share of runs that completed).
+    onAgentsChange: (agents, counts) => {
+      if (agentBadge) agentBadge.textContent = String(agents.length);
+      const tokens = agents.reduce((sum, a) => sum + a.tokens, 0);
+      const runs = counts ? counts.running + counts.completed + counts.halted + counts.failed : 0;
+      if (computeValue) computeValue.textContent = tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'k' : String(tokens);
+      if (computeSub) computeSub.textContent = 'tokens · ' + (counts ? counts.completed : 0) + ' / ' + runs + ' runs done';
+      if (computeBar) computeBar.style.width = (runs ? Math.round((counts.completed / runs) * 100) : 0) + '%';
+    },
+  });
   tabs = setupTabs(doc, (view) => {
     if (view === 'blueprints') blueprints.refresh();
+    if (view === 'overview') workforce.refresh();
   });
+  // "+ New agent": agents are started by deploying a blueprint, so open Projects at the editor.
+  const newAgent = byId('mc-new-agent');
+  if (newAgent) {
+    newAgent.addEventListener('click', () => {
+      tabs.select('blueprints');
+      const editor = doc.querySelector('#mc-blueprints .bp-editor');
+      if (editor) editor.focus();
+    });
+  }
+  const stopHeader = startHeader(doc);
   offerPairingFromLink(doc, wizard, tabs);
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, blueprints, dock, wizard, tabs };
+  return { connection, breaker, monitor, blueprints, dock, wizard, workforce, tabs, stopHeader };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

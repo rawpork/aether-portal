@@ -8,7 +8,7 @@
     "start": "wrangler dev",
     "test": "vitest run --no-file-parallelism",
     "typecheck": "tsc --noEmit",
-    "build:client": "esbuild src/services/engineApi.ts --bundle --format=esm --target=es2022 --outfile=public/js/engine-api.bundle.js && esbuild src/services/qr.ts --bundle --format=esm --target=es2022 --minify --outfile=public/js/qr.bundle.js",
+    "build:client": "node scripts/build-skills-index.mjs && esbuild src/services/engineApi.ts --bundle --format=esm --target=es2022 --outfile=public/js/engine-api.bundle.js && esbuild src/services/qr.ts --bundle --format=esm --target=es2022 --minify --outfile=public/js/qr.bundle.js",
     "pretest": "npm run build:client"
   },
   "devDependencies": {

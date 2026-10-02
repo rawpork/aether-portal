@@ -17,6 +17,8 @@ afterEach(() => {
     mc.blueprints.destroy();
     mc.connection.destroy();
     mc.wizard.destroy();
+    mc.workforce.destroy();
+    mc.stopHeader();
     mc.tabs.destroy();
     mc = null;
   }
@@ -26,7 +28,7 @@ afterEach(() => {
 // Real template markup plus an always-ACTIVE engine; for the narrower tests below.
 async function mountPage(options = {}) {
   const html = renderMissionControlPage({ assetVersion: 'test' });
-  document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
   document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
   const reply = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
   const engineFetch = async (url) => {
@@ -47,11 +49,11 @@ async function mountPage(options = {}) {
   return mc;
 }
 
-it('mounts the breaker top-right, the task monitor and Elarion, authenticated by a portal-minted token', async () => {
-  const html = renderMissionControlPage({ assetVersion: 'test', tier: 'pro' });
+it('mounts the rail, the master breaker, the workforce overview and the other views, authenticated by a portal-minted token', async () => {
+  const html = renderMissionControlPage({ assetVersion: 'test', tier: 'pro', userName: 'alex' });
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
-  document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
   document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
 
   let token = null;
@@ -73,16 +75,28 @@ it('mounts the breaker top-right, the task monitor and Elarion, authenticated by
   const api = createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engineFetch, getToken: store.getToken });
 
   mc = await mountMissionControl(document, { api, connection: { fetch: portalFetch, ...store }, dock: { storage: { get: () => null, set() {} }, Recognition: null, synth: null } });
-  await new Promise((r) => setTimeout(r, 20));
+  await new Promise((r) => setTimeout(r, 30));
 
-  // Breaker lives in the header's top-right slot, after the tabs.
+  // Header: breadcrumbs, greeting with the user's name, master breaker and New agent.
   const header = document.querySelector('header.mc-top');
-  expect(header.lastElementChild.id).toBe('mc-breaker');
-  expect(header.querySelector('.engine-badge').dataset.state).toBe('ACTIVE');
+  expect(header.querySelector('.mc-crumbs').textContent).toBe('Operations / Mission Control');
+  expect(document.getElementById('mc-greeting').textContent).toMatch(/^Good (morning|afternoon|evening), Alex$/);
+  expect(document.getElementById('mc-clock').textContent).toMatch(/^\d\d:\d\d:\d\d$/);
+  expect(header.querySelector('#mc-breaker .engine-badge').dataset.state).toBe('ACTIVE');
   expect(header.querySelector('.engine-trip')).not.toBe(null);
-  expect(document.querySelector('a[aria-current="page"]').getAttribute('href')).toBe('/mission-control');
+  expect(document.querySelector('.rail-avatar').textContent).toBe('A');
 
-  // Monitor and Elarion are mounted in the workspace.
+  // Overview: four metrics, Elarion's card with its own Pause button and breaker switch, and its detail panel.
+  expect(document.querySelectorAll('#mc-workforce .metric')).toHaveLength(4);
+  const card = document.querySelector('#mc-workforce .agent-card');
+  expect(card.querySelector('.card-name').textContent).toBe('Elarion');
+  expect(card.querySelector('.switch[role="switch"]').getAttribute('aria-checked')).toBe('true');
+  expect(card.querySelector('.btn-small').textContent).toContain('Pause');
+  expect(document.querySelector('.wf-detail h2').textContent).toBe('Elarion');
+  expect([...document.querySelectorAll('.subtabs [role="tab"]')].map((t) => t.textContent)).toEqual(['Activity', 'Tasks0', 'Output', 'Skills', 'API Bridge']);
+  expect(document.getElementById('mc-agent-count').textContent).toBe('1');
+
+  // The other modules are mounted in their views.
   expect(document.querySelectorAll('#mc-monitor .mc-stat')).toHaveLength(5);
   expect(document.getElementById('mc-monitor-status').textContent).toBe('Up to date');
   expect(document.querySelector('#mc-elaron .brain-dock h2').textContent).toBe('Elarion · Master Brain');
@@ -93,50 +107,30 @@ it('mounts the breaker top-right, the task monitor and Elarion, authenticated by
   expect(engineCalls.length).toBeGreaterThanOrEqual(3);
   expect(engineCalls.every((c) => c.auth === 'Bearer ' + PORTAL_JWT)).toBe(true);
 
-  // Workspace tabs: the monitor shows first; Blueprints holds ingestion and the artifact dashboard.
-  const monitorTab = document.getElementById('mc-tab-monitor');
-  const blueprintsTab = document.getElementById('mc-tab-blueprints');
-  expect(document.getElementById('mc-view-monitor').hidden).toBe(false);
+  // Rail: the overview shows first; Projects holds ingestion and the artifact dashboard.
+  const overviewNav = document.getElementById('mc-nav-overview');
+  const projectsNav = document.getElementById('mc-nav-blueprints');
+  expect(overviewNav.getAttribute('aria-current')).toBe('page');
+  expect(document.getElementById('mc-view-overview').hidden).toBe(false);
   expect(document.getElementById('mc-view-blueprints').hidden).toBe(true);
-  blueprintsTab.click();
-  expect(blueprintsTab.getAttribute('aria-selected')).toBe('true');
+  projectsNav.click();
+  expect(projectsNav.getAttribute('aria-current')).toBe('page');
+  expect(overviewNav.hasAttribute('aria-current')).toBe(false);
   expect(document.getElementById('mc-view-blueprints').hidden).toBe(false);
-  expect(document.getElementById('mc-view-monitor').hidden).toBe(true);
+  expect(document.getElementById('mc-view-overview').hidden).toBe(true);
+  expect(document.getElementById('mc-crumb-view').textContent).toBe('Projects');
   expect(window.location.hash).toBe('#blueprints');
   expect(document.querySelector('#mc-blueprints .bp-ingest')).not.toBe(null);
   expect(document.querySelector('#mc-blueprints .bp-tier').textContent).toBe('Pro Engine');
-  blueprintsTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-  expect(monitorTab.getAttribute('aria-selected')).toBe('true');
-  expect(document.activeElement).toBe(monitorTab);
+
+  // Elarion has its own view; New agent opens Projects.
+  document.getElementById('mc-nav-elaron').click();
+  expect(document.getElementById('mc-view-elaron').hidden).toBe(false);
+  expect(window.location.hash).toBe('#elaron');
+  document.getElementById('mc-new-agent').click();
+  expect(mc.tabs.getView()).toBe('blueprints');
+  overviewNav.click();
   expect(window.location.hash).toBe('');
-
-  // Wide screen: no Elarion tab; the dock stays visible next to every tab.
-  expect(document.getElementById('mc-elaron').hidden).toBe(false);
-  mc.tabs.select('elaron');
-  expect(mc.tabs.getView()).toBe('monitor');
-});
-
-it('on a phone, Elarion is a tab of its own', async () => {
-  window.happyDOM.setViewport({ width: 390, height: 844 });
-  try {
-    await mountPage();
-    const elaronTab = document.getElementById('mc-tab-elaron');
-    expect(document.getElementById('mc-elaron').hidden).toBe(true);
-    elaronTab.click();
-    expect(elaronTab.getAttribute('aria-selected')).toBe('true');
-    expect(document.getElementById('mc-elaron').hidden).toBe(false);
-    expect(document.getElementById('mc-view-monitor').hidden).toBe(true);
-    expect(document.body.dataset.view).toBe('elaron');
-    expect(window.location.hash).toBe('#elaron');
-    // Arrow keys move across all four tabs.
-    elaronTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    expect(mc.tabs.getView()).toBe('connect');
-    document.getElementById('mc-tab-connect').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    expect(mc.tabs.getView()).toBe('monitor');
-  } finally {
-    window.happyDOM.setViewport({ width: 1024, height: 768 });
-    window.history.replaceState(null, '', '/');
-  }
 });
 
 it('a pairing link (?engine=<url>) opens Connection and asks before switching engines', async () => {

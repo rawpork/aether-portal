@@ -8,6 +8,7 @@ import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, 
 import { renderSharePage } from "./share-page.js";
 import { renderMissionControlPage } from "./mission-control-page.js";
 import { mintEngineToken } from "./engine-token.js";
+import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
 import { OAUTH_COOKIE, OAUTH_COOKIE_TTL_SECONDS, buildGoogleAuthUrl, createOAuthState, createPkcePair, exchangeGoogleCode, isAllowedGoogleEmail, readOAuthCookie, safeNextPath, signOAuthCookie, usernameFromEmail, verifyGoogleIdToken } from "./google-auth.js";
 
@@ -919,14 +920,25 @@ export default {
         return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/mission-control"), 303);
       }
       // Tier gates the blueprint dashboard's Deploy & Execute action (Pro); everything else is open to every tier.
-      const account = await env.DB.prepare("SELECT tier FROM users WHERE id = ?").bind(session.id).first().catch(() => null);
+      const account = await env.DB.prepare("SELECT tier, username FROM users WHERE id = ?").bind(session.id).first().catch(() => null);
       return new Response(renderMissionControlPage({
         assetVersion: env.CF_VERSION_METADATA?.id || "dev",
         tier: account?.tier || "free",
+        userName: account?.username || "",
         upgradeUrl: env.PRO_UPGRADE_URL || ""
       }), {
         headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
       });
+    }
+
+    // Endpoint 5d-2: AEPS skills registry for Mission Control's Skills tab. The SKILL.md playbooks linked under
+    // .aether/skills/AEPS/ are bundled at build time (scripts/build-skills-index.mjs); they are proprietary, so only
+    // signed-in users get them.
+    if (url.pathname === "/api/skills/aeps") {
+      if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      return jsonResponse(AEPS_SKILLS, 200, { "Cache-Control": "private, no-store" });
     }
 
     // Endpoint 5e: PWA share target (manifest share_target). Signed-out visitors sign in first and come back here.
