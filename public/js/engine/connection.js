@@ -141,6 +141,12 @@ function el(doc, tag, props = {}, children = []) {
   return node;
 }
 
+// Saves the engine address for this browser (localhost clears the setting) and confirms it stuck. Shared by the
+// connection panel and the Connection setup wizard. Returns false when storage is blocked or full.
+export function persistEngineUrl(url, storage = globalThis.localStorage) {
+  return writeStorage(storage, ENGINE_BASE_URL_STORAGE_KEY, !url || url === DEFAULT_ENGINE_BASE_URL ? null : url);
+}
+
 // Writes (or clears) a setting and reads it back, so a blocked or full storage is reported instead of silently
 // losing the setting on the next reload.
 function writeStorage(storage, key, value) {
@@ -271,7 +277,7 @@ export async function mountConnection(details, options = {}) {
   }
 
   function saveEngineUrl(url) {
-    if (!writeStorage(storage, ENGINE_BASE_URL_STORAGE_KEY, url === DEFAULT_ENGINE_BASE_URL ? null : url)) {
+    if (!persistEngineUrl(url, storage)) {
       urlError.textContent = 'This browser didn’t let the page save the engine address (storage is blocked or full).';
       return;
     }

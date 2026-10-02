@@ -186,6 +186,12 @@ export interface ArtifactList {
 	artifacts: ArtifactSummary[];
 }
 
+// GET /api/public-url: how other devices reach this engine (ENGINE_PUBLIC_URL or a running cloudflared quick tunnel).
+export interface PublicUrl {
+	public_url: string | null;
+	source: 'env' | 'cloudflared' | null;
+}
+
 // blueprint_schema.json#/definitions/compile_request
 export interface CompileBlueprintRequest {
 	links: Array<{ url: string; title?: string; rawSnippet?: string }>;
@@ -472,6 +478,11 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			if (opts.limit) query.set('limit', String(opts.limit));
 			const qs = query.toString();
 			return request<TaskList>('GET', '/api/tasks' + (qs ? '?' + qs : ''));
+		},
+
+		// GET /api/public-url: the engine's public address, for pairing another device.
+		getPublicUrl(): Promise<PublicUrl> {
+			return request<PublicUrl>('GET', '/api/public-url', { timeoutMs: 5_000 });
 		},
 
 		// GET /api/artifacts: compiled blueprints (project status).

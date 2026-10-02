@@ -16,6 +16,7 @@ afterEach(() => {
     mc.dock.destroy();
     mc.blueprints.destroy();
     mc.connection.destroy();
+    mc.wizard.destroy();
     mc.tabs.destroy();
     mc = null;
   }
@@ -127,11 +128,29 @@ it('on a phone, Elarion is a tab of its own', async () => {
     expect(document.getElementById('mc-view-monitor').hidden).toBe(true);
     expect(document.body.dataset.view).toBe('elaron');
     expect(window.location.hash).toBe('#elaron');
-    // Arrow keys move across all three tabs.
+    // Arrow keys move across all four tabs.
     elaronTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(mc.tabs.getView()).toBe('connect');
+    document.getElementById('mc-tab-connect').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
     expect(mc.tabs.getView()).toBe('monitor');
   } finally {
     window.happyDOM.setViewport({ width: 1024, height: 768 });
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+it('a pairing link (?engine=<url>) opens Connection and asks before switching engines', async () => {
+  window.history.replaceState(null, '', '/mission-control?engine=' + encodeURIComponent('https://optimum-ind-tablet-jeremy.trycloudflare.com'));
+  try {
+    await mountPage();
+    expect(mc.tabs.getView()).toBe('connect');
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('#connect');
+    const offer = document.querySelector('.cw-offer');
+    expect(offer.hidden).toBe(false);
+    expect(offer.textContent).toContain('optimum-ind-tablet-jeremy.trycloudflare.com');
+    expect(localStorage.getItem('aether.engine.baseUrl')).toBe(null);
+  } finally {
     window.history.replaceState(null, '', '/');
   }
 });

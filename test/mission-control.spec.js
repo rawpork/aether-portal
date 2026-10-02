@@ -68,7 +68,7 @@ describe('Mission Control routes', () => {
 		expect(html).toContain('<meta name="aether-upgrade-url" content="https://billing.example/up?a=1&amp;b=2">');
 		expect(renderMissionControlPage({ upgradeUrl: 'javascript:alert(1)' })).toContain('<meta name="aether-upgrade-url" content="">');
 		expect(renderMissionControlPage()).toContain('<meta name="aether-tier" content="free">');
-		for (const id of ['mc-tab-monitor', 'mc-tab-blueprints', 'mc-tab-elaron', 'mc-view-blueprints', 'mc-blueprints']) expect(html, id).toContain(`id="${id}"`);
+		for (const id of ['mc-tab-monitor', 'mc-tab-blueprints', 'mc-tab-elaron', 'mc-tab-connect', 'mc-view-blueprints', 'mc-blueprints', 'mc-view-connect', 'mc-connect']) expect(html, id).toContain(`id="${id}"`);
 	});
 
 	it('keeps the header clear of the iPhone status bar and honors the hidden attribute', () => {

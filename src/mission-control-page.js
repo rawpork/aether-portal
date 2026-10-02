@@ -257,6 +257,48 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .bp-warning { margin: 0; color: var(--warn); font-size: 12px; }
     .bp-raw summary { cursor: pointer; color: var(--text-muted); font-size: 12px; }
     .bp-raw pre { max-height: 320px; overflow: auto; margin: 6px 0 0; padding: 10px; border-radius: var(--radius-s); background: var(--bg-page); font-size: 11px; }
+    /* Connection setup (public/js/engine/connection-wizard.js) */
+    .mc-tab-short { display: none; }
+    .cw { display: flex; flex-direction: column; gap: 14px; padding: 8px 16px 16px; }
+    .cw-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-raised); }
+    .cw-status-text { flex: 1; min-width: 160px; }
+    .cw-msg { margin: 0; font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+    .cw-msg:empty { display: none; }
+    .cw-msg[data-kind="ok"] { color: var(--ok); }
+    .cw-msg[data-kind="error"] { color: #ff8095; }
+    .cw-status .cw-msg { flex-basis: 100%; }
+    .cw-offer { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--accent); border-radius: var(--radius-m); background: var(--accent-soft); }
+    .cw-offer h3 { margin: 0; font-size: 15px; color: var(--accent); }
+    .cw-offer-text { margin: 0; overflow-wrap: anywhere; }
+    .cw-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; border: none; }
+    .cw-modes legend { padding: 0 0 8px; font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .cw-mode { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 14px 14px 14px 42px; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-raised); cursor: pointer; }
+    .cw-mode.active { border-color: var(--accent-line); background: var(--accent-soft); }
+    .cw-mode-input { position: absolute; left: 14px; top: 16px; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+    .cw-mode-title { font-weight: 700; font-size: 15px; }
+    .cw-mode-sub { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+    .cw-mode-text { color: var(--text-muted); font-size: 13px; line-height: 1.45; }
+    .cw-mode:focus-within { outline: 1px solid var(--accent-line); outline-offset: 1px; }
+    .cw-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .cw-step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; }
+    .cw-step-n { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--accent-line); color: var(--accent); font-weight: 700; font-size: 13px; }
+    .cw-step-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .cw-step-body h3 { margin: 4px 0 0; font-size: 14px; }
+    .cw-step-body p { margin: 0; line-height: 1.45; }
+    .cw-step-body code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    .cw-code { position: relative; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-page); }
+    .cw-code pre { margin: 0; padding: 10px 70px 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+    .cw-copy { position: absolute; top: 6px; right: 6px; appearance: none; height: 26px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font-size: 11px; cursor: pointer; }
+    .cw-row, .cw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .cw-row .mc-url-input { flex: 1; min-width: 200px; }
+    .cw-label { display: flex; flex-direction: column; gap: 4px; color: var(--text-muted); font-size: 12px; }
+    .cw-cloud-form { display: flex; flex-direction: column; gap: 8px; }
+    .cw-pair { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; align-items: start; padding: 12px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); }
+    .cw-qr { width: 180px; height: 180px; border-radius: var(--radius-s); overflow: hidden; background: #fff; }
+    .cw-qr svg { display: block; width: 100%; height: 100%; }
+    .cw-pair-side { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+    .cw-pair-hint { font-weight: 600; }
+    .cw-pair-link { display: block; padding: 6px 8px; border-radius: var(--radius-s); background: var(--bg-page); color: var(--text-muted); }
     .mc-project.mc-project-link { appearance: none; width: 100%; color: inherit; text-align: left; cursor: pointer; }
     .mc-project.mc-project-link:hover, .mc-project.mc-project-link:focus-visible { border-color: var(--accent-line); outline: none; }
 
@@ -289,6 +331,13 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       /* While halted the trip button is disabled anyway; give its room to RESET. */
       .mc-breaker:has(.engine-reset:not([hidden])) .engine-trip { display: none; }
       .mc-tabbar [role="tab"] { padding: 0 10px; }
+      .mc-tab-long { display: none; }
+      .mc-tab-short { display: inline; }
+      .cw { padding: 8px 10px 14px; }
+      .cw-modes { grid-template-columns: minmax(0, 1fr); }
+      /* On a phone the QR code would be scanned by the phone itself; keep the address and buttons. */
+      .cw-pair { grid-template-columns: minmax(0, 1fr); }
+      .cw-qr, .cw-pair-hint { display: none; }
       .mc-grid { padding: 10px; gap: 10px; }
       .mc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       /* Elarion's message box gets its own row; mic, speaker and Send sit under it. */
@@ -311,13 +360,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     <section class="mc-panel mc-monitor" aria-label="Workspace">
       <h1 class="mc-visually-hidden">Mission Control</h1>
       <div class="mc-tabbar" role="tablist" aria-label="Workspace">
-        <button type="button" role="tab" id="mc-tab-monitor" aria-controls="mc-view-monitor" aria-selected="true">Task Loop Monitor</button>
+        <button type="button" role="tab" id="mc-tab-monitor" aria-controls="mc-view-monitor" aria-selected="true"><span class="mc-tab-long">Task Loop Monitor</span><span class="mc-tab-short" aria-hidden="true">Tasks</span></button>
         <button type="button" role="tab" id="mc-tab-blueprints" aria-controls="mc-view-blueprints" aria-selected="false" tabindex="-1">Blueprints</button>
         <button type="button" role="tab" id="mc-tab-elaron" class="mc-tab-narrow" aria-controls="mc-elaron" aria-selected="false" tabindex="-1">Elarion</button>
+        <button type="button" role="tab" id="mc-tab-connect" aria-controls="mc-view-connect" aria-selected="false" tabindex="-1">Connection</button>
         <span id="mc-monitor-status" class="mc-muted" aria-live="polite"></span>
       </div>
       <div class="mc-view" id="mc-view-monitor" role="tabpanel" aria-labelledby="mc-tab-monitor"><div id="mc-monitor"></div></div>
       <div class="mc-view" id="mc-view-blueprints" role="tabpanel" aria-labelledby="mc-tab-blueprints" hidden><div id="mc-blueprints"></div></div>
+      <div class="mc-view" id="mc-view-connect" role="tabpanel" aria-labelledby="mc-tab-connect" hidden><div id="mc-connect"></div></div>
       <details id="mc-connection" class="mc-connection"></details>
     </section>
     <section class="mc-panel mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section>

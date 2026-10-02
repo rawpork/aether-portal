@@ -3,15 +3,16 @@
 import { getEngineApi } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
+import { ENGINE_PARAM, mountConnectionWizard } from './connection-wizard.js';
 import { mountBrainDock } from './brain-dock.js';
 import { mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 
 // view -> tab id. The Elarion tab only exists on narrow screens; on wide ones the dock is always on the right.
-const VIEWS = { monitor: 'mc-tab-monitor', blueprints: 'mc-tab-blueprints', elaron: 'mc-tab-elaron' };
+const VIEWS = { monitor: 'mc-tab-monitor', blueprints: 'mc-tab-blueprints', elaron: 'mc-tab-elaron', connect: 'mc-tab-connect' };
 export const NARROW_QUERY = '(max-width: 900px)';
 
-// Workspace tabs (WAI-ARIA tabs pattern): click or arrow keys switch; #blueprints / #elaron in the URL open a tab.
+// Workspace tabs (WAI-ARIA tabs pattern): click or arrow keys switch; #blueprints / #elaron / #connect open a tab.
 export function setupTabs(doc, onSelect = () => {}) {
   const win = doc.defaultView;
   const narrowQuery = win && win.matchMedia ? win.matchMedia(NARROW_QUERY) : null;
@@ -72,6 +73,18 @@ const meta = (doc, name) => {
   return tag ? tag.getAttribute('content') || '' : '';
 };
 
+// /mission-control?engine=<url> (a pairing QR code or link): open Connection and ask before switching engines.
+function offerPairingFromLink(doc, wizard, tabs) {
+  const win = doc.defaultView;
+  const params = new URLSearchParams((win && win.location && win.location.search) || '');
+  const engineUrl = params.get(ENGINE_PARAM);
+  if (engineUrl === null) return null;
+  params.delete(ENGINE_PARAM);
+  if (win.history) win.history.replaceState(null, '', win.location.pathname + (params.toString() ? '?' + params : '') + '#connect');
+  tabs.select('connect');
+  return wizard.offerPairing(engineUrl);
+}
+
 // /mission-control?outcome=<id>: fetch that outcome's blueprint from the portal and load it into the editor.
 async function importOutcome(doc, blueprints, tabs, fetchImpl) {
   const win = doc.defaultView;
@@ -127,12 +140,14 @@ export async function mountMissionControl(doc = document, options = {}) {
     onExecuted: () => monitor.refresh(),
   });
   const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
+  const wizard = mountConnectionWizard(byId('mc-connect'), { api, ...options.wizard });
   tabs = setupTabs(doc, (view) => {
     if (view === 'blueprints') blueprints.refresh();
   });
+  offerPairingFromLink(doc, wizard, tabs);
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, blueprints, dock, tabs };
+  return { connection, breaker, monitor, blueprints, dock, wizard, tabs };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

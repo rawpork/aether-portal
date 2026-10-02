@@ -8,13 +8,14 @@
     "start": "wrangler dev",
     "test": "vitest run --no-file-parallelism",
     "typecheck": "tsc --noEmit",
-    "build:client": "esbuild src/services/engineApi.ts --bundle --format=esm --target=es2022 --outfile=public/js/engine-api.bundle.js",
+    "build:client": "esbuild src/services/engineApi.ts --bundle --format=esm --target=es2022 --outfile=public/js/engine-api.bundle.js && esbuild src/services/qr.ts --bundle --format=esm --target=es2022 --minify --outfile=public/js/qr.bundle.js",
     "pretest": "npm run build:client"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.0.0",
     "esbuild": "^0.28.1",
     "happy-dom": "^20.14.5",
+    "qrcode-generator": "^2.0.4",
     "typescript": "^5.9.3",
     "vitest": "~4.1.0",
     "wrangler": "^4.140.0"
