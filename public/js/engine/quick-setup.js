@@ -6,6 +6,10 @@
 import { createEngineApi } from '../engine-api.bundle.js';
 import { checkEngineUrl, describeAuthError, persistEngineUrl } from './connection.js';
 
+export const SANDBOX_KEY = 'miserly_free_sandbox';
+export const SANDBOX_TEXT = 'Free Sandbox Mode Active';
+export const isSandbox = (summary) => Boolean(summary) && (summary.execution_mode === 'miserly-free' || summary.miserly_key_status === 'sandbox');
+
 export const STEPS = [
   ['reach', 'Engine reachable'],
   ['auth', 'Mission Control authorized'],
@@ -48,6 +52,7 @@ export function publicUrlFor(url) {
 // Header badge: green "Elarion Ready", amber "Set up Elarion" (opens Settings), or hidden when the engine can't say.
 export function badgeState(summary) {
   if (!summary) return { hidden: true };
+  if (summary.elarion_ready && isSandbox(summary)) return { hidden: false, kind: 'running', text: 'Elarion Ready · Sandbox', title: SANDBOX_TEXT + ': Elarion answers with local mock replies and never calls Miserly.io' };
   if (summary.elarion_ready) return { hidden: false, kind: 'running', text: 'Elarion Ready', title: 'Engine paired and Miserly key ' + (summary.miserly_key_hint || '') + ' verified' };
   const why = summary.miserly_key_status === 'missing' ? 'No Miserly client key on the engine' : summary.miserly_key_detail || 'Miserly key not verified';
   return { hidden: false, kind: 'alert', text: 'Set up Elarion', title: why };
@@ -98,6 +103,7 @@ export function mountQuickSetup(container, options = {}) {
       el(doc, 'label', { for: 'qs-key', text: 'Miserly Client Key' }),
       el(doc, 'div', { class: 'qs-key-row' }, [key, reveal]),
       keyHint,
+      el(doc, 'p', { class: 'qs-hint', text: 'No key yet? Enter ' + SANDBOX_KEY + ' to try Elarion in Free Sandbox Mode (local mock replies, no cost).' }),
     ]),
     el(doc, 'div', { class: 'qs-actions' }, [pairBtn, message]),
     stepList,
@@ -131,7 +137,10 @@ export function mountQuickSetup(container, options = {}) {
       }
     }
     if (!summary) return;
-    if (summary.miserly_key_configured) {
+    if (isSandbox(summary)) {
+      keyHint.textContent = SANDBOX_TEXT + ': Elarion replies locally with mock answers and spends nothing. Paste a real Miserly key to go live.';
+      keyHint.dataset.kind = 'ok';
+    } else if (summary.miserly_key_configured) {
       keyHint.textContent = 'Saved on the engine: ' + summary.miserly_key_hint + ' (' + (summary.miserly_key_status === 'verified' ? 'verified' : summary.miserly_key_detail) + '). Paste a new key to replace it.';
       keyHint.dataset.kind = summary.miserly_key_status === 'verified' ? 'ok' : 'error';
     } else {
@@ -211,7 +220,8 @@ export function mountQuickSetup(container, options = {}) {
       }
       setStep('auth', 'ok');
       key.value = '';
-      if (summary.miserly_key_status === 'verified') setStep('key', 'ok', 'Key ' + summary.miserly_key_hint + (typedKey ? ' saved on the engine' : ' already on the engine'));
+      if (isSandbox(summary)) setStep('key', 'ok', SANDBOX_TEXT + ' (execution mode miserly-free)');
+      else if (summary.miserly_key_status === 'verified') setStep('key', 'ok', 'Key ' + summary.miserly_key_hint + (typedKey ? ' saved on the engine' : ' already on the engine'));
       else if (summary.miserly_key_status === 'missing') setStep('key', 'fail', 'Paste your Miserly client key above.');
       else setStep('key', 'fail', summary.miserly_key_detail);
 
@@ -225,7 +235,7 @@ export function mountQuickSetup(container, options = {}) {
         return;
       }
       showSummary(summary);
-      say(summary.elarion_ready ? 'Paired. Elarion is ready.' : 'Engine paired; Elarion still needs a valid key.', summary.elarion_ready ? 'ok' : 'error');
+      say(summary.elarion_ready ? (isSandbox(summary) ? 'Paired. Elarion is ready in Free Sandbox Mode.' : 'Paired. Elarion is ready.') : 'Engine paired; Elarion still needs a valid key.', summary.elarion_ready ? 'ok' : 'error');
     } finally {
       busy = false;
       pairBtn.disabled = false;

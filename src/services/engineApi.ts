@@ -193,7 +193,9 @@ export interface PublicUrl {
 }
 
 // GET / POST /api/engine/config (Quick Setup). The key itself is never returned, only its last 4 characters.
-export type MiserlyKeyStatus = 'missing' | 'verified' | 'invalid' | 'unreachable';
+// 'sandbox': the free sandbox key (miserly_free_sandbox), accepted locally; Elarion then answers with local mock replies.
+export type MiserlyKeyStatus = 'missing' | 'verified' | 'sandbox' | 'invalid' | 'unreachable';
+export type ExecutionMode = 'miserly' | 'miserly-free' | 'unconfigured';
 
 export interface EngineConfigSummary {
 	miserly_key_configured: boolean;
@@ -201,6 +203,8 @@ export interface EngineConfigSummary {
 	miserly_key_status: MiserlyKeyStatus;
 	miserly_key_detail: string;
 	public_url: string | null;
+	// Missing on engines older than Free Sandbox Mode.
+	execution_mode?: ExecutionMode;
 	elarion_ready: boolean;
 	saved?: string[];
 }

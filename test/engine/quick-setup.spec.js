@@ -111,3 +111,26 @@ describe('quick setup', () => {
     expect(publicUrlFor('https://engine.example.com/x')).toBe('https://engine.example.com');
   });
 });
+
+describe('free sandbox mode', () => {
+  const SANDBOX = { miserly_key_configured: true, miserly_key_hint: '…dbox', miserly_key_status: 'sandbox', miserly_key_detail: 'Free Sandbox Mode Active', public_url: null, execution_mode: 'miserly-free', elarion_ready: true };
+
+  it('labels the badge Elarion Ready · Sandbox', async () => {
+    expect(badgeState(SANDBOX)).toMatchObject({ hidden: false, kind: 'running', text: 'Elarion Ready · Sandbox' });
+    const badge = mount(fakeApi({ config: SANDBOX }));
+    await flush();
+    expect(badge.textContent).toBe('Elarion Ready · Sandbox');
+    expect(qs.elements.keyHint.textContent).toContain('Free Sandbox Mode Active');
+  });
+
+  it('pairs with the sandbox key and reports Free Sandbox Mode Active on the key step', async () => {
+    const api = fakeApi({ save: SANDBOX });
+    const badge = mount(api);
+    qs.elements.key.value = 'miserly_free_sandbox';
+    await qs.pair();
+    expect(api.calls).toContainEqual(['save', { miserly_client_key: 'miserly_free_sandbox' }]);
+    expect(qs.elements.steps.key.li.dataset.state).toBe('ok');
+    expect(qs.elements.steps.key.detail.textContent).toContain('Free Sandbox Mode Active');
+    expect(badge.textContent).toBe('Elarion Ready · Sandbox');
+  });
+});
