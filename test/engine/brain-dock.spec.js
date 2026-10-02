@@ -258,7 +258,7 @@ describe('typed chat', () => {
     mount();
     engine.chatStatus = 401;
     await type('a');
-    expect(messages().at(-1)).toBe('error: The engine rejected the token. Set it with 🔑 in the top bar.');
+    expect(messages().at(-1)).toBe('error: The engine rejected the token (Invalid token signature): the portal and the engine use different secrets. Set the Worker’s ENGINE_JWT_SECRET to the engine’s SUPABASE_JWT_SECRET.');
     engine.chatStatus = 409;
     await type('b');
     expect(messages().at(-1)).toBe('error: Still answering the previous message.');

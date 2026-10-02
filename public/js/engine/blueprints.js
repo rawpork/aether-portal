@@ -6,6 +6,7 @@
 // action: Pro runs the blueprint's phases as a sub-agent task loop on master-brain; other tiers get the upgrade prompt.
 import { getEngineApi } from '../engine-api.bundle.js';
 import { EXAMPLE_SPEC, blueprintToTaskSteps, isProTier, parseBlueprintSpec, routeMatrix } from './blueprint-spec.js';
+import { describeAuthError } from './connection.js';
 
 export const EXECUTE_AGENT_ID = 'master-brain';
 
@@ -105,7 +106,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
   function engineErrorText(error) {
     if (!error) return 'Unknown error.';
     if (error.isUnreachable) return 'Can’t reach the Aether Engine at ' + api.baseUrl + '. Is it running?';
-    if (error.isUnauthorized) return 'The engine rejected the token. Check Engine connection below.';
+    if (error.isUnauthorized) return describeAuthError(error);
     return error.message || 'The engine returned an error.';
   }
 

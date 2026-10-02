@@ -78,6 +78,17 @@ export function checkEngineUrl(value, pageProtocol = 'https:') {
   return { ok: true, url: clean, warning: local ? 'localhost only works on the computer running the engine.' : '' };
 }
 
+// A 401 from the engine, in words: its own reason (src/auth.ts) plus what to do about it.
+export function describeAuthError(error) {
+  const detail = String((error && error.body && error.body.error) || (error && error.message) || '').trim().replace(/\.$/, '');
+  let hint = 'check Engine connection';
+  if (/signature/i.test(detail)) hint = 'the portal and the engine use different secrets. Set the Worker’s ENGINE_JWT_SECRET to the engine’s SUPABASE_JWT_SECRET';
+  else if (/expired/i.test(detail)) hint = 'the token expired. Tap Refresh token under Engine connection';
+  else if (/missing or malformed/i.test(detail)) hint = 'no token was sent, because the portal couldn’t mint one (see Engine connection)';
+  else if (/not yet valid/i.test(detail)) hint = 'the token isn’t valid yet. Check the clock on the engine’s computer';
+  return 'The engine rejected the token (' + (detail || 'HTTP 401') + '): ' + hint + '.';
+}
+
 // Resolves the token to use and stores it where the engine client reads it.
 // Returns { source: 'portal' | 'stored' | 'none', expiresAt, portal, portalStatus }, where portal is
 // 'ok' | 'unconfigured' (404) | 'signed-out' (401) | 'error' (other HTTP status) | 'unavailable' (network).

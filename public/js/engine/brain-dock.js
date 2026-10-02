@@ -6,6 +6,7 @@
 // STT provider exists (engine Step 2.4a), the browser's SpeechRecognition transcribes and the text is sent as a
 // client transcript. Voice replies play the engine's TTS audio when it has some, else the browser speaks them.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
+import { describeAuthError } from './connection.js';
 
 export const BRAIN_AGENT_ID = 'master-brain';
 export const SESSION_STORAGE_KEY = 'aether.engine.sessionId';
@@ -201,7 +202,7 @@ export function mountBrainDock(container, options = {}) {
     if (!error) return 'Unknown error.';
     if (error.isHalted || error.halted) return null;
     if (error.isUnreachable) return 'Can’t reach the Aether Engine at ' + api.baseUrl + '. Is it running?';
-    if (error.isUnauthorized) return 'The engine rejected the token. Set it with 🔑 in the top bar.';
+    if (error.isUnauthorized) return describeAuthError(error);
     if (error.status === 409) return 'Still answering the previous message.';
     if (error.status === 503) return 'The Master Brain isn’t configured on the engine (MISERLY_CLIENT_KEY).';
     if (error.status === 422) return 'The model declined that request.';

@@ -49,13 +49,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     * { box-sizing: border-box; }
     /* Author display rules (.bar-btn, flex rows) would otherwise override the hidden attribute. */
     [hidden] { display: none !important; }
-    html, body { height: 100%; }
-    body { margin: 0; background: var(--bg-page); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+    /* The document never scrolls (like the main portal page): only the workspace below the header does. In the iOS
+       home-screen app the status bar is see-through, and a scrolling document would slide under the clock. */
+    html { height: 100%; background: var(--bg-panel); }
+    body { height: 100%; margin: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-page); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
     button { font: inherit; }
     a { color: inherit; }
 
     /* Header: tabs on the left, the breaker in the top-right corner. */
-    .mc-top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: calc(8px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); border-bottom: var(--hairline); background: var(--bg-panel); }
+    .mc-top { flex: none; position: relative; z-index: 10; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: calc(8px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); border-bottom: var(--hairline); background: var(--bg-panel); }
     .mc-tabs { display: flex; gap: 4px; }
     .mc-tabs a { display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-s); color: var(--text-muted); font-weight: 600; text-decoration: none; white-space: nowrap; }
     .mc-tabs a:hover, .mc-tabs a:focus-visible { color: var(--text); border-color: rgba(255,255,255,0.12); outline: none; }
@@ -90,7 +92,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .toggle-button { appearance: none; height: 34px; padding: 0 14px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); cursor: pointer; }
 
     /* Workspace */
-    .mc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 16px; height: calc(100% - 57px - env(safe-area-inset-top, 0px)); padding: 16px calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); }
+    .mc-grid { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 16px; padding: 16px calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px)); }
     .mc-panel { min-height: 0; display: flex; flex-direction: column; border: var(--hairline); border-radius: var(--radius-m); background: var(--bg-panel); }
     .mc-monitor { overflow-y: auto; }
     .mc-panel-head { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 6px; }
@@ -266,7 +268,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     }
     /* Narrow screens: one column (breaker stays in the header), the dock below the monitor. */
     @media (max-width: 900px) {
-      .mc-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
+      /* One column; the workspace scrolls inside .mc-grid, under the fixed header. */
+      .mc-grid { grid-template-columns: minmax(0, 1fr); align-content: start; }
       .mc-elaron { height: 75vh; }
       /* One panel at a time: the Elarion tab joins the workspace tabs and the dock replaces the tab content. */
       .mc-tabbar { flex-wrap: wrap; }

@@ -4,6 +4,7 @@
 // Tokens are handled by connection.js; when the engine answers 401 the badge reads TOKEN NEEDED and a click calls
 // options.onAuthNeeded.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
+import { describeAuthError } from './connection.js';
 
 export const BREAKER_AGENT_ID = 'master-brain';
 export const MANUAL_TRIP_REASON = 'Operator manual trip from Portal UI';
@@ -106,7 +107,7 @@ export function mountBreakerBar(container, options = {}) {
 
   function applyError(error) {
     if (error && error.isUnreachable) setState('OFFLINE', { detail: error.message });
-    else if (error && error.isUnauthorized) setState('AUTH', { detail: error.message });
+    else if (error && error.isUnauthorized) setState('AUTH', { detail: describeAuthError(error) });
     else setState('ERROR', { detail: (error && error.message) || 'Unknown engine error.' });
   }
 

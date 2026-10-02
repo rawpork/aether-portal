@@ -1,7 +1,7 @@
 // Engine connection: token bootstrap order (portal-minted, stored, none) and the connection panel.
 import { describe, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { bootstrapEngineToken, checkEngineUrl, describeToken, mountConnection, sanitizeEngineUrl } from '../../public/js/engine/connection.js';
+import { bootstrapEngineToken, checkEngineUrl, describeAuthError, describeToken, mountConnection, sanitizeEngineUrl } from '../../public/js/engine/connection.js';
 
 const b64url = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
 const makeJwt = (claims) => b64url({ alg: 'HS256', typ: 'JWT' }) + '.' + b64url(claims) + '.sig';
@@ -189,6 +189,17 @@ describe('connection panel', () => {
     expect(form.querySelector('.modal-error').textContent).toMatch(/didn’t let the page save/);
     expect(reloads).toBe(0);
     connection.destroy();
+  });
+});
+
+describe('describeAuthError', () => {
+  const err = (message) => ({ isUnauthorized: true, status: 401, message, body: { error: message } });
+  it('turns the engine’s 401 reason into a fix', () => {
+    expect(describeAuthError(err('Invalid token signature.'))).toBe('The engine rejected the token (Invalid token signature): the portal and the engine use different secrets. Set the Worker’s ENGINE_JWT_SECRET to the engine’s SUPABASE_JWT_SECRET.');
+    expect(describeAuthError(err('Token expired.'))).toMatch(/\(Token expired\): the token expired\. Tap Refresh token/);
+    expect(describeAuthError(err('Missing or malformed Authorization header. Expected "Bearer <token>".'))).toMatch(/no token was sent/);
+    expect(describeAuthError(err('Token not yet valid.'))).toMatch(/Check the clock/);
+    expect(describeAuthError({ isUnauthorized: true })).toBe('The engine rejected the token (HTTP 401): check Engine connection.');
   });
 });
 

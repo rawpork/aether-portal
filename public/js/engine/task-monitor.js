@@ -3,6 +3,7 @@
 // and at once when an agent's breaker state changes. Selecting a task shows its step timeline
 // (GET /api/agents/:agentId/tasks/:taskId), refreshed while it runs.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
+import { describeAuthError } from './connection.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 5000;
@@ -299,7 +300,7 @@ export function mountTaskMonitor(container, options = {}) {
       setStatus(counts.running ? counts.running + ' running · live' : 'Up to date');
     } catch (error) {
       if (error && error.isUnreachable) setStatus('Engine offline · retrying');
-      else if (error && error.isUnauthorized) setStatus('The engine rejected the token');
+      else if (error && error.isUnauthorized) setStatus(describeAuthError(error));
       else setStatus((error && error.message) || 'Engine error');
     } finally {
       polling = false;
