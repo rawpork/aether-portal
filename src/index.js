@@ -925,7 +925,9 @@ export default {
         assetVersion: env.CF_VERSION_METADATA?.id || "dev",
         tier: account?.tier || "free",
         userName: account?.username || "",
-        upgradeUrl: env.PRO_UPGRADE_URL || ""
+        upgradeUrl: env.PRO_UPGRADE_URL || "",
+        // ?theme= (from the Engine status page) wins over the saved cookie, so the first paint already matches.
+        theme: url.searchParams.get("theme") || readCookie(request, "aether_theme") || ""
       }), {
         headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
       });

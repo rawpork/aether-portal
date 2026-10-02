@@ -1,13 +1,14 @@
 // Mission Control entry (/mission-control, src/mission-control-page.js). Gets an engine token first (connection.js),
 // so the breaker, workforce overview, task monitor, blueprint dashboard and Elarion dock all start out authenticated,
 // then mounts them. The dark sidebar rail switches between the views.
-import { getEngineApi } from '../engine-api.bundle.js';
+import { getEngineApi, getStoredEngineToken } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
 import { ENGINE_PARAM, mountConnectionWizard } from './connection-wizard.js';
 import { mountBrainDock } from './brain-dock.js';
 import { mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
+import { setupTheme } from './theme.js';
 import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 
 // view -> sidebar button id (its aria-controls names the view's panel). #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
@@ -101,6 +102,8 @@ async function importOutcome(doc, blueprints, tabs, fetchImpl) {
 export async function mountMissionControl(doc = document, options = {}) {
   const api = options.api || getEngineApi();
   const byId = (id) => doc.getElementById(id);
+  // Theme toggle and the Engine State link work before (and without) an engine connection.
+  const theme = setupTheme(doc, { getEngineBase: () => api.baseUrl, getToken: options.getToken || getStoredEngineToken });
 
   const connection = await mountConnection(byId('mc-connection'), { baseUrl: api.baseUrl, ...options.connection });
 
@@ -170,7 +173,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   offerPairingFromLink(doc, wizard, tabs);
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, blueprints, dock, wizard, workforce, tabs, stopHeader };
+  return { connection, breaker, monitor, blueprints, dock, wizard, workforce, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

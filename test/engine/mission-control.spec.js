@@ -20,6 +20,7 @@ afterEach(() => {
     mc.workforce.destroy();
     mc.stopHeader();
     mc.tabs.destroy();
+    mc.theme.destroy();
     mc = null;
   }
   document.body.replaceChildren();

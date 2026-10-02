@@ -23,6 +23,8 @@ const ICONS = {
 	home: icon('<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>'),
 	gear: icon('<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/>'),
 	plus: icon('<path d="M12 5v14M5 12h14"/>', ' stroke-width="2.2"'),
+	engine: icon('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/><path d="M9 1.5V4M15 1.5V4M9 20v2.5M15 20v2.5M1.5 9H4M1.5 15H4M20 9h2.5M20 15h2.5"/>'),
+	theme: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>'),
 	star: '<svg class="ico" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 2.5c.7 5 2.5 6.8 7.5 7.5-5 .7-6.8 2.5-7.5 7.5-.7-5-2.5-6.8-7.5-7.5 5-.7 6.8-2.5 7.5-7.5z"/></svg>',
 };
 
@@ -36,12 +38,15 @@ export function initialsOf(name) {
 	return ((parts[0][0] || '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
 }
 
-export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '', userName = '' } = {}) {
+// 'light' / 'dark' from ?theme= or the aether_theme cookie (UNIFIED_BRAND.md); anything else follows the system.
+export const parseTheme = (value) => (value === 'light' || value === 'dark' ? value : '');
+
+export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '', userName = '', theme = '' } = {}) {
 	const v = encodeURIComponent(assetVersion);
 	const safeUpgradeUrl = /^https:[/][/]/i.test(upgradeUrl) ? upgradeUrl : '';
 	const displayName = userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : '';
 	return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en"${parseTheme(theme) ? ' data-theme="' + parseTheme(theme) + '"' : ''}>
 <head>
   <meta charset="utf-8">
   <title>Mission Control - Aether Portal</title>
@@ -95,6 +100,76 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --shadow: 0 1px 2px rgba(24,24,27,0.04);
       --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
       --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --rail-edge: transparent;
+      --ink: #18181B; --on-ink: #FFFFFF; --ink-hover: #2E2E33;
+      --accent-tint: #EAE4FF;
+      --ok-strong: #14532D;
+      --alert-soft: #FFF7ED; --alert-line: #FED7AA;
+      --danger-line: #F3B4B4;
+      --danger-text: #B91C1C;
+      color-scheme: light;
+    }
+    /* Dark theme (UNIFIED_BRAND.md, identical to the Engine status page): data-theme="dark", or the system setting
+       unless the user picked light. */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --rail-edge: #27272A;
+        --canvas: #09090B;
+        --surface: #18181B;
+        --surface-soft: #1F1F23;
+        --line: #27272A;
+        --line-strong: #3F3F46;
+        --text: #FAFAFA;
+        --text-2: #D4D4D8;
+        --muted: #A1A1AA;
+        --faint: #71717A;
+        --ink: #FAFAFA; --on-ink: #18181B; --ink-hover: #E4E4E7;
+        --accent: #8F73FD;
+        --accent-soft: #1E1B2E;
+        --accent-line: #3B3363;
+        --accent-tint: #2A2448;
+        --ok-bg: #052E16; --ok: #86EFAC; --ok-strong: #BBF7D0;
+        --alert-bg: #451A03; --alert: #FDBA74; --alert-soft: #2A1606; --alert-line: #7C2D12;
+        --queued-bg: #27272A; --queued: #D4D4D8;
+        --off-bg: #450A0A; --off: #FCA5A5;
+        --switch-on: #2F855A;
+        --danger: #EF4444;
+        --danger-soft: #1F0F0F;
+        --danger-line: #7F1D1D;
+        --danger-text: #FCA5A5;
+        --terminal: #0F1211;
+        --shadow: none;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --rail-edge: #27272A;
+      --canvas: #09090B;
+      --surface: #18181B;
+      --surface-soft: #1F1F23;
+      --line: #27272A;
+      --line-strong: #3F3F46;
+      --text: #FAFAFA;
+      --text-2: #D4D4D8;
+      --muted: #A1A1AA;
+      --faint: #71717A;
+      --ink: #FAFAFA; --on-ink: #18181B; --ink-hover: #E4E4E7;
+      --accent: #8F73FD;
+      --accent-soft: #1E1B2E;
+      --accent-line: #3B3363;
+      --accent-tint: #2A2448;
+      --ok-bg: #052E16; --ok: #86EFAC; --ok-strong: #BBF7D0;
+      --alert-bg: #451A03; --alert: #FDBA74; --alert-soft: #2A1606; --alert-line: #7C2D12;
+      --queued-bg: #27272A; --queued: #D4D4D8;
+      --off-bg: #450A0A; --off: #FCA5A5;
+      --switch-on: #2F855A;
+      --danger: #EF4444;
+      --danger-soft: #1F0F0F;
+      --danger-line: #7F1D1D;
+      --danger-text: #FCA5A5;
+      --terminal: #0F1211;
+      --shadow: none;
     }
     * { box-sizing: border-box; }
     /* Author display rules (flex rows, buttons) would otherwise override the hidden attribute. */
@@ -112,7 +187,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* ---------- Sidebar rail */
-    .mc-rail { flex: none; width: 248px; display: flex; flex-direction: column; gap: 6px; padding: calc(24px + env(safe-area-inset-top, 0px)) 14px calc(14px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px)); background: var(--rail); color: var(--rail-text); overflow-y: auto; }
+    .mc-rail { flex: none; width: 248px; display: flex; flex-direction: column; gap: 6px; padding: calc(24px + env(safe-area-inset-top, 0px)) 14px calc(14px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px)); background: var(--rail); color: var(--rail-text); border-right: 1px solid var(--rail-edge); overflow-y: auto; }
     .rail-brand { display: flex; align-items: center; gap: 12px; padding: 0 10px 22px; color: var(--rail-strong); font-weight: 800; letter-spacing: 0.14em; font-size: 15px; text-decoration: none; }
     .rail-logo { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: var(--lime); color: var(--on-lime); }
     .rail-nav { display: flex; flex-direction: column; gap: 4px; }
@@ -145,8 +220,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .live-pill { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
     .live-word { color: var(--ok); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; }
-    .btn-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border: 1px solid var(--rail); border-radius: var(--radius-m); background: var(--rail); color: #fff; font-weight: 600; white-space: nowrap; cursor: pointer; }
-    .btn-primary:hover { background: #2E2E33; }
+    .btn-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border: 1px solid var(--ink); border-radius: var(--radius-m); background: var(--ink); color: var(--on-ink); font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .btn-primary:hover { background: var(--ink-hover); }
     .mc-main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 28px calc(40px + env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) 40px; }
     .mc-view { max-width: 1240px; margin: 0 auto; }
     body[data-view="elaron"] .mc-main { display: flex; flex-direction: column; }
@@ -197,8 +272,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
 
     /* ---------- Overview */
     #mc-workforce { display: flex; flex-direction: column; gap: 20px; }
-    .wf-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border: 1px solid #FED7AA; border-radius: var(--radius-m); background: #FFF7ED; color: var(--alert); font-size: 13px; }
-    .wf-banner[data-kind="error"] { border-color: #FECACA; background: var(--danger-soft); color: var(--off); }
+    .wf-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border: 1px solid var(--alert-line); border-radius: var(--radius-m); background: var(--alert-soft); color: var(--alert); font-size: 13px; }
+    .wf-banner[data-kind="error"] { border-color: var(--danger-line); background: var(--danger-soft); color: var(--off); }
     .wf-overview { padding: 24px 28px 4px; }
     .wf-overview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
     .wf-project-name { margin-top: 10px; font-size: 21px; font-weight: 500; }
@@ -240,8 +315,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .detail-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .detail-name-row h2 { font-size: 21px; font-weight: 500; }
     .detail-sub { color: var(--muted); font-size: 12px; }
-    .objective { display: flex; gap: 16px; margin: 0 28px; padding: 18px; border: 1px solid #E3DBFE; border-radius: var(--radius-m); background: #F7F5FF; }
-    .objective-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 9px; background: #EAE4FF; color: var(--accent); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+    .objective { display: flex; gap: 16px; margin: 0 28px; padding: 18px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); background: var(--accent-soft); }
+    .objective-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 9px; background: var(--accent-tint); color: var(--accent); font-family: var(--mono); font-size: 12px; font-weight: 700; }
     .objective-title { margin-top: 6px; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
     .objective-text { margin-top: 6px; color: var(--text-2); font-size: 12.5px; overflow-wrap: anywhere; }
     .detail-stats { display: flex; align-items: center; gap: 0; margin: 20px 28px 10px; }
@@ -272,13 +347,13 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .check-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
     .check-mark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-strong); color: #fff; font-size: 11px; font-weight: 700; }
     .check-row[data-state="complete"] .check-mark { border-color: var(--switch-on); background: var(--switch-on); }
-    .check-row[data-state="running"] .check-mark { border-color: var(--accent); box-shadow: inset 0 0 0 4px #fff; background: var(--accent); }
+    .check-row[data-state="running"] .check-mark { border-color: var(--accent); box-shadow: inset 0 0 0 4px var(--surface); background: var(--accent); }
     .check-row[data-state="tripped"], .check-row[data-state="failed"] { background: var(--danger-soft); border-radius: var(--radius-s); }
     .check-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .check-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .check-sub { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .check-label { color: var(--muted); font-size: 11.5px; text-align: right; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .check-row[data-state="tripped"] .check-label, .check-row[data-state="failed"] .check-label { color: #B91C1C; font-weight: 600; }
+    .check-row[data-state="tripped"] .check-label, .check-row[data-state="failed"] .check-label { color: var(--danger-text); font-weight: 600; }
     .check-row[data-state="running"] .check-label { color: var(--accent); font-weight: 600; }
     .terminal { border-radius: var(--radius-m); background: var(--terminal); color: var(--terminal-text); overflow: hidden; }
     .terminal-head { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); color: #9AA7A0; font-family: var(--mono); font-size: 11.5px; }
@@ -308,13 +383,13 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .bridge-results li { padding: 4px 0; color: var(--muted); overflow-wrap: anywhere; }
     .bridge-results li[data-ok="true"] { color: var(--ok); }
     .bridge-results li[data-ok="false"] { color: var(--off); }
-    .emergency { display: flex; align-items: center; gap: 16px; padding: 20px 28px; border-top: 1px solid #FBE3E3; background: var(--danger-soft); }
-    .emergency-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: #FDE2E2; }
+    .emergency { display: flex; align-items: center; gap: 16px; padding: 20px 28px; border-top: 1px solid var(--danger-line); background: var(--danger-soft); }
+    .emergency-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: var(--off-bg); }
     .emergency-icon span { width: 12px; height: 12px; border: 1.8px solid var(--danger); border-radius: 2px; }
     .emergency-text { flex: 1; min-width: 0; }
     .emergency-title { font-weight: 600; font-size: 13px; }
     .emergency-sub { margin-top: 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-    .btn-danger { gap: 10px; height: 42px; border-color: #F3B4B4; color: #B91C1C; background: var(--surface); }
+    .btn-danger { gap: 10px; height: 42px; border-color: var(--danger-line); color: var(--danger-text); background: var(--surface); }
     .btn-danger .switch { background: var(--off-dot); pointer-events: none; }
     .btn-danger[aria-checked="true"] .switch { background: var(--line-strong); }
     .btn-danger .switch .switch-knob { transform: translateX(14px); }
@@ -326,10 +401,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .engine-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
     .engine-badge[data-state="ACTIVE"] { color: var(--ok); }
     .engine-badge[data-state="HALTED"] { color: #fff; border-color: var(--danger); background: var(--danger); animation: engine-pulse 1.1s ease-in-out infinite; }
-    .engine-badge[data-state="AUTH"], .engine-badge[data-state="ERROR"], .engine-badge[data-state="OFFLINE"] { color: var(--alert); border-color: #FED7AA; background: #FFF7ED; }
+    .engine-badge[data-state="AUTH"], .engine-badge[data-state="ERROR"], .engine-badge[data-state="OFFLINE"] { color: var(--alert); border-color: var(--alert-line); background: var(--alert-soft); }
     @keyframes engine-pulse { 0%, 100% { background-color: #DC2626; } 50% { background-color: #F87171; } }
     .bar-btn { appearance: none; display: inline-flex; align-items: center; height: 42px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-    .engine-trip, .engine-trip-confirm { border-color: #F3B4B4; background: var(--surface); color: #B91C1C; font-weight: 800; letter-spacing: 0.04em; }
+    .engine-trip, .engine-trip-confirm { border-color: var(--danger-line); background: var(--surface); color: var(--danger-text); font-weight: 800; letter-spacing: 0.04em; }
     .engine-trip-confirm { border-color: var(--danger); background: var(--danger); color: #fff; }
     .engine-trip:hover:not(:disabled) { background: var(--danger-soft); }
     .engine-trip:disabled { opacity: 0.4; cursor: default; }
@@ -342,9 +417,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .modal-backdrop[hidden] { display: none; }
     .modal-panel { width: min(440px, 100%); display: flex; flex-direction: column; gap: 12px; padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--surface); box-shadow: 0 20px 50px rgba(24,24,27,0.18); }
     .modal-panel h3 { margin: 0 0 2px; font-size: 17px; font-weight: 600; }
-    .engine-danger-title { color: #B91C1C !important; }
+    .engine-danger-title { color: var(--danger-text) !important; }
     .engine-modal-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
-    .modal-error { margin: 0; min-height: 1em; font-size: 12px; color: #B91C1C; }
+    .modal-error { margin: 0; min-height: 1em; font-size: 12px; color: var(--danger-text); }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .toggle-button { appearance: none; height: 40px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-weight: 600; cursor: pointer; }
 
@@ -363,12 +438,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
     .mc-stat[data-kind="running"] .mc-stat-value { color: var(--accent); }
     .mc-stat[data-kind="completed"] .mc-stat-value { color: var(--ok); }
-    .mc-stat[data-kind="halted"] .mc-stat-value, .mc-stat[data-kind="failed"] .mc-stat-value { color: #B91C1C; }
+    .mc-stat[data-kind="halted"] .mc-stat-value, .mc-stat[data-kind="failed"] .mc-stat-value { color: var(--danger-text); }
     .mc-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
     .mc-empty { padding: 20px; border: 1px dashed var(--line-strong); border-radius: var(--radius-m); color: var(--muted); font-size: 13px; text-align: center; }
     .mc-task { border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .mc-task[data-status="RUNNING"] { border-color: var(--accent-line); }
-    .mc-task[data-status="HALTED"], .mc-task[data-status="FAILED"] { border-color: #F3B4B4; }
+    .mc-task[data-status="HALTED"], .mc-task[data-status="FAILED"] { border-color: var(--danger-line); }
     .mc-task-head { appearance: none; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; padding: 12px 14px; border: none; background: none; text-align: left; cursor: pointer; }
     .mc-task-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
     .mc-task-agent { color: var(--muted); font-weight: 400; }
@@ -388,7 +463,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-step[data-state="done"] .mc-step-mark { color: var(--ok); }
     .mc-step[data-state="running"] { color: var(--text); }
     .mc-step[data-state="running"] .mc-step-mark { color: var(--accent); }
-    .mc-step[data-state="halted"] .mc-step-mark, .mc-step[data-state="failed"] .mc-step-mark { color: #B91C1C; }
+    .mc-step[data-state="halted"] .mc-step-mark, .mc-step[data-state="failed"] .mc-step-mark { color: var(--danger-text); }
     .mc-step-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mc-project { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .mc-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -413,7 +488,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .cw-msg { margin: 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
     .cw-msg:empty { display: none; }
     .cw-msg[data-kind="ok"] { color: var(--ok); }
-    .cw-msg[data-kind="error"] { color: #B91C1C; }
+    .cw-msg[data-kind="error"] { color: var(--danger-text); }
     .cw-status .cw-msg { flex-basis: 100%; }
     .cw-offer { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); background: var(--accent-soft); }
     .cw-offer h3 { font-size: 15px; color: var(--accent); }
@@ -454,7 +529,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .brain-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .brain-title h2 { font-size: 17px; font-weight: 600; }
     .brain-status { font-size: 12px; color: var(--muted); }
-    .elaron[data-mode="halted"] ~ .brain-title .brain-status { color: #B91C1C; }
+    .elaron[data-mode="halted"] ~ .brain-title .brain-status { color: var(--danger-text); }
     .brain-icon-btn { appearance: none; flex: none; min-width: 40px; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); font-size: 13px; cursor: pointer; }
     .brain-icon-btn:disabled, .brain-send:disabled { opacity: 0.45; cursor: default; }
     .brain-mic[aria-pressed="true"] { border-color: var(--danger); background: var(--off-bg); }
@@ -463,7 +538,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .brain-msg { max-width: 78%; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: var(--radius-m); font-size: 14px; line-height: 1.5; }
     .brain-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     .brain-meta { font-size: 11px; color: var(--muted); }
-    .brain-user { align-self: flex-end; background: var(--rail); color: #fff; }
+    .brain-user { align-self: flex-end; background: var(--ink); color: var(--on-ink); }
     .brain-user .brain-meta { color: var(--faint); }
     .brain-assistant { align-self: flex-start; border: 1px solid var(--line); background: var(--surface-soft); }
     .brain-system { align-self: center; max-width: 100%; padding: 2px 8px; color: var(--muted); font-size: 12px; text-align: center; }
@@ -472,7 +547,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .brain-form { display: flex; align-items: flex-end; gap: 8px; padding: 14px 22px 4px; border-top: 1px solid var(--line); }
     .brain-input { flex: 1; min-width: 0; max-height: 140px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; resize: none; }
     .brain-input:focus { outline: none; border-color: var(--accent); }
-    .brain-send { appearance: none; height: 40px; padding: 0 18px; border: 1px solid var(--rail); border-radius: var(--radius-m); background: var(--rail); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .brain-send { appearance: none; height: 40px; padding: 0 18px; border: 1px solid var(--ink); border-radius: var(--radius-m); background: var(--ink); color: var(--on-ink); font-size: 13px; font-weight: 600; cursor: pointer; }
     .brain-hint { min-height: 1em; margin: 0; padding: 4px 22px 14px; color: var(--muted); font-size: 11px; }
     .elaron { position: relative; flex: none; width: 42px; height: 42px; }
     .elaron-core, .elaron-ring { position: absolute; border-radius: 50%; }
@@ -501,10 +576,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .bp-editor[aria-invalid="true"] { border-color: var(--danger); }
     .bp-editor.bp-drop { border-style: dashed; border-color: var(--accent); }
     .bp-actions, .bp-deploy-row, .bp-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .bp-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 1px solid var(--rail); border-radius: var(--radius-m); background: var(--rail); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+    .bp-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 1px solid var(--ink); border-radius: var(--radius-m); background: var(--ink); color: var(--on-ink); font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
     .bp-primary:disabled { opacity: 0.5; cursor: progress; }
     .bp-pro-badge { padding: 1px 6px; border-radius: 4px; background: var(--lime); color: var(--on-lime); font-size: 10px; font-weight: 800; letter-spacing: 0.06em; }
-    .bp-result { margin: 0; padding: 12px 14px; border-radius: var(--radius-s); border-left: 3px solid var(--switch-on); background: var(--ok-bg); color: #14532D; font-size: 13px; }
+    .bp-result { margin: 0; padding: 12px 14px; border-radius: var(--radius-s); border-left: 3px solid var(--switch-on); background: var(--ok-bg); color: var(--ok-strong); font-size: 13px; }
     .bp-result[data-kind="error"] { border-left-color: var(--danger); background: var(--danger-soft); color: var(--off); }
     .bp-result[data-kind="note"] { border-left-color: var(--line-strong); background: var(--surface-soft); color: var(--text-2); }
     .bp-result-title { margin: 0; font-weight: 600; }
@@ -578,6 +653,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .rail-nav { flex-direction: row; display: contents; }
       .rail-item { width: auto; flex: 1; min-height: 52px; flex-direction: column; gap: 3px; border-radius: 10px; font-size: 10.5px; }
       .rail-item .rail-label { display: block; flex: none; }
+      /* Seven slots share the bar, so long labels switch to their short form (Control, Runs, Engine, Theme). */
+      .rail-item .rail-label[data-short] { font-size: 0; }
+      .rail-item .rail-label[data-short]::after { content: attr(data-short); font-size: 10.5px; }
       .rail-count { top: 2px; right: calc(50% - 22px); }
       .mc-canvas { order: 1; min-height: 0; }
       .mc-top { gap: 8px; padding: 12px 14px; }
@@ -624,10 +702,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <aside class="mc-rail" aria-label="Aether">
     <a class="rail-brand" href="/" title="Back to the Aether Portal"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
     <nav class="rail-nav" aria-label="Mission Control views">
-      <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
+      <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
       <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
       <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
-      <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label">Run history</span></button>
+      <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label" data-short="Runs">Run history</span></button>
       <span class="rail-spacer"></span>
       <div class="rail-compute">
         <div class="rail-compute-head"><span>Compute</span><strong id="mc-compute-value" title="Tokens used by task runs">0</strong></div>
@@ -635,7 +713,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         <div class="rail-compute-sub" id="mc-compute-sub">tokens · 0 / 0 runs done</div>
       </div>
       <a class="rail-item rail-portal" href="/" title="Aether Portal">${ICONS.home}<span class="rail-label">Portal</span></a>
+      <a class="rail-item" id="mc-nav-engine" href="#" title="Engine State: the Aether Engine's own status page">${ICONS.engine}<span class="rail-label" data-short="Engine">Engine State</span></a>
       <button type="button" class="rail-item" id="mc-nav-connect" aria-controls="mc-view-connect" title="Settings">${ICONS.gear}<span class="rail-label">Settings</span></button>
+      <button type="button" class="rail-item" id="mc-theme-toggle" title="Switch between light and dark">${ICONS.theme}<span class="rail-label" id="mc-theme-label" data-short="Theme">Dark mode</span></button>
     </nav>
     <div class="rail-user">
       <span class="rail-avatar" aria-hidden="true">${escapeAttr(initialsOf(userName))}</span>
