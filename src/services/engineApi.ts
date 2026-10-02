@@ -192,6 +192,25 @@ export interface PublicUrl {
 	source: 'env' | 'cloudflared' | null;
 }
 
+// GET / POST /api/engine/config (Quick Setup). The key itself is never returned, only its last 4 characters.
+export type MiserlyKeyStatus = 'missing' | 'verified' | 'invalid' | 'unreachable';
+
+export interface EngineConfigSummary {
+	miserly_key_configured: boolean;
+	miserly_key_hint: string | null;
+	miserly_key_status: MiserlyKeyStatus;
+	miserly_key_detail: string;
+	public_url: string | null;
+	elarion_ready: boolean;
+	saved?: string[];
+}
+
+export interface EngineConfigChanges {
+	miserly_client_key?: string;
+	// "" clears it.
+	public_url?: string;
+}
+
 // blueprint_schema.json#/definitions/compile_request
 export interface CompileBlueprintRequest {
 	links: Array<{ url: string; title?: string; rawSnippet?: string }>;
@@ -483,6 +502,17 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		// GET /api/public-url: the engine's public address, for pairing another device.
 		getPublicUrl(): Promise<PublicUrl> {
 			return request<PublicUrl>('GET', '/api/public-url', { timeoutMs: 5_000 });
+		},
+
+		// GET /api/engine/config: whether Elarion's Miserly key is set and verified, and the saved public URL.
+		getEngineConfig(): Promise<EngineConfigSummary> {
+			return request<EngineConfigSummary>('GET', '/api/engine/config', { timeoutMs: 15_000 });
+		},
+
+		// POST /api/engine/config: the engine checks the key with Miserly.io, then saves and applies it without a
+		// restart. Throws EngineApiError 422 when Miserly rejects the key, 502 when Miserly can't be reached.
+		saveEngineConfig(changes: EngineConfigChanges): Promise<EngineConfigSummary> {
+			return request<EngineConfigSummary>('POST', '/api/engine/config', { body: changes, timeoutMs: 20_000 });
 		},
 
 		// GET /api/artifacts: compiled blueprints (project status).

@@ -9,6 +9,7 @@ import { mountBrainDock } from './brain-dock.js';
 import { mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { setupTheme } from './theme.js';
+import { mountQuickSetup } from './quick-setup.js';
 import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 
 // view -> sidebar button id (its aria-controls names the view's panel). #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
@@ -137,6 +138,13 @@ export async function mountMissionControl(doc = document, options = {}) {
   });
   const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
   const wizard = mountConnectionWizard(byId('mc-connect'), { api, ...options.wizard });
+  // Opens Settings once tabs exist (the badge can be clicked before then only in theory).
+  const quickSetup = mountQuickSetup(byId('mc-quick-setup'), {
+    api,
+    badge: byId('mc-ready'),
+    onOpenSettings: () => tabs && tabs.select('connect'),
+    ...options.quickSetup,
+  });
   const agentBadge = byId('mc-agent-count');
   const computeValue = byId('mc-compute-value');
   const computeSub = byId('mc-compute-sub');
@@ -173,7 +181,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   offerPairingFromLink(doc, wizard, tabs);
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, blueprints, dock, wizard, workforce, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, blueprints, dock, wizard, quickSetup, workforce, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

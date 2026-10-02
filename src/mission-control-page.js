@@ -482,6 +482,40 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-connection-actions { display: flex; flex-wrap: wrap; gap: 6px; }
     .mc-connection-url, .mc-connection-manual { display: flex; flex-direction: column; gap: 6px; }
     .mc-connection-url label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+    /* Quick Setup (public/js/engine/quick-setup.js) and the header's Elarion Ready badge. */
+    #mc-view-connect { display: flex; flex-direction: column; gap: 20px; }
+    #mc-view-connect[hidden] { display: none; }
+    .qs-form { display: flex; flex-direction: column; gap: 16px; padding: 8px 24px 22px; }
+    .qs-field { display: flex; flex-direction: column; gap: 6px; }
+    .qs-field label { font-weight: 600; font-size: 13px; }
+    .qs-input { width: 100%; height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 14px; }
+    .qs-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+    .qs-key-row { display: flex; gap: 8px; }
+    .qs-reveal { appearance: none; flex: none; height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font-weight: 600; cursor: pointer; }
+    .qs-hint { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .qs-hint[data-kind="ok"] { color: var(--ok); }
+    .qs-hint[data-kind="error"] { color: var(--alert); }
+    .qs-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+    .qs-pair { height: 46px; padding: 0 22px; font-size: 14px; }
+    .qs-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .qs-step { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .qs-step[data-state="idle"] { opacity: 0.65; }
+    .qs-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-strong); font-size: 12px; font-weight: 700; }
+    .qs-step[data-state="busy"] .qs-mark { border-color: var(--accent); border-top-color: transparent; animation: qs-spin 0.8s linear infinite; }
+    .qs-step[data-state="ok"] .qs-mark { border-color: var(--ok-dot); background: var(--ok-bg); color: var(--ok); }
+    .qs-step[data-state="ok"] .qs-mark::after { content: "✓"; }
+    .qs-step[data-state="fail"] { border-color: var(--danger-line); }
+    .qs-step[data-state="fail"] .qs-mark { border-color: var(--off-dot); background: var(--off-bg); color: var(--off); }
+    .qs-step[data-state="fail"] .qs-mark::after { content: "!"; }
+    .qs-step-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .qs-step-label { font-weight: 600; font-size: 13px; }
+    .qs-step-detail { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .qs-step-detail:empty { display: none; }
+    @keyframes qs-spin { to { transform: rotate(360deg); } }
+    .ready-pill { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-m); background: var(--ok-bg); color: var(--ok); font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+    .ready-pill[data-kind="alert"] { background: var(--alert-bg); color: var(--alert); border-color: var(--alert-line); }
+    .ready-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
+    .ready-pill[data-kind="alert"] .ready-dot { background: var(--alert-dot); }
     .cw { display: flex; flex-direction: column; gap: 16px; padding: 8px 24px 20px; }
     .cw-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
     .cw-status-text { flex: 1; min-width: 160px; }
@@ -683,6 +717,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .endpoint-what { grid-column: 2; text-align: left; }
       .emergency { flex-wrap: wrap; padding: 16px; }
       .cw { padding: 8px 14px 14px; }
+      .qs-form { padding: 8px 14px 16px; }
+      .ready-pill { width: 42px; padding: 0; justify-content: center; }
+      .ready-pill .ready-text { display: none; }
       .cw-modes { grid-template-columns: minmax(0, 1fr); }
       /* On a phone the QR code would be scanned by the phone itself; keep the address and buttons. */
       .cw-pair { grid-template-columns: minmax(0, 1fr); }
@@ -730,6 +767,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       </div>
       <div class="mc-actions">
         <span class="live-pill" title="Local time"><span class="live-dot" aria-hidden="true"></span><span class="live-word">LIVE</span><span class="mono" id="mc-clock"></span></span>
+        <button type="button" class="ready-pill" id="mc-ready" data-kind="running" hidden><span class="ready-dot" aria-hidden="true"></span><span class="ready-text">Elarion Ready</span></button>
         <div id="mc-breaker" class="mc-breaker" role="group" aria-label="Master circuit breaker (Elarion)"></div>
         <button type="button" class="btn-primary" id="mc-new-agent" aria-label="New agent: deploy a blueprint">${ICONS.plus}<span class="btn-label">New agent</span></button>
       </div>
@@ -745,6 +783,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         </section>
       </div>
       <div class="mc-view" id="mc-view-connect" hidden>
+        <div id="mc-quick-setup"></div>
         <section class="surface mc-panel" aria-labelledby="mc-connect-title">
           <div class="mc-panel-head"><h2 id="mc-connect-title">Engine connection</h2></div>
           <div id="mc-connect"></div>

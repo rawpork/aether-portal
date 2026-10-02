@@ -21,6 +21,7 @@ afterEach(() => {
     mc.stopHeader();
     mc.tabs.destroy();
     mc.theme.destroy();
+    mc.quickSetup.destroy();
     mc = null;
   }
   document.body.replaceChildren();
