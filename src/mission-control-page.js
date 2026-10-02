@@ -15,12 +15,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
 <head>
   <meta charset="utf-8">
   <title>Mission Control - Aether Portal</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Same viewport as the main portal page (no cover fit): iOS then keeps the page below the status bar, also in
+       the home-screen app with the translucent status bar, so the header never sits under the clock. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080c14">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="aether-version" content="${escapeAttr(assetVersion)}">
   <meta name="aether-tier" content="${escapeAttr(tier)}">
   <meta name="aether-upgrade-url" content="${escapeAttr(safeUpgradeUrl)}">
   <style>
@@ -318,6 +321,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   </main>
   <noscript><p class="mc-section">Mission Control needs JavaScript.</p></noscript>
   <script type="module" src="/js/engine/mission-control.js?v=${v}"></script>
+  <script type="module" src="/js/update-check.js?v=${v}"></script>
 </body>
 </html>`;
 }

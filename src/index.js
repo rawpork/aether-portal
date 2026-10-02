@@ -98,6 +98,13 @@ export default {
       return handleAuthRoute(request, env, url);
     }
 
+    // Endpoint 0a: The deployed version id (public). Long-lived pages (iOS keeps home-screen apps alive) compare it
+    // with the version they were built from and offer a reload (public/js/update-check.js).
+    if (url.pathname === "/api/version") {
+      if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+      return jsonResponse({ version: env.CF_VERSION_METADATA?.id || "dev" }, 200, { "Cache-Control": "no-store" });
+    }
+
     // Endpoint 0b: The signed-in user's settings. PATCH { connection_depth: "obvious" | "logical" | "abstract" } sets
     // how far the engine reaches when it relates saves (wires on the page, and the next synthesis run).
     if (url.pathname === "/api/settings") {
@@ -1039,6 +1046,7 @@ export default {
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="google-client-id" content="${escapeHtmlText(env.GOOGLE_CLIENT_ID || "")}">
+  <meta name="aether-version" content="${assetVersion}">
   <style>
     /* DESIGN.md, main portal: navy surfaces and a teal accent for the brand, selected states and primary buttons;
        6-8px corners, hairline borders, no backdrop blur, glows or heavy shadows. */
@@ -2568,6 +2576,7 @@ export default {
   <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
   <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
   <script type="module" src="/js/spatial/index.js?v=${assetVersion}"></script>
+  <script type="module" src="/js/update-check.js?v=${assetVersion}"></script>
 </head>
 <body>
   <header id="topbar">
