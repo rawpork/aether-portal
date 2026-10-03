@@ -1,7 +1,7 @@
 # UI/UX ARCHITECTURE & DESIGN DIRECTIVES
 
 ## Persona & Standard
-Act as a Principal UI/UX Designer at Apple. Every component, interface layout, and interaction must adhere strictly to Apple Human Interface Guidelines (HIG). Eliminate "AI aesthetic slop": no rounded floating container-in-container layouts, no decorative glows (the 3D graph's meaning-carrying hub and Outcome glows are the one exception, see "Glow exception"), no backdrop blur, and no fluff text.
+Act as a Principal UI/UX Designer at Apple. Every component, interface layout, and interaction must adhere strictly to Apple Human Interface Guidelines (HIG). Eliminate "AI aesthetic slop": no rounded floating container-in-container layouts, no decorative glows (the 3D graph's meaning-carrying hub and Outcome glows and the Workflow Canvas data-flow pulses are the only exceptions, see "Glow exception" and "Cable pulse glow"), no backdrop blur, and no fluff text.
 
 Every Aether surface uses one visual system, the **teal accent hybrid** (System 2 below): the main portal (`src/index.js`) and the share sheet ingest card (`src/share-page.js`) alike. Navy and teal, alive but precise. The earlier minimal greyscale share sheet was retired on 2026-09-27 so the ingest card matches the rest of the app.
 
@@ -16,7 +16,8 @@ Every Aether surface uses one visual system, the **teal accent hybrid** (System 
 - Corners: Never above 8px. `6px` for controls, chips and inner surfaces; `8px` for panels, sheets and primary buttons; `4px` for small tags, badges and segments inside a segmented control. Only data markers stay round: category dots, timeline dots and drag handles.
 - Borders: 1px hairlines, `rgba(255, 255, 255, 0.08)`.
 - No `backdrop-filter` blur anywhere. Floating panels are solid.
-- No glows (coloured `box-shadow` halos) and no large decorative drop shadows. A small shadow is allowed only for real stacking: a card being dragged, or cards stacked in the carousel. **One exception:** the main portal's 3D graph glows its hub cards and AI Outcome Nodes (see System 2, "Glow exception").
+- No glows (coloured `box-shadow` halos) and no large decorative drop shadows. A small shadow is allowed only for real stacking: a card being dragged, or cards stacked in the carousel. **Two exceptions:** the main portal's 3D graph glows its hub cards and AI Outcome Nodes (see System 2, "Glow exception"), and the Mission Control Workflow Canvas glows its travelling data-flow pulses (see "Cable pulse glow").
+- Case Clearance: controls anchored to a screen edge keep their interactive content at least `--case-clear-min` (20px) from it, and corner-anchored controls (the thumb wheel, floating corner buttons) sit `--case-clear` (24px) in on both axes, a diagonal offset. Each axis uses the larger of that value and its `env(safe-area-inset-*)`. No horizontal drag may start in the left 20px (iOS Back swipe). Full rules: [specs/ui/02-case-clearance.md](specs/ui/02-case-clearance.md).
 - Interactive Targets: Minimum 44x44pt hit area for every clickable or touchable element. When the visible control should be smaller (a 32px chip), keep the 44pt element and draw the visible shape with a `::before` inset, instead of shrinking the hit area.
 - Horizontal rows (chip ribbons, segmented bars): scroll sideways, hide the scrollbar (`scrollbar-width: none` plus `::-webkit-scrollbar { display: none }`), and use `scroll-behavior: smooth`.
 
@@ -57,6 +58,16 @@ Glow is allowed in exactly two places, both in the 3D graph and both carrying me
 - **Outcome glow:** AI-generated Outcome Nodes glow **Outcome Gold `#ffb627`**, stronger than any hub (up to 70% opacity), with a slow 4-second breathing pulse. The pulse is static under reduced motion. Gold alone cannot be unique next to the dev_task yellow in the category palette, so outcomes are also marked by an OUTCOME badge and a gold card border.
 
 Still banned everywhere else: glows on DOM elements (buttons, panels, chips, focus rings), teal glows (teal remains the flat selection accent), glow on dimmed cards (it fades with them), and bloom or post-processing passes. The halo is a single additive sprite per card, not a screen effect.
+
+### Cable pulse glow (Mission Control Workflow Canvas, requested 2026-10-03)
+
+The third and last glow. Only the **travelling pulse dots** on the Workflow Canvas ([specs/ui/01-node-canvas.md](specs/ui/01-node-canvas.md)) glow, and only during a live run. Their colour carries the traffic type: green `--flow-mcp` for MCP Read, blue `--flow-a2a` for A2A Debate, orange `--flow-action` for Action.
+
+- **Shape:** a 6px dot with a radial halo in its own colour, at most 14px radius and 45% opacity, drawn in the canvas's SVG layer. It is not a `box-shadow`, and it never appears on nodes, ports, resting cables or any other control.
+- **Volume:** at most 3 pulses per cable at once. Busier cables show a count badge instead of more glow.
+- **Encoding:** colour is never the only signal. Each cable kind also has its own line style (solid, double rail, or arrow plus bolt).
+- **Reduced motion:** nothing travels and nothing glows. The cable thickens briefly instead.
+- **Halted runs:** pulses freeze and fade to 30%, with no glow.
 
 Data colours stay as they are and are not accents: category colours on graph nodes, category tags, legend dots and board column tops; the yellow Note and red Transcript sections on the node card; the Google sign-in button stays white in Google's own style.
 

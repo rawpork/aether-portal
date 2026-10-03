@@ -11,6 +11,54 @@ Wires the portal to the local Aether_Engine IPC server (`http://localhost:3333`,
 - [x] Step 3.4: Blueprint Ingestion & Artifact Compilation Dashboard (COMPLETED 2026-10-01) - Blueprints tab in Mission Control: paste / upload / drop spec JSON, local validation mirroring `compile_request` (line/column JSON errors), compile via `compileBlueprint()`; artifact dashboard from `GET /api/artifacts` + `/api/artifacts/:id` (new engine route) with route matrix, generated scaffold, sources and raw JSON. Tier gating from `users.tier`: every tier drafts, validates, compiles and previews; "Deploy & Execute Blueprint" carries a PRO badge and upgrade prompt for Free, and for Pro runs each phase as a task-loop step on master-brain (breaker-guarded, live in the monitor). Verified: build + typecheck clean, 345/345 tests, 16/16 live checks (wrangler dev + engine)
 
 
+## Phase 4: Agent Workflow Studio (UI specs, 2026-10-03)
+Turns Mission Control from watching agents into building and steering them. The specs are in [specs/ui/](specs/ui/README.md); nothing in this phase is built yet. Endpoints marked "proposed" in the specs still need to be added to Aether_Engine, the portal Worker or Miserly.io. Mission Control gains a **Studio** rail item, and **Settings** becomes **Connections**.
+
+- [ ] Step 4.1: 2D Visual Node Canvas ([spec 01](specs/ui/01-node-canvas.md))
+  - Workflow Canvas in Studio. The node kinds are trigger, agent, team, MCP server, action, browser and human checkpoint.
+  - Drag-and-drop cables from port to port (long-press 350ms on touch, keyboard "Connect to..."). Incompatible drops are refused with a reason.
+  - The port pair decides the cable kind: **Green = MCP Read** (`--flow-mcp`, solid), **Blue = A2A Debate** (`--flow-a2a`, double rail, bidirectional), **Orange = Action** (`--flow-action`, arrow plus bolt).
+  - Live runs animate a glowing pulse along each cable per engine flow event (proposed `ws /api/runs/:runId/events`): a 6px dot with a halo of 14px radius and 45% opacity at most, and at most 3 pulses per cable.
+  - Under reduced motion nothing travels; the cable thickens briefly instead. Pulses freeze on HALTED.
+  - DESIGN.md gains "Cable pulse glow" as its third and last glow exception.
+- [ ] Step 4.2: Case Clearance Spacing ([spec 02](specs/ui/02-case-clearance.md))
+  - New tokens `--case-clear: 24px` (nominal 1/4 inch at CSS 96px/in) and `--case-clear-min: 20px`.
+  - Corner-anchored controls move a diagonal 24px in on both axes. Each axis uses `max(24px, env(safe-area-inset-*))`.
+  - The edge thumb wheel's pivot moves from the corner to (24px, 24px), so its hub and rings clear phone-case lips.
+  - Edge bars keep their interactive content at least 20px from the edge. No horizontal drag may start in the left 20px (iOS Back swipe). 44pt hit areas are unchanged.
+- [ ] Step 4.3: Dual-Agent Team Cards ([spec 03](specs/ui/03-team-cards.md))
+  - Workforce cards for a Lead + Partner pair joined by an A2A Debate cable, with team-wide Pause and breaker.
+  - Mode selector: **HITL** (default: every Action waits for Approve / Edit / Deny on the card or in Telegram, and never auto-approves), **Auto** (acts within the budget cap and breaker), **Planning** (Action cables locked; the team produces a plan to approve).
+  - Mid-run switching rules, and the engine enforces the mode server-side. Debate rounds, partner stance and tie-break are settings.
+- [ ] Step 4.4: Pre-Run Workflow Budget Inspector ([spec 04](specs/ui/04-budget-inspector.md))
+  - A sheet that opens from Run.
+  - Per-node estimates come from Miserly.io's free `/api/interrogate` dry run (through a proposed portal proxy, `POST /api/budget/estimate`) and the `/api/manifest` prices, so the ceiling equals what Miserly's SafetyLedger reserves.
+  - Interactive donut breakdown by node, tier or cable kind (at most 6 slices, tap to highlight the node on the canvas), with a table and CSV fallback.
+  - Monthly run projection slider (1 to 1,000 runs, log steps) against the plan or trial cap. Savings % uses Miserly's definition (vs. the premium baseline).
+  - Guardrails disable Run or Auto when a cap would be exceeded. Each run stores its estimate for an estimated-vs-actual comparison.
+- [ ] Step 4.5: Embedded Live Browser Streaming ([spec 05](specs/ui/05-live-browser.md))
+  - The engine runs Playwright Chromium in an isolated context per session and streams CDP `Page.startScreencast` JPEG frames over the proposed `ws /api/browser/:sessionId/stream`, acking each frame for backpressure.
+  - The portal draws only the newest frame to a 16:9 canvas, with a read-only URL bar, status, fps and latency.
+  - HITL "Take control" forwards input through `Input.dispatchMouseEvent` / `Input.dispatchKeyEvent`.
+  - Domain allowlist per workflow; nothing recorded unless the run opts in; password and card fields are blurred before frames leave the engine.
+- [ ] Step 4.6: Pre-Populated Recipe Canvases & Custom Recipe Vault ([spec 06](specs/ui/06-recipes.md))
+  - The Studio opens on a recipe gallery with miniature canvas previews.
+  - Starter recipes (Research to Brief, SOP Builder, Content Pipeline, Ad Variants, Website Scaffold, Vendor Quote Run, Telegram Triage) match the Blueprint Cluster templates the synthesis engine uses.
+  - A per-user Vault in D1 (proposed migration 0016) with version history.
+  - Export and import as `aether.recipe/1` JSON or a link. Export refuses anything that looks like a credential, and imports always open in HITL.
+- [ ] Step 4.7: User Connections Hub & Advanced Developer Mode ([spec 07](specs/ui/07-connections-hub.md))
+  - **Telegram:** connect the user's own bot token (verified with `getMe`, webhook with a secret token, chat bound by `/start`) for messages, triggers and HITL approvals.
+  - **BYOK:** Anthropic / Gemini / OpenAI-compatible keys with default, per-role and per-node model overrides. BYOK traffic bypasses Miserly until Miserly gains a passthrough-key feature.
+  - **MCP connectors:** Streamable HTTP or SSE, with bearer or OAuth 2.1. Tool Read/Action defaults come from `readOnlyHint` and decide the cable colour.
+  - Secrets are AES-GCM encrypted in D1 (proposed migration 0017, `CONNECTIONS_KEY` secret) and never returned to the browser.
+  - Engine URL and pairing, engine tokens, the Miserly client key, Free Sandbox Mode and diagnostics move behind an **Advanced Developer Mode** toggle. It is a visibility preference, not access control, and a "Fix" row surfaces any problem hiding there.
+
+### Phase 4 open decisions
+- [ ] Cable colours: green and orange were chosen distinct from Mission Control's violet accent and from the portal's teal and Outcome Gold. Confirm on a real device in both themes.
+- [ ] BYOK through Miserly: add a passthrough-key mode to Miserly.io (keeps budgets, telemetry and `x-miserly-savings`), or accept direct-to-provider BYOK.
+- [ ] Engine contracts (runs WebSocket, teams, approvals, browser sessions): agree them with Aether_Engine before UI work starts on Steps 4.1, 4.3 and 4.5.
+
+
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev
 - **Environment:** Cloudflare Workers + D1 (aether_context_db) + static assets (public/) + Gemini 3.x API, optional Anthropic API (Claude Sonnet share tier)
