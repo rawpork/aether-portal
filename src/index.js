@@ -7,7 +7,8 @@ import { WebFetchError, fetchWebContent } from "./webfetch.js";
 import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
 import { renderSharePage } from "./share-page.js";
 import { renderMissionControlPage } from "./mission-control-page.js";
-import { mintEngineToken } from "./engine-token.js";
+import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
+import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
 import { OAUTH_COOKIE, OAUTH_COOKIE_TTL_SECONDS, buildGoogleAuthUrl, createOAuthState, createPkcePair, exchangeGoogleCode, isAllowedGoogleEmail, readOAuthCookie, safeNextPath, signOAuthCookie, usernameFromEmail, verifyGoogleIdToken } from "./google-auth.js";
@@ -106,18 +107,30 @@ export default {
       return jsonResponse({ version: env.CF_VERSION_METADATA?.id || "dev" }, 200, { "Cache-Control": "no-store" });
     }
 
-    // Endpoint 0b: The signed-in user's settings. PATCH { connection_depth: "obvious" | "logical" | "abstract" } sets
-    // how far the engine reaches when it relates saves (wires on the page, and the next synthesis run).
+    // Endpoint 0b: The signed-in user's settings. PATCH with either or both of:
+    //   connection_depth: "obvious" | "logical" | "abstract" - how far the engine reaches when it relates saves
+    //   preferred_name: "<name>" | "" | null - display name for the header and Mission Control (src/user-profile.js)
     if (url.pathname === "/api/settings") {
       if (request.method !== "PATCH") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "PATCH" });
       const auth = await authenticateUser(request, env, url);
       if (auth.error) return auth.error;
       const body = await request.json().catch(() => null);
-      const depth = body?.connection_depth;
-      if (!DEPTHS.includes(depth)) return jsonResponse({ error: "connection_depth must be obvious, logical or abstract." }, 400);
+      const changes = {};
+      if (body?.connection_depth !== undefined) {
+        if (!DEPTHS.includes(body.connection_depth)) return jsonResponse({ error: "connection_depth must be obvious, logical or abstract." }, 400);
+        changes.connection_depth = body.connection_depth;
+      }
+      if (body?.preferred_name !== undefined) {
+        const name = normalizePreferredName(body.preferred_name);
+        if (!name.ok) return jsonResponse({ error: name.error }, 400);
+        changes.preferred_name = name.value;
+      }
+      const columns = Object.keys(changes);
+      if (!columns.length) return jsonResponse({ error: "Send connection_depth and/or preferred_name." }, 400);
       try {
-        await env.DB.prepare("UPDATE users SET connection_depth = ? WHERE id = ?").bind(depth, auth.user.id).run();
-        return jsonResponse({ connection_depth: depth });
+        await env.DB.prepare("UPDATE users SET " + columns.map(c => c + " = ?").join(", ") + " WHERE id = ?")
+          .bind(...columns.map(c => changes[c]), auth.user.id).run();
+        return jsonResponse(changes);
       } catch (err) {
         console.error("Settings update failed:", err);
         return jsonResponse({ error: "Saving the setting failed." }, 500);
@@ -133,7 +146,8 @@ export default {
       if (!env.ENGINE_JWT_SECRET) {
         return jsonResponse({ error: "Engine token minting is not configured (ENGINE_JWT_SECRET).", configured: false }, 404, { "Cache-Control": "no-store" });
       }
-      return jsonResponse(await mintEngineToken(auth.user.id, env.ENGINE_JWT_SECRET), 200, { "Cache-Control": "no-store" });
+      const preferredName = await loadPreferredName(env, auth.user.id);
+      return jsonResponse(await mintEngineToken(auth.user.id, env.ENGINE_JWT_SECRET, Date.now(), ENGINE_TOKEN_TTL_SECONDS, { preferred_name: preferredName }), 200, { "Cache-Control": "no-store" });
     }
 
     // Endpoint 1: API returning the signed-in user's JSON graph data
@@ -197,7 +211,8 @@ export default {
         links.push(...buildConceptLinks(nodes.map(node => node.id), tagsByNode, links));
         links.push(...buildSynthesisLinks(nodes));
         mergeMinedEdges(links, nodes, await loadMinedEdges(env, auth.user.id));
-        return jsonResponse({ nodes, links, groups, connection_depth: await loadConnectionDepth(env, auth.user.id) });
+        const [connectionDepth, preferredName] = await Promise.all([loadConnectionDepth(env, auth.user.id), loadPreferredName(env, auth.user.id)]);
+        return jsonResponse({ nodes, links, groups, connection_depth: connectionDepth, preferred_name: preferredName });
       } catch (e) {
         console.error("D1 Graph Fetch Error:", e);
         return jsonResponse({ nodes: [], links: [] });
@@ -920,11 +935,12 @@ export default {
         return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/mission-control"), 303);
       }
       // Tier gates the blueprint dashboard's Deploy & Execute action (Pro); everything else is open to every tier.
-      const account = await env.DB.prepare("SELECT tier, username FROM users WHERE id = ?").bind(session.id).first().catch(() => null);
+      // The greeting and operator card use the preferred name when one is set, else the username.
+      const account = await loadAccount(env, session.id);
       return new Response(renderMissionControlPage({
         assetVersion: env.CF_VERSION_METADATA?.id || "dev",
         tier: account?.tier || "free",
-        userName: account?.username || "",
+        userName: displayNameFor(account),
         upgradeUrl: env.PRO_UPGRADE_URL || "",
         // ?theme= (from the Engine status page) wins over the saved cookie, so the first paint already matches.
         theme: url.searchParams.get("theme") || readCookie(request, "aether_theme") || ""
@@ -1097,6 +1113,8 @@ export default {
       border: var(--hairline);
     }
     #topbar .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
+    #topbar .user-greeting { color: #8a93a6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+    #topbar .user-greeting[hidden] { display: none; }
     #topbar .bar-spacer { flex: 1; }
     .bar-btn {
       appearance: none;
@@ -2545,7 +2563,7 @@ export default {
       #view-switch button { padding: 0 9px; }
     }
     @media (max-width: 600px) {
-      #topbar .brand { display: none; }
+      #topbar .brand, #topbar .user-greeting { display: none; }
       #topbar { gap: 6px; padding: 0 7px; }
       .bar-btn { padding: 0 10px; }
       .filter-dropdown { position: fixed; top: 100px; left: 10px; right: 10px; width: auto; }
@@ -2595,6 +2613,7 @@ export default {
 <body>
   <header id="topbar">
     <span class="brand">Aether Portal</span>
+    <span class="user-greeting" id="user-greeting" hidden></span>
     <a class="bar-btn mc-tab" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
     <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
@@ -2633,6 +2652,7 @@ export default {
       <button class="settings-option" id="clear-filters-button">Clear Filters</button>
       <button class="settings-option phone-only" id="telegram-help-menu-option">✈️ Telegram Commands</button>
       <button class="settings-option phone-only" id="dial-sound-option" hidden>🔈 Wheel clicks: On</button>
+      <button class="settings-option" id="display-name-button">✎ Display Name</button>
       <button class="settings-option" id="logout-button">⎋ Sign Out</button>
     </div>
   </div>
@@ -5862,6 +5882,7 @@ export default {
         filterState.depth = payload.connection_depth;
         renderDepth();
       }
+      renderUserGreeting(payload ? payload.preferred_name : null);
       const firstLoad = !graphLoaded;
       if (!firstLoad) keepLayout(previous, graphData.nodes);
       // First load opens on a short, recent time span (the shortest with enough cards) instead of everything; a deep
@@ -8807,6 +8828,28 @@ export default {
       startOneTap();
     }
 
+    // Preferred name (users.preferred_name): shown in the top bar, Mission Control's greeting and its operator card.
+    let preferredName = null;
+    function renderUserGreeting(name) {
+      preferredName = name || null;
+      const el = document.getElementById('user-greeting');
+      if (!el) return;
+      el.textContent = preferredName ? 'Hi, ' + preferredName : '';
+      el.title = preferredName ? 'Signed in as ' + preferredName : '';
+      el.hidden = !preferredName;
+    }
+    document.getElementById('display-name-button').addEventListener('click', async () => {
+      const next = window.prompt('Display name for the header and Mission Control (leave empty to use your username):', preferredName || '');
+      if (next === null) return;
+      const res = await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preferred_name: next }) }).catch(() => null);
+      const body = res ? await res.json().catch(() => null) : null;
+      if (!res || !res.ok) {
+        window.alert((body && body.error) || 'Saving the display name failed.');
+        return;
+      }
+      renderUserGreeting(body ? body.preferred_name : null);
+    });
+
     // Reloading after sign-out drops every in-memory node; the empty session then shows the gate.
     document.getElementById('logout-button').addEventListener('click', async () => {
       await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
@@ -8897,7 +8940,8 @@ async function handleAuthRoute(request, env, url) {
       ? await env.DB.prepare("SELECT id, username, email, tier FROM users WHERE id = ?").bind(session.id).first()
       : null;
     if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
-    return jsonResponse({ user: { id: user.id, username: user.username, email: user.email || null, tier: user.tier || "free" } });
+    const preferredName = await loadPreferredName(env, user.id);
+    return jsonResponse({ user: { id: user.id, username: user.username, email: user.email || null, tier: user.tier || "free", preferred_name: preferredName } });
   }
 
   if (route === "login") {

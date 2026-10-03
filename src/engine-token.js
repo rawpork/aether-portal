@@ -14,14 +14,23 @@ function base64Url(bytes) {
 
 const encodeJson = (value) => base64Url(encoder.encode(JSON.stringify(value)));
 
-export async function mintEngineToken(userId, secret, now = Date.now(), ttlSeconds = ENGINE_TOKEN_TTL_SECONDS) {
+// `profile.preferred_name` (optional) is added as a display-label claim; `sub` stays the identity.
+export async function mintEngineToken(userId, secret, now = Date.now(), ttlSeconds = ENGINE_TOKEN_TTL_SECONDS, profile = {}) {
 	if (!secret) throw new Error('ENGINE_JWT_SECRET is not set.');
 	const iat = Math.floor(now / 1000);
 	const exp = iat + ttlSeconds;
 	const unsigned =
 		encodeJson({ alg: 'HS256', typ: 'JWT' }) +
 		'.' +
-		encodeJson({ sub: 'portal:' + userId, role: 'authenticated', aud: 'authenticated', iss: 'aether-portal', iat, exp });
+		encodeJson({
+			sub: 'portal:' + userId,
+			role: 'authenticated',
+			aud: 'authenticated',
+			iss: 'aether-portal',
+			iat,
+			exp,
+			...(profile.preferred_name ? { preferred_name: String(profile.preferred_name) } : {})
+		});
 	const key = await crypto.subtle.importKey('raw', encoder.encode(String(secret)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 	const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(unsigned)));
 	return { token: unsigned + '.' + base64Url(signature), expires_at: new Date(exp * 1000).toISOString() };
