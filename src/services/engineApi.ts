@@ -170,6 +170,93 @@ export interface TaskList {
 }
 
 // GET /api/artifacts: compiled blueprints stored by the engine.
+// GET /api/canvas/graph (Aether_Engine src/canvasGraph.ts): task trees, MCP server nodes and scored bridges.
+export interface CanvasTaskNode {
+	id: string;
+	kind: 'task';
+	label: string;
+	agent_id: string;
+	run_id: string;
+	status: TaskStatus;
+	completed_steps: number;
+	total_steps: number;
+	started_at: string;
+	finished_at: string | null;
+}
+
+export interface CanvasStepNode {
+	id: string;
+	kind: 'step';
+	label: string;
+	task: string;
+	index: number;
+	action: StepAction;
+	status: 'COMPLETED' | 'RUNNING' | 'PENDING' | 'FAILED' | 'HALTED';
+}
+
+export interface CanvasMcpNode {
+	id: string;
+	kind: 'mcp';
+	label: string;
+	category: string | null;
+	status: 'ready' | 'missing_keys';
+	transport: string;
+	description: string | null;
+	missing_env: string[];
+}
+
+export type CanvasNode = CanvasTaskNode | CanvasStepNode | CanvasMcpNode;
+
+export interface BridgeSignal {
+	type: 'name' | 'category' | 'description' | 'keys_missing';
+	terms: string[];
+	weight: number;
+}
+
+export interface CanvasTreeEdge {
+	id: string;
+	kind: 'tree';
+	from: string;
+	to: string;
+}
+
+export interface CanvasBridgeEdge {
+	id: string;
+	kind: 'bridge';
+	from: string;
+	to: string;
+	confidence: number;
+	depth: 'logic' | 'associative' | 'abstract';
+	rationale: string;
+	signals: BridgeSignal[];
+	metadata: {
+		agent_id: string;
+		task_id: string;
+		run_id: string;
+		step_id: string;
+		step_index: number;
+		step_action: StepAction;
+		step_status: CanvasStepNode['status'];
+		step_excerpt: string;
+		elarion_excerpt: string | null;
+		server: string;
+		category: string | null;
+		transport: string;
+		server_status: CanvasMcpNode['status'];
+		scoring: string;
+	};
+}
+
+export type CanvasEdge = CanvasTreeEdge | CanvasBridgeEdge;
+
+export interface CanvasGraph {
+	generated_at: string;
+	nodes: CanvasNode[];
+	edges: CanvasEdge[];
+	counts: { tasks: number; steps: number; mcp_servers: number; bridges: number };
+	mcp_error: string | null;
+}
+
 export interface ArtifactSummary {
 	filename: string;
 	blueprint_id: string;
@@ -501,6 +588,11 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			if (opts.limit) query.set('limit', String(opts.limit));
 			const qs = query.toString();
 			return request<TaskList>('GET', '/api/tasks' + (qs ? '?' + qs : ''));
+		},
+
+		// GET /api/canvas/graph: the Studio canvas (task trees, MCP servers, scored step -> server bridges).
+		getCanvasGraph(opts: { limit?: number } = {}): Promise<CanvasGraph> {
+			return request<CanvasGraph>('GET', '/api/canvas/graph' + (opts.limit ? '?limit=' + encodeURIComponent(String(opts.limit)) : ''));
 		},
 
 		// GET /api/public-url: the engine's public address, for pairing another device.

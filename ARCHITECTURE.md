@@ -134,3 +134,10 @@ All Aether_Engine interaction lives on this one page; the main portal header onl
 - `users.preferred_name` (migration `0016`, `src/user-profile.js`): the display name used by the top-bar greeting ("Hi, <name>"), the Mission Control greeting and its operator card. NULL falls back to the username, which stays the account identity.
 - Set from Settings > Display Name, or `PATCH /api/settings { preferred_name }` (1-40 chars, no control characters or `< >`; `""`/`null` clears). It is also returned by `GET /api/graph` and `GET /api/auth/me`, and included in engine tokens.
 - Reads tolerate the column being absent, so pages keep working until the migration is applied.
+
+## Studio canvas (Mission Control → Studio)
+
+- `public/js/engine/studio-canvas.js`, mounted in `#mc-studio`; `#studio` opens it. Read-only view of `GET /api/canvas/graph` (Aether_Engine): three SVG columns (task runs, their steps, MCP servers), task → step tree edges, and step → server bridge edges whose width and opacity follow the engine's confidence (dashed when abstract, < 30%). Polls every 10s only while the view is open.
+- Abstract ↔ Logic slider: 0–100% in 5% steps (default 30%, saved in `localStorage` `aether.studio.threshold`). A bridge is shown when its confidence, as a whole percent, is at least the slider value; hidden bridges leave the tab order.
+- Edge Inspector: opened by clicking a bridge or pressing Enter on it (each bridge has a 14px hit path with `role="button"` and an accessible name). Shows the engine's rationale, Elarion's reply excerpt (or a note that the step has not run), the per-signal confidence weights, and metadata (agent, task, run, step, server, transport, key status, edge id). Escape or Close dismisses it.
+- Errors: 401 → the usual token explanation with an Open Settings button; 404 → "update Aether_Engine" (older engines lack the endpoint); network → unreachable message.

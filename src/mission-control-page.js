@@ -20,6 +20,7 @@ const ICONS = {
 	pulse: icon('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
 	layers: icon('<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'),
 	clock: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+	nodes: icon('<rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="3" y="15" width="6" height="5" rx="1.5"/><rect x="15" y="9.5" width="6" height="5" rx="1.5"/><path d="M9 6.5c3 0 3 5.5 6 5.5M9 17.5c3 0 3-5.5 6-5.5"/>'),
 	home: icon('<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>'),
 	gear: icon('<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/>'),
 	plus: icon('<path d="M12 5v14M5 12h14"/>', ' stroke-width="2.2"'),
@@ -107,6 +108,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --alert-soft: #FFF7ED; --alert-line: #FED7AA;
       --danger-line: #F3B4B4;
       --danger-text: #B91C1C;
+      /* Data-flow colours (specs/ui/README.md): data, not accents. The Studio canvas draws bridges in --flow-mcp. */
+      --flow-mcp: #16A34A; --flow-a2a: #2563EB; --flow-action: #EA580C;
       color-scheme: light;
     }
     /* Dark theme (UNIFIED_BRAND.md, identical to the Engine status page): data-theme="dark", or the system setting
@@ -140,6 +143,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         --danger-text: #FCA5A5;
         --terminal: #0F1211;
         --shadow: none;
+        --flow-mcp: #4ADE80; --flow-a2a: #60A5FA; --flow-action: #FB923C;
       }
     }
     :root[data-theme="dark"] {
@@ -170,6 +174,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --danger-text: #FCA5A5;
       --terminal: #0F1211;
       --shadow: none;
+      --flow-mcp: #4ADE80; --flow-a2a: #60A5FA; --flow-action: #FB923C;
     }
     * { box-sizing: border-box; }
     /* Author display rules (flex rows, buttons) would otherwise override the hidden attribute. */
@@ -649,6 +654,61 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .bp-raw summary { cursor: pointer; color: var(--muted); font-size: 12px; }
     .bp-raw pre { max-height: 320px; overflow: auto; margin: 6px 0 0; padding: 12px; border-radius: var(--radius-s); background: var(--terminal); color: var(--terminal-text); font-size: 11px; }
 
+    /* Studio canvas (public/js/engine/studio-canvas.js): task trees, MCP servers and confidence-scored bridges. */
+    .studio-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 18px 24px 6px; }
+    .studio-slider-wrap { display: inline-flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+    .studio-slider { width: 200px; min-height: 44px; accent-color: var(--flow-mcp); }
+    .studio-spacer { flex: 1; }
+    .studio-legend { display: inline-flex; align-items: center; gap: 6px; }
+    .legend-line { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--flow-mcp); }
+    .legend-dashed { border-top-style: dashed; opacity: 0.7; }
+    .studio-status { padding: 0 24px 10px; margin: 0; }
+    .studio-status[data-kind="error"] { color: var(--danger-text); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .studio-body { display: flex; gap: 16px; padding: 0 24px 24px; align-items: flex-start; }
+    .studio-viewport { flex: 1; min-width: 0; min-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--surface-soft); }
+    .studio-svg { display: block; }
+    .tree-edge { fill: none; stroke: var(--line-strong); stroke-width: 1.5; }
+    .bridge-line { fill: none; stroke: var(--flow-mcp); stroke-linecap: round; transition: stroke-opacity 300ms cubic-bezier(0.25, 1, 0.5, 1); }
+    .bridge[data-depth="abstract"] .bridge-line { stroke-dasharray: 5 5; }
+    .bridge-hit { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: stroke; }
+    .bridge-hit:focus-visible { outline: none; stroke: var(--accent-line); }
+    .bridge[data-hidden="true"] { display: none; }
+    .bridge[data-selected="true"] .bridge-line { stroke: var(--accent); stroke-opacity: 1; }
+    .node-box { fill: var(--surface); stroke: var(--line); stroke-width: 1; }
+    .node-mcp .node-box { stroke: var(--flow-mcp); stroke-opacity: 0.55; }
+    .node-task .node-box { stroke: var(--line-strong); }
+    .node-dot { fill: var(--queued-dot); }
+    .node-dot[data-kind="running"] { fill: var(--ok-dot); }
+    .node-dot[data-kind="alert"] { fill: var(--alert-dot); }
+    .node-dot[data-kind="off"] { fill: var(--off-dot); }
+    .node-label { fill: var(--text); font-size: 13px; font-weight: 600; font-family: var(--font); }
+    .node-sub { fill: var(--muted); font-size: 11px; font-family: var(--font); }
+    .studio-inspector { width: 340px; flex-shrink: 0; padding: 18px 20px; position: sticky; top: 16px; max-height: calc(100vh - 140px); overflow: auto; }
+    .studio-inspector h3 { font-size: 15px; font-weight: 600; }
+    .studio-inspector h4 { margin: 18px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .inspector-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .inspector-route { margin: 10px 0; font-size: 13px; overflow-wrap: anywhere; }
+    .inspector-confidence { display: flex; align-items: center; gap: 10px; }
+    .inspector-pct { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+    .studio-inspector .meter { height: 6px; margin: 8px 0 4px; border-radius: 3px; background: var(--queued-bg); overflow: hidden; }
+    .studio-inspector .meter span { display: block; height: 100%; background: var(--flow-mcp); }
+    .inspector-rationale { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+    .inspector-quote { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--flow-mcp); background: var(--surface-soft); border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+    .inspector-quote p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .inspector-step { margin-top: 10px; font-size: 12.5px; }
+    .inspector-step p { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+    .inspector-signals { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+    .inspector-signals li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .inspector-terms { grid-column: 1 / -1; }
+    .inspector-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 12.5px; }
+    .inspector-meta dt { color: var(--muted); }
+    .inspector-meta dd { margin: 0; overflow-wrap: anywhere; }
+    @media (max-width: 900px) {
+      .studio-body { flex-direction: column; }
+      .studio-inspector { width: 100%; position: static; max-height: none; }
+      .studio-toolbar, .studio-status, .studio-body { padding-left: 14px; padding-right: 14px; }
+      .studio-slider { width: 160px; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .engine-badge[data-state="HALTED"] { animation: none; }
       .elaron-ring, .elaron-core { animation: none !important; }
@@ -740,6 +800,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     <a class="rail-brand" href="/" title="Back to the Aether Portal"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
     <nav class="rail-nav" aria-label="Mission Control views">
       <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
+      <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
       <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
       <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
       <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label" data-short="Runs">Run history</span></button>
@@ -774,6 +835,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     </header>
     <main class="mc-main">
       <div class="mc-view" id="mc-view-overview"><div id="mc-workforce"></div></div>
+      <div class="mc-view" id="mc-view-studio" hidden>
+        <section class="surface mc-panel" aria-labelledby="mc-studio-title">
+          <div class="mc-panel-head"><h2 id="mc-studio-title">Studio canvas</h2><span class="mc-muted">Task trees, MCP servers and the bridges between them</span></div>
+          <div id="mc-studio"></div>
+        </section>
+      </div>
       <div class="mc-view surface" id="mc-view-elaron" hidden><section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section></div>
       <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div></div>
       <div class="mc-view" id="mc-view-monitor" hidden>
