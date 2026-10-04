@@ -1601,6 +1601,22 @@ export default {
     #command-mic[aria-pressed="true"] { border-color: var(--accent-line); color: var(--accent); }
     #command-mic:disabled { opacity: 0.4; cursor: default; }
     #command-mic:active { transform: scale(0.98); }
+    /* Elarion's answers, just above the bar. */
+    #command-chat {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 6px);
+      padding: 8px 10px 10px;
+      box-sizing: border-box;
+      border: var(--hairline);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+    }
+    #command-chat[hidden] { display: none; }
+    .command-chat-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--accent); font-size: 12px; font-weight: 600; }
+    #command-chat-close { width: 32px; height: 32px; border: 0; background: none; color: var(--text-muted); font-size: 18px; cursor: pointer; }
+    #command-chat .ask-answer { display: block; max-height: min(40vh, 360px); }
     #command-hint {
       position: absolute;
       left: 4px;
@@ -1640,7 +1656,9 @@ export default {
     /* Wheel mode: Simple keeps to the View rim and the primary ring; Advanced telescopes the inner rings out. The switch
        rides just above the wheel's corner. The buttons are 30px tall, with an invisible hit area reaching 44px (::after)
        so they are easy to hit with a thumb. */
-    .wheel-actions { position: absolute; top: -40px; right: 6px; z-index: 1; display: flex; gap: 10px; }
+    /* Home (recentre) and the wheel's Simple / Advanced switch live in the ☰ tray, under View. */
+    .tray-wheel-actions { display: flex; gap: 8px; }
+    .tray-wheel-actions #wheel-home, .tray-wheel-actions #wheel-mode { flex: 1; height: 40px; justify-content: center; border-radius: var(--radius-s); font-size: 11px; }
     #wheel-home, #wheel-mode { position: relative; }
     #wheel-home::after, #wheel-mode::after { content: ''; position: absolute; inset: -7px -5px; }
     #wheel-home {
@@ -1725,6 +1743,9 @@ export default {
       bottom: 0;
       z-index: 5;
       overflow-y: auto;
+      /* Never sideways: the carousel bleeds into the padding, and a sideways-scrollable list made iOS Safari take a
+         carousel swipe as a scroll (cancelling it). */
+      overflow-x: hidden;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
       padding: 4px 16px 24px;
@@ -2913,6 +2934,7 @@ export default {
       .command-row { grid-template-columns: 1fr; gap: 2px; }
       #view-switch button { padding: 0 9px; }
       #collection-view { padding: 2px 10px 20px; }
+      .deck-view { margin: 0 -10px; }
       .collection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .item-card.list.has-thumb { grid-template-columns: minmax(0, 1fr) 88px; }
       .item-thumb { width: 88px; }
@@ -2950,6 +2972,7 @@ export default {
     <a class="bar-btn mc-tab tray-row" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
     <section class="tray-section" aria-label="View">
       <h3>View</h3>
+      <div class="tray-wheel-actions"><button type="button" id="wheel-home" title="Home: recentre the current view (Home or H)" aria-label="Recentre view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div>
       <div id="view-switch" role="group" aria-label="View mode">
         <button type="button" data-view="graph" aria-pressed="true" title="Graph view"><span class="view-icon">◉</span><span class="view-label">Graph</span></button>
         <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
@@ -3235,12 +3258,16 @@ export default {
   </details>
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
-  <div id="thumb-wheel"><div class="wheel-actions"><button type="button" id="wheel-home" title="Home: recentre the current view (Home or H)" aria-label="Recentre view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div></div>
+  <div id="thumb-wheel"></div>
   <form id="command-bar" autocomplete="off" aria-label="Command bar">
     <label class="visually-hidden-label" for="command-input">Search or command</label>
-    <input id="command-input" type="text" enterkeyhint="go" maxlength="500" placeholder="Search, or: add …, ask …, go to …">
+    <input id="command-input" type="text" enterkeyhint="send" maxlength="1000" placeholder="Ask Elarion…" title="Ask Elarion about your graph. Also: find …, add …, go to …, clear">
     <button type="button" id="command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
     <p id="command-hint" role="status" aria-live="polite" hidden></p>
+    <div id="command-chat" hidden>
+      <div class="command-chat-head"><span id="command-chat-scope">Elarion</span><button type="button" id="command-chat-close" title="Close" aria-label="Close Elarion's answers">×</button></div>
+      <div id="command-chat-log" class="ask-answer" aria-live="polite"></div>
+    </div>
   </form>
   <div id="media-player" hidden>
     <div id="media-frame"></div>
@@ -7865,7 +7892,7 @@ export default {
       if (event.key === 'Escape' && trayIsOpen() && !document.querySelector('.modal-backdrop:not([hidden])')) closeTray();
     });
     portalTray.addEventListener('click', event => {
-      if (event.target.closest('#view-switch button, #view-toggle, #mission-control-tab, #telegram-help-button, #display-name-button, #logout-button, [data-xr-mode]')) closeTray(false);
+      if (event.target.closest('#view-switch button, #view-toggle, #wheel-home, #mission-control-tab, #telegram-help-button, #display-name-button, #logout-button, [data-xr-mode]')) closeTray(false);
     });
 
     const settingsToggle = document.getElementById('settings-toggle');
@@ -8668,15 +8695,7 @@ export default {
         return;
       }
       if (verb === 'ask' && rest) {
-        if (focus.node && nodeCard.style.display === 'block') {
-          cardAskInput.value = rest;
-          cardAskButton.click();
-        } else if (clusterDrawer.classList.contains('open')) {
-          drawerAskInput.value = rest;
-          drawerAskButton.click();
-        } else {
-          showCommandHint('Open a card or a group first, then ask about it.');
-        }
+        askFromCommandBar(rest);
         return;
       }
       if (['go', 'fly', 'show', 'goto'].includes(verb) && rest) {
@@ -8704,11 +8723,62 @@ export default {
         showCommandHint('Search and highlights cleared.');
         return;
       }
-      searchInput.value = text;
-      filterState.query = text.toLowerCase();
-      applyGraphFilters();
-      reframeAfterFilter();
-      showCommandHint(Graph.graphData().nodes.length + ' card(s) match "' + truncate(text, 40) + '".');
+      if (['find', 'search'].includes(verb) && rest) {
+        searchInput.value = rest;
+        filterState.query = rest.toLowerCase();
+        applyGraphFilters();
+        reframeAfterFilter();
+        showCommandHint(Graph.graphData().nodes.length + ' card(s) match "' + truncate(rest, 40) + '".');
+        return;
+      }
+      askFromCommandBar(text);
+    };
+    // Plain text goes to Elarion (Gemini, /api/ask) about what is on screen: the open group, else the highlighted
+    // categories, else the newest cards (COMMAND_ASK_NODES of them). Answers stack in the panel above the bar.
+    const COMMAND_ASK_NODES = 30;
+    const commandChat = document.getElementById('command-chat');
+    const commandChatLog = document.getElementById('command-chat-log');
+    const commandChatScope = document.getElementById('command-chat-scope');
+    document.getElementById('command-chat-close').addEventListener('click', () => { commandChat.hidden = true; });
+    let commandAsking = false;
+    const askFromCommandBar = async question => {
+      if (commandAsking) return;
+      let nodes;
+      let label;
+      if (clusterDrawer.classList.contains('open') && drawerCluster) {
+        nodes = getClusterNodes(drawerCluster);
+        label = 'the ' + titleCase(getClusterLabel(drawerCluster)) + ' group';
+      } else if (filterState.highlighted.size) {
+        nodes = Graph.graphData().nodes.filter(node => filterState.highlighted.has(getNodeCategory(node)));
+        label = 'the ' + [...filterState.highlighted].map(c => c.split('_').join(' ')).join(', ') + ' cards';
+      } else {
+        nodes = Graph.graphData().nodes.slice().sort((x, y) => String(y.created_at || '').localeCompare(String(x.created_at || '')));
+        label = 'your newest saves';
+      }
+      nodes = nodes.slice(0, COMMAND_ASK_NODES);
+      commandChatScope.textContent = 'Elarion · about ' + label;
+      commandChat.hidden = false;
+      if (!nodes.length) {
+        setAskAnswer(commandChatLog, 'There are no cards on screen to ask about yet.', true);
+        return;
+      }
+      commandAsking = true;
+      const answer = addAskTurn(commandChatLog, question);
+      try {
+        const body = await apiFetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, label, focusId: null, nodeIds: nodes.map(node => node.id) })
+        });
+        answer.textContent = formatAnswer(body.answer, body.sources);
+      } catch (err) {
+        answer.textContent = err.message || 'Elarion could not answer.';
+        answer.classList.add('error');
+      } finally {
+        answer.classList.remove('pending');
+        commandChatLog.scrollTop = commandChatLog.scrollHeight;
+        commandAsking = false;
+      }
     };
     commandBar.addEventListener('submit', event => {
       event.preventDefault();
