@@ -1257,6 +1257,20 @@ export default {
     #portal-tray #settings-toggle { display: none; }
     #portal-tray .settings-menu { position: static; display: block; width: auto; padding: 0; border: 0; background: none; }
     #portal-tray #telegram-help-button { display: inline-flex !important; }
+    /* Tray rows: line icons in one style (Mission Control's rail), drawn as masks so they take the row's colour. */
+    #portal-tray .settings-option { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 6px; color: var(--text); }
+    #portal-tray .settings-option::before { content: ''; flex: none; width: 16px; height: 16px; background: currentColor; opacity: 0.85; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+    #portal-tray .tray-row svg { flex: none; opacity: 0.85; }
+    #portal-tray .tray-chevron { margin-left: auto; color: var(--text-muted); font-size: 18px; line-height: 1; }
+    #recluster-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2 4 14h7l-1 8 9-12h-7z'/></svg>"); }
+    #backfill-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1'/><path d='M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1'/></svg>"); }
+    #synthesize-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3l1.8 6.2L20 11l-6.2 1.8L12 19l-1.8-6.2L4 11l6.2-1.8z'/></svg>"); }
+    #remine-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z'/><circle cx='8' cy='8' r='1.5'/></svg>"); }
+    #clear-filters-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M3 5h18l-7 8v6l-4 2v-8z'/><path d='M16 3l5 5M21 3l-5 5'/></svg>"); }
+    #dial-sound-option { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4 9h4l5-4v14l-5-4H4z'/><path d='M17 9a4 4 0 0 1 0 6'/></svg>"); }
+    #display-name-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4 20h4L19 9l-4-4L4 16z'/><path d='M13.5 6.5l4 4'/></svg>"); }
+    #logout-button { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M15 4h4v16h-4'/><path d='M10 8l-4 4 4 4'/><path d='M6 12h10'/></svg>"); }
+    #dial-sound-option.muted { --icon: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4 9h4l5-4v14l-5-4H4z'/><path d='M17 9l4 6M21 9l-4 6'/></svg>"); }
     .bar-btn {
       appearance: none;
       display: inline-flex;
@@ -2969,7 +2983,7 @@ export default {
       <span class="user-greeting" id="user-greeting" hidden></span>
       <button type="button" id="tray-close" class="card-close" title="Close menu" aria-label="Close menu">×</button>
     </div>
-    <a class="bar-btn mc-tab tray-row" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
+    <a class="bar-btn mc-tab tray-row" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="bar-label">Mission Control</span><span class="tray-chevron" aria-hidden="true">›</span></a>
     <section class="tray-section" aria-label="View">
       <h3>View</h3>
       <div class="tray-wheel-actions"><button type="button" id="wheel-home" title="Home: recentre the current view (Home or H)" aria-label="Recentre view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div>
@@ -3060,14 +3074,14 @@ export default {
       <div class="settings-wrap">
         <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
         <div class="settings-menu" id="settings-menu">
-          <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
-          <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
-          <button class="settings-option" id="synthesize-button">✦ Synthesize Outcomes Now</button>
-          <button class="settings-option" id="remine-button">🏷️ Mine Tags &amp; Groups for Old Nodes</button>
+          <button class="settings-option" id="recluster-button">Recluster Graph with AI</button>
+          <button class="settings-option" id="backfill-button">Fetch Titles &amp; Previews for Old Links</button>
+          <button class="settings-option" id="synthesize-button">Synthesize Outcomes Now</button>
+          <button class="settings-option" id="remine-button">Mine Tags &amp; Groups for Old Nodes</button>
           <button class="settings-option" id="clear-filters-button">Clear Filters</button>
-              <button class="settings-option phone-only" id="dial-sound-option" hidden>🔈 Wheel clicks: On</button>
-          <button class="settings-option" id="display-name-button">✎ Display Name</button>
-          <button class="settings-option" id="logout-button">⎋ Sign Out</button>
+              <button class="settings-option phone-only" id="dial-sound-option" hidden>Wheel clicks: On</button>
+          <button class="settings-option" id="display-name-button">Display Name</button>
+          <button class="settings-option" id="logout-button">Sign Out</button>
         </div>
       </div>
     </section>
@@ -9770,7 +9784,7 @@ export default {
         return true;
       }
     };
-    const renderDialSound = () => { dialSoundOption.textContent = (dialSoundOn() ? '🔈 Wheel clicks: On' : '🔇 Wheel clicks: Off'); };
+    const renderDialSound = () => { dialSoundOption.textContent = (dialSoundOn() ? 'Wheel clicks: On' : 'Wheel clicks: Off'); dialSoundOption.classList.toggle('muted', !dialSoundOn()); };
     dialSoundOption.hidden = typeof navigator.vibrate === 'function';
     renderDialSound();
     dialSoundOption.addEventListener('click', () => {
