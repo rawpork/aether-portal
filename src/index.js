@@ -9,6 +9,7 @@ import { renderSharePage } from "./share-page.js";
 import { renderMissionControlPage } from "./mission-control-page.js";
 import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
+import { seedOnboardingGraph } from "./onboarding.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
@@ -165,9 +166,18 @@ export default {
       const auth = await authenticateUser(request, env, url);
       if (auth.error) return auth.error;
       try {
-        const { results } = await env.DB.prepare(
+        const selectNodes = () => env.DB.prepare(
           "SELECT id, title, description, category, url, created_at, research, image_url, site_name, source_url, favicon_url, user_note, status, synopsis, raw_transcript IS NOT NULL AS has_transcript, content IS NOT NULL AS has_content, group_id, group_source, outcome_status, outcome_plan FROM saved_nodes WHERE user_id = ? AND NOT (category = 'outcome' AND outcome_status = 'dismissed')"
         ).bind(auth.user.id).all();
+        let { results } = await selectNodes();
+        // First sign-in: an empty graph gets the onboarding tutorial (once per user, src/onboarding.js).
+        if (!results || results.length === 0) {
+          try {
+            if (await seedOnboardingGraph(env, auth.user.id)) ({ results } = await selectNodes());
+          } catch (err) {
+            console.error("Onboarding seed failed:", err);
+          }
+        }
         let outcomeInputs = new Map();
         try {
           outcomeInputs = await loadOutcomeInputs(env, auth.user.id);
@@ -2112,6 +2122,18 @@ export default {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    /* An embedded video in the reader: full width, 16:9, never taller than half the screen (it narrows to keep 16:9). */
+    .reader-video {
+      position: relative;
+      width: min(100%, calc(50vh * 16 / 9));
+      aspect-ratio: 16 / 9;
+      margin: 0 auto 14px;
+      border-radius: var(--radius-s);
+      overflow: hidden;
+      background: #000;
+      white-space: normal;
+    }
+    .reader-video iframe, .reader-video video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
     .reader-panel a {
       align-self: flex-start;
       background: var(--accent);
@@ -3811,7 +3833,7 @@ export default {
       cardDescription.scrollTop = 0;
       const readable = note + NEWLINE + fullText;
       const isLong = readable.length > READER_MIN_LENGTH || readable.split(NEWLINE).length > READER_MIN_LINES;
-      cardReaderButton.style.display = isLong ? 'inline-block' : 'none';
+      cardReaderButton.style.display = isLong || readerMediaFor(node, readable) ? 'inline-block' : 'none';
 
       const created = node.created_at ? new Date(node.created_at) : null;
       cardMeta.textContent = created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : '';
@@ -7574,10 +7596,56 @@ export default {
       });
     }
 
-    const showReader = (title, meta, body) => {
+    // The video a card can show in the reader: its own link when that plays inline (YouTube, Vimeo, a video file), else
+    // a YouTube or Vimeo player written into its text, as an <iframe src="..."> embed or a plain link.
+    // No backslashes: this script sits inside the page's template string, which would eat them.
+    const IFRAME_SRC = /<iframe[^>]*src=["']([^"']+)["'][^>]*>(?:[^<]*<[/]iframe>)?/i;
+    const VIDEO_LINK = /https?:[/][/](?:www[.]|m[.])?(?:youtube[.]com|youtu[.]be|youtube-nocookie[.]com|vimeo[.]com|player[.]vimeo[.]com)[/][A-Za-z0-9_.~?=&%#:/+-]+/i;
+    const readerMediaFor = (node, text) => {
+      const spatial = window.AetherSpatial;
+      if (!spatial || !spatial.parseMedia) return null;
+      const own = node && node.url ? spatial.parseMedia(node.url) : null;
+      if (own) return own;
+      const embedded = IFRAME_SRC.exec(text || '') || VIDEO_LINK.exec(text || '');
+      const media = embedded ? spatial.parseMedia(embedded[1] || embedded[0]) : null;
+      return media && media.kind !== 'file' ? media : null;
+    };
+    // The player for the reader, waiting for a press (the parsed embed URL asks to autoplay).
+    const readerVideoElement = (media, title) => {
+      const frame = document.createElement('div');
+      frame.className = 'reader-video';
+      let element;
+      if (media.kind === 'file') {
+        element = document.createElement('video');
+        element.src = media.src;
+        element.controls = true;
+        element.playsInline = true;
+        element.preload = 'metadata';
+      } else {
+        const src = new URL(media.embedUrl);
+        src.searchParams.delete('autoplay');
+        element = document.createElement('iframe');
+        element.src = src.toString();
+        element.title = title || 'Video';
+        element.allow = 'encrypted-media; picture-in-picture; fullscreen';
+        element.allowFullscreen = true;
+        // YouTube's embeds refuse to play without a referrer.
+        element.referrerPolicy = 'strict-origin-when-cross-origin';
+      }
+      frame.append(element);
+      return frame;
+    };
+
+    // media (optional): a parsed video (readerMediaFor) to play above the text.
+    const showReader = (title, meta, body, media = null) => {
       readerTitle.textContent = title;
       readerMeta.textContent = meta;
       readerBody.textContent = body;
+      if (media) {
+        // One player at a time: the floating one stops when the reader's starts.
+        stopMedia();
+        readerBody.prepend(readerVideoElement(media, title));
+      }
       if (cardLink.getAttribute('href')) {
         readerLink.href = cardLink.href;
         styleLinkAction(readerLink, cardLink.href, false);
@@ -7593,13 +7661,22 @@ export default {
     const openReader = () => {
       const site = cardPreview.style.display === 'none' ? '' : cardSite.textContent;
       const note = cardNote.style.display === 'none' ? '' : cardNoteText.textContent;
+      const description = cardDescription.textContent;
+      const media = readerMediaFor(focus.node, note + NEWLINE + description);
+      // An embed written into the text shows as the player, not as markup.
+      const strip = text => media ? text.replace(new RegExp(IFRAME_SRC.source, 'gi'), '').trim() : text;
       showReader(
         cardTitle.textContent,
         [cardTag.textContent, site, cardMeta.textContent].filter(Boolean).join(' · '),
-        [note ? '📝 Your note' + NEWLINE + note : '', cardDescription.textContent].filter(Boolean).join(NEWLINE + NEWLINE)
+        [note ? '📝 Your note' + NEWLINE + strip(note) : '', strip(description)].filter(Boolean).join(NEWLINE + NEWLINE),
+        media
       );
     };
-    const closeReader = () => { readerModal.hidden = true; };
+    // Closing empties the reader, which also stops its video.
+    const closeReader = () => {
+      readerModal.hidden = true;
+      readerBody.replaceChildren();
+    };
     cardReaderButton.addEventListener('click', openReader);
 
     // YouTube Transcript Pipeline. The graph carries each video's synopsis and whether a transcript is stored;
