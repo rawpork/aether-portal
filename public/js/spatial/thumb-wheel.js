@@ -16,8 +16,9 @@ const SVG = 'http://www.w3.org/2000/svg';
 const MARK = (5 * Math.PI) / 4;
 // The phone's mount size; sizes below are at this size and scale with the mount.
 const BASE_PX = 164;
-// Band widths (px) by role, the gap between bands, and the hub.
-const WIDTH = { view: 22, primary: 32, inner: 25 };
+// Band widths (px) by role, the gap between bands, and the hub. Inner rings are nearly as wide as the primary ring, so
+// with three or four rings out the bands stay as roomy as the two-ring wheel instead of pinching together.
+const WIDTH = { view: 22, primary: 32, inner: 30 };
 const GAP = 3;
 const HUB = 34;
 const HUB_COLLAPSED = 30;
@@ -27,8 +28,10 @@ const IDLE_MS = 2500;
 const FOLD_RATE = 14;
 const TAP_PX = 8;
 // Label sizes by role (px) and the space a label needs along the arc.
-const FONT = { view: 9, primary: 11.5, inner: 9.5 };
+const FONT = { view: 9, primary: 11.5, inner: 10.5 };
 const LABEL_PAD = 12;
+// Room kept outside the rim for the index mark, at the base size.
+const RIM_ROOM = 10;
 // Matte fills, darkest outermost.
 const FILL = { view: '#0a111c', primary: '#122033', inner: ['#0f1b2b', '#0c1624'] };
 const EDGE = 'rgba(255,255,255,0.07)';
@@ -78,6 +81,14 @@ const tickSound = strong => {
   } catch (err) {}
 };
 
+// How much larger than its base size the mount must be to hold rings of these roles (outer to inner, as wheelRings
+// lists them) at full width, at the base scale: 1 while they fit, more for a wheel with many rings out. The rings keep
+// their widths and the mount grows (--wheel-grow), rather than the rings being squeezed into the same corner.
+export function wheelGrowth(roles, { collapsed = false } = {}) {
+  const radius = roles.reduce((sum, role) => sum + GAP + WIDTH[role], collapsed ? HUB_COLLAPSED : HUB) + RIM_ROOM;
+  return Math.max(1, radius / BASE_PX);
+}
+
 // rings: { id: { name, stops: [{ value, label }] } }. state(): { view, scale, layout, time, depth, filters } (values).
 // onChange(ringId, value) when a ring comes to rest on a new stop; onAdd() for the hub. sound(): whether to tick
 // audibly where the device cannot vibrate. simple(): whether the wheel is in the Simple mode.
@@ -110,6 +121,8 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   let lastTime = 0;
   let idleTimer = null;
   let press = null;
+  // The mount's size over its base size (wheelGrowth), applied as --wheel-grow; k is measured against the grown base.
+  let grow = 1;
 
   const roleOf = (id, list) => (id === 'view' ? 'view' : list.indexOf(id) === 1 ? 'primary' : 'inner');
   const indexOfValue = (id, value) => Math.max(0, rings[id].stops.findIndex(stop => stop.value === value));
@@ -164,7 +177,16 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
       layer.role = roleOf(layer.id, list);
       layer.target = list.includes(layer.id) ? WIDTH[layer.role] * k : 0;
     });
+    updateRoom();
     kick();
+  };
+  // Grows the mount for the rings that are out or still folding away; it shrinks back once they have folded.
+  const updateRoom = () => {
+    const roles = order.map(id => layers.get(id)).filter(layer => layer.target > 0 || layer.width > 0.5).map(layer => layer.role);
+    const next = wheelGrowth(roles, { collapsed });
+    if (Math.abs(next - grow) < 0.005) return;
+    grow = next;
+    if (mount.style && mount.style.setProperty) mount.style.setProperty('--wheel-grow', grow.toFixed(3));
   };
 
   const haptic = strong => {
@@ -280,7 +302,10 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     order = order.filter(id => layers.get(id).width > 0 || layers.get(id).target > 0);
     draw();
     if (busy || press) frame = requestAnimationFrame(step);
-    else lastTime = 0;
+    else {
+      lastTime = 0;
+      updateRoom();
+    }
   };
   const kick = () => {
     if (!frame) frame = requestAnimationFrame(step);
@@ -391,7 +416,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     const rect = mount.getBoundingClientRect();
     size.w = rect.width;
     size.h = rect.height;
-    const nextK = Math.max(1, Math.min(rect.width, rect.height) / BASE_PX);
+    const nextK = Math.max(1, Math.min(rect.width, rect.height) / (BASE_PX * grow));
     if (Math.abs(nextK - k) > 0.001) {
       k = nextK;
       hubRadius = (collapsed ? HUB_COLLAPSED : HUB) * k;

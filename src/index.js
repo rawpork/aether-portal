@@ -1413,8 +1413,9 @@ export default {
       right: 0;
       bottom: 0;
       z-index: 15;
-      width: 232px;
-      height: 232px;
+      /* --wheel-grow (thumb-wheel.js) enlarges the corner when three or four rings are out, so they keep their width. */
+      width: calc(232px * var(--wheel-grow, 1));
+      height: calc(232px * var(--wheel-grow, 1));
       touch-action: none;
       /* It steps aside for the open card by a transform (below), which eases without reflowing anything; right and
          bottom only change with the view (List, Timeline, Board, Carousel). */
@@ -1435,40 +1436,43 @@ export default {
     .thumb-wheel-svg.clicked .thumb-wheel-mark { animation: wheel-click 120ms ease-out; }
     @keyframes wheel-click { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
     /* Wheel mode: Simple keeps to the View rim and the primary ring; Advanced telescopes the inner rings out. The switch
-       rides just above the wheel's corner. */
-    .wheel-actions { position: absolute; top: -28px; right: 6px; z-index: 1; display: flex; gap: 6px; }
+       rides just above the wheel's corner. The buttons are 30px tall, with an invisible hit area reaching 44px (::after)
+       so they are easy to hit with a thumb. */
+    .wheel-actions { position: absolute; top: -40px; right: 6px; z-index: 1; display: flex; gap: 10px; }
+    #wheel-home, #wheel-mode { position: relative; }
+    #wheel-home::after, #wheel-mode::after { content: ''; position: absolute; inset: -7px -5px; }
     #wheel-home {
       display: flex;
       align-items: center;
-      gap: 4px;
-      height: 22px;
-      padding: 0 8px 0 6px;
+      gap: 5px;
+      height: 30px;
+      padding: 0 12px 0 10px;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 11px;
+      border-radius: 15px;
       background: #0a111c;
       color: #8a93a6;
       font-family: inherit;
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 700;
       line-height: 1;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
     }
-    #wheel-home svg { width: 12px; height: 12px; }
+    #wheel-home svg { width: 14px; height: 14px; }
     #wheel-home:hover, #wheel-home:focus-visible { border-color: var(--accent-line); color: var(--accent); outline: none; }
     #wheel-mode {
       display: flex;
       align-items: center;
-      gap: 5px;
-      height: 22px;
-      padding: 0 8px 0 4px;
+      gap: 6px;
+      height: 30px;
+      padding: 0 12px 0 8px;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 11px;
+      border-radius: 15px;
       background: #0a111c;
       color: #8a93a6;
       font-family: inherit;
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 700;
       line-height: 1;
       letter-spacing: 0.06em;
@@ -1485,19 +1489,20 @@ export default {
        from script) and a small gap, so the scrollbar and its arrows stay reachable. */
     @media (min-width: 768px) {
       body.collection-mode #thumb-wheel { right: calc(var(--scrollbar-w, 0px) + 6px); bottom: 6px; }
-      body.card-open #thumb-wheel { transform: translateX(calc(-1 * (clamp(340px, 27vw, 420px) + 24px))); }
+      /* Slid well clear of the open card's panel, not tucked against its edge. */
+      body.card-open #thumb-wheel { transform: translateX(calc(-1 * (clamp(340px, 27vw, 420px) + 44px))); }
       body.collection-mode #collection-view { padding-bottom: 240px; }
     }
     @media (max-width: 767px) {
       #thumb-wheel {
         bottom: env(safe-area-inset-bottom, 0px);
-        width: 164px;
-        height: 164px;
+        width: calc(164px * var(--wheel-grow, 1));
+        height: calc(164px * var(--wheel-grow, 1));
       }
       /* The graph library's mouse hint means nothing on a touch screen, and sits under the wheel. */
       .scene-nav-info { display: none; }
       /* Above the node card's peek sheet; out of the way while a sheet is expanded. */
-      body.card-open #thumb-wheel { transform: translateY(calc(env(safe-area-inset-bottom, 0px) - 24vh - 6px)); }
+      body.card-open #thumb-wheel { transform: translateY(calc(env(safe-area-inset-bottom, 0px) - 24vh - 16px)); }
       body:has(#node-card.expanded) #thumb-wheel,
       body:has(#cluster-drawer.expanded) #thumb-wheel { display: none; }
       #view-switch, #view-toggle, #add-node-button, #scope-stepper, #depth-control, #platform-bar, #board-modes { display: none !important; }
