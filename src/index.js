@@ -3521,11 +3521,18 @@ export default {
     // The card whose video is playing inline on the wall (Horizon): it stays lifted like a hovered card, so it holds
     // still under its player while the pointer is over the video (and so off the canvas).
     let playingCardId = null;
-    const getCardTargets = node => ({
-      heat: focus.node && focus.node.id === node.id ? 1 : hover.id === node.id || String(node.id) === playingCardId ? 0.5 : 0,
-      dim: gallery ? getGalleryDim(node) : focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : (isHighlighted(node) ? 0 : 1),
-      weight: hubWeights.get(node.id) || 0
-    });
+    // A category picked in the legend (or toured with ◀ ▶) stands out: its cards get a teal outline and a slight lift
+    // (HIGHLIGHT_HEAT, below hover), and every other card recedes further than an ordinary filter (HIGHLIGHT_DIM).
+    // Solid outlines and fading only: no glow (DESIGN.md).
+    const HIGHLIGHT_HEAT = 0.3;
+    const HIGHLIGHT_DIM = 1.35;
+    const getCardTargets = node => {
+      const categoryPicked = filterState.highlighted.size > 0 && !gallery && !focus.node;
+      const lit = isHighlighted(node);
+      const heat = focus.node && focus.node.id === node.id ? 1 : hover.id === node.id || String(node.id) === playingCardId ? 0.5 : categoryPicked && lit ? HIGHLIGHT_HEAT : 0;
+      const dim = gallery ? getGalleryDim(node) : focus.node ? (focus.nodeIds.has(node.id) ? 0 : 1) : lit ? 0 : categoryPicked ? HIGHLIGHT_DIM : 1;
+      return { heat, dim, weight: hubWeights.get(node.id) || 0 };
+    };
     const syncCards = () => {
       if (!cardField) return;
       Graph.graphData().nodes.forEach(node => {
@@ -4251,8 +4258,9 @@ export default {
     // Frames a bounding sphere from the current viewing direction (straight on in 2D).
     // Group state (SPATIAL_ARCHITECTURE.md 2.1): frames a cluster's bounding sphere from the current direction
     // (straight on in 2D), never closer than the node framing.
-    const flyToBounds = (center, radius, cluster = null) => {
-      const distance = Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, CLUSTER_FIT_MARGIN));
+    // distanceOverride: a caller that worked out its own framing (a category flight).
+    const flyToBounds = (center, radius, cluster = null, distanceOverride = null) => {
+      const distance = distanceOverride || Math.max(GROUP_MIN_DISTANCE, fitSphere(radius, CLUSTER_FIT_MARGIN));
       clusterFrame = cluster ? { key: cluster, distance } : null;
       cameraGoTo({
         target: { x: center.x, y: center.y, z: center.z },
@@ -4272,16 +4280,34 @@ export default {
       if (entry && entry.center) flyToBounds(entry.center, entry.radius, key);
     };
 
+    // Category flights (the legend, ◀ ▶ / swipes through highlighted categories, "go to" in the command bar) come in
+    // close: they frame the category's dense core (CATEGORY_CORE_SHARE of its cards nearest the middle), and never stop
+    // further away than the distance at which a card spans CATEGORY_CARD_PX, so its titles read. Never nearer than
+    // CATEGORY_MIN_DISTANCE, so the closest cards don't clip.
+    const CATEGORY_CORE_SHARE = 0.7;
+    const CATEGORY_FIT_MARGIN = 0.9;
+    const CATEGORY_CARD_PX = 170;
+    const CATEGORY_MIN_DISTANCE = 45;
     const flyToCategory = category => {
       const nodes = Graph.graphData().nodes.filter(node => getNodeCategory(node) === category && [node.x, node.y, node.z].every(Number.isFinite));
       if (!nodes.length) return;
-      const center = { x: 0, y: 0, z: 0 };
-      nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z; });
-      center.x /= nodes.length;
-      center.y /= nodes.length;
-      center.z /= nodes.length;
-      const spread = Math.max(...nodes.map(node => Math.hypot(node.x - center.x, node.y - center.y, node.z - center.z)));
-      flyToBounds(center, Math.max(spread + 12, 18), 'category:' + category);
+      const spatial = window.AetherSpatial;
+      if (!spatial || !spatial.clusterCore) {
+        const center = { x: 0, y: 0, z: 0 };
+        nodes.forEach(node => { center.x += node.x; center.y += node.y; center.z += node.z; });
+        center.x /= nodes.length;
+        center.y /= nodes.length;
+        center.z /= nodes.length;
+        const spread = Math.max(...nodes.map(node => Math.hypot(node.x - center.x, node.y - center.y, node.z - center.z)));
+        flyToBounds(center, Math.max(spread + 12, 18), 'category:' + category);
+        return;
+      }
+      const core = spatial.clusterCore(nodes, CATEGORY_CORE_SHARE);
+      const radius = Math.max(core.radius + spatial.CARD_WIDTH / 2, spatial.CARD_WIDTH);
+      const fit = fitSphere(radius, CATEGORY_FIT_MARGIN);
+      const readable = spatial.spanDistance(spatial.CARD_WIDTH, CATEGORY_CARD_PX, cameraFov(), Graph.camera().aspect, Graph.renderer().domElement.clientWidth);
+      const distance = Math.max(CATEGORY_MIN_DISTANCE, readable ? Math.min(fit, readable) : fit);
+      flyToBounds(core.center, radius, 'category:' + category, distance);
     };
 
     const formatCategory = category => category.replace(/_/g, ' ');

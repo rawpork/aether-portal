@@ -4,7 +4,7 @@
 import { readDocumentTokens } from './tokens.js';
 import { GROUP_KEYS, buildHierarchy, groupColor } from './grouping.js';
 import { closeGroupPicker, createGroupPicker } from './group-picker.js';
-import { CameraRig, createViewer, fitRectDistance, fitSphereDistance, uncoveredTarget } from './camera-rig.js';
+import { CameraRig, clusterCore, createViewer, fitRectDistance, fitSphereDistance, spanDistance, uncoveredTarget } from './camera-rig.js';
 import { faceFromNode } from './card-faces.js';
 import { CARD_HEIGHT, CARD_WIDTH, createCardField, createCollideForce } from './card-nodes.js';
 import { galleryLayout, slotToWorld, yawToward } from './layout-gallery.js';
@@ -61,6 +61,8 @@ window.AetherSpatial = {
   CameraRig,
   createViewer,
   fitSphereDistance,
+  clusterCore,
+  spanDistance,
   fitRectDistance,
   uncoveredTarget,
   faceFromNode,

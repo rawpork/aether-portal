@@ -680,22 +680,23 @@ export function createCardField({ THREE, reducedMotion = false }) {
       // Hubs are bigger in the cloud; on the gallery wall every card is the same size so the arc stays even.
       const hub = 1 + (hubScale(card.weight) - 1) * (1 - w) * (1 - (slot ? boardBlend : 0));
       card.root.scale.setScalar(globalScale * hub * (1 + card.heat * grow * 2));
-      const shade = 1 - card.dim * 0.6;
+      const shade = Math.max(0.12, 1 - card.dim * 0.6);
       const present = 1 - card.lod;
       card.faceMaterial.color.setScalar(shade);
-      card.faceMaterial.opacity = (1 - card.dim * 0.55) * present;
-      card.bodyMaterial.opacity = (1 - card.dim * 0.55) * present;
+      card.faceMaterial.opacity = Math.max(0.12, 1 - card.dim * 0.55) * present;
+      card.bodyMaterial.opacity = Math.max(0.12, 1 - card.dim * 0.55) * present;
       card.bodyMaterial.emissiveIntensity = card.heat * 0.3;
       // Outcome Nodes keep a gold outline at rest; focus still turns it teal.
       const isOutcome = card.face.type === 'outcome';
       card.edgeMaterial.color.copy(temp.color.set(isOutcome ? OUTCOME_GOLD : WHITE).lerp(teal, Math.min(1, card.heat * 1.5)));
-      card.edgeMaterial.opacity = ((isOutcome ? 0.6 : 0.14) + card.heat * 0.8) * (1 - card.dim * 0.7) * present;
+      // dim can go past 1 (a highlighted category recedes the rest further); outlines and glows just reach zero.
+      card.edgeMaterial.opacity = ((isOutcome ? 0.6 : 0.14) + card.heat * 0.8) * Math.max(0, 1 - card.dim * 0.7) * present;
 
       // Glow: hubs in their category colour, Outcome Nodes in Outcome Gold with a slow breathing pulse. It fades out
       // with dimming, and the card's own scale carries it (the sprite is a child of the card).
       const outcome = String(node.category || '').toLowerCase() === OUTCOME_CATEGORY;
       const pulse = reducedMotion ? 0.85 : 0.75 + 0.25 * Math.sin((clock * Math.PI * 2) / 4);
-      const glow = (outcome ? 0.7 * pulse : glowOpacity(card.weight)) * (1 - card.dim) * present;
+      const glow = (outcome ? 0.7 * pulse : glowOpacity(card.weight)) * Math.max(0, 1 - card.dim) * present;
       if (glow > 0.005 || card.glow) {
         const sprite = ensureGlow(card);
         sprite.visible = glow > 0.005;

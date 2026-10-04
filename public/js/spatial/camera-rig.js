@@ -53,6 +53,31 @@ export function fitSphereDistance(radius, vFov, aspect, margin = 1.15) {
   return (radius * margin) / Math.sin(Math.min(vFov, horizontalFov(vFov, aspect)) / 2);
 }
 
+// The dense core of a cluster of points (a category's cards): the share of points nearest the centroid, re-centred on
+// them. Framing the core rather than every outlier brings the camera close enough to read the cards. Returns
+// { center, radius, count } or null for no points.
+export function clusterCore(points, share = 0.7) {
+  const placed = points.filter((p) => [p.x, p.y, p.z].every(Number.isFinite));
+  if (!placed.length) return null;
+  const centroid = (list) => {
+    const c = { x: 0, y: 0, z: 0 };
+    list.forEach((p) => { c.x += p.x; c.y += p.y; c.z += p.z; });
+    return { x: c.x / list.length, y: c.y / list.length, z: c.z / list.length };
+  };
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+  const first = centroid(placed);
+  const keep = Math.max(1, Math.ceil(placed.length * Math.min(1, Math.max(0, share))));
+  const core = placed.slice().sort((a, b) => dist(a, first) - dist(b, first)).slice(0, keep);
+  const center = centroid(core);
+  return { center, radius: Math.max(0, ...core.map((p) => dist(p, center))), count: core.length };
+}
+
+// Camera distance at which something `width` world units wide spans `px` CSS pixels of a canvas `canvasWidth` wide.
+export function spanDistance(width, px, vFov, aspect, canvasWidth) {
+  if (!(width > 0 && px > 0 && canvasWidth > 0)) return 0;
+  return (width * canvasWidth) / (2 * Math.tan(horizontalFov(vFov, aspect) / 2) * px);
+}
+
 // Distance at which a flat halfWidth × halfHeight rectangle facing the camera fits the view.
 export function fitRectDistance(halfWidth, halfHeight, vFov, aspect, margin = 1.1) {
   return margin * Math.max(halfHeight / Math.tan(vFov / 2), halfWidth / Math.tan(horizontalFov(vFov, aspect) / 2));

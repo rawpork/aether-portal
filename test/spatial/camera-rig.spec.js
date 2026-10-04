@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	CameraRig,
 	cameraBasis,
+	clusterCore,
+	spanDistance,
 	createViewer,
 	fitRectDistance,
 	fitSphereDistance,
@@ -174,5 +176,41 @@ describe("createViewer", () => {
 		viewer.setPresenting(true);
 		expect(viewer.applyPose({ position: { x: 9, y: 9, z: 9 }, target: { x: 0, y: 0, z: 0 } })).toBe(false);
 		expect(camera.position.x).toBe(0);
+	});
+});
+
+describe("clusterCore", () => {
+	it("frames the points nearest the middle and leaves outliers out", () => {
+		const points = [
+			{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }, { x: 0, y: 2, z: 0 }, { x: 2, y: 2, z: 0 },
+			{ x: 1, y: 1, z: 0 }, { x: 1, y: 1, z: 1 }, { x: 1, y: 1, z: -1 },
+			{ x: 300, y: 0, z: 0 }, { x: -280, y: 10, z: 0 }, { x: 5, y: 260, z: 0 }
+		];
+		const all = clusterCore(points, 1);
+		const core = clusterCore(points, 0.7);
+		expect(core.count).toBe(7);
+		expect(core.radius).toBeLessThan(5);
+		expect(all.radius).toBeGreaterThan(200);
+		expect(core.center.x).toBeCloseTo(1, 5);
+		expect(core.center.y).toBeCloseTo(1, 5);
+	});
+
+	it("handles one point, unplaced points and none", () => {
+		expect(clusterCore([{ x: 4, y: 5, z: 6 }])).toEqual({ center: { x: 4, y: 5, z: 6 }, radius: 0, count: 1 });
+		expect(clusterCore([{ x: NaN, y: 0, z: 0 }])).toBeNull();
+		expect(clusterCore([])).toBeNull();
+	});
+});
+
+describe("spanDistance", () => {
+	it("gives the distance at which a width fills a number of pixels, nearer for more pixels", () => {
+		const vFov = (50 * Math.PI) / 180;
+		const far = spanDistance(12, 120, vFov, 16 / 9, 1366);
+		const near = spanDistance(12, 240, vFov, 16 / 9, 1366);
+		expect(near).toBeCloseTo(far / 2, 6);
+		// At that distance the width spans exactly the pixels asked for.
+		const halfWidthAtDistance = Math.tan(Math.atan(Math.tan(vFov / 2) * (16 / 9))) * near;
+		expect((12 / (2 * halfWidthAtDistance)) * 1366).toBeCloseTo(240, 6);
+		expect(spanDistance(12, 240, vFov, 1, 0)).toBe(0);
 	});
 });
