@@ -4774,9 +4774,15 @@ export default {
         stepDeck(event.key === 'ArrowRight' ? 1 : -1);
         return;
       }
+      const delta = event.key === 'ArrowRight' ? 1 : -1;
+      if (canStepCategories()) {
+        event.preventDefault();
+        stepCategory(delta);
+        return;
+      }
       if (nodeCard.style.display !== 'block' || cardCarousel.hidden) return;
       event.preventDefault();
-      stepCarousel(event.key === 'ArrowRight' ? 1 : -1);
+      stepCarousel(delta);
     });
 
     // Touch: drag the sheet's handle/header down to close; swipe left/right anywhere on the card to page.
@@ -5378,7 +5384,11 @@ export default {
     window.addEventListener('pointercancel', endArcDrag, { passive: true });
     // With a wall up the arrows step along it; otherwise (an open card on the Board, or one opened without a wall) they
     // page the card through its cluster, as a sideways swipe on the card does.
-    const stepCards = delta => (gallery ? stepGallery(delta) : stepCarousel(delta));
+    const stepCards = delta => {
+      if (gallery) stepGallery(delta);
+      else if (canStepCategories()) stepCategory(delta);
+      else stepCarousel(delta);
+    };
     galleryPrevButton.addEventListener('click', () => stepCards(-1));
     galleryNextButton.addEventListener('click', () => stepCards(1));
     let galleryNavFrame = 0;
@@ -5386,9 +5396,18 @@ export default {
       galleryNavFrame = 0;
       const canvas = Graph.renderer().domElement.getBoundingClientRect();
       const cardSteps = !gallery && Boolean(focus.node) && nodeCard.style.display === 'block' && carousel.ids.length > 1;
-      const show = (gallery ? gallery.ids.size > 1 : cardSteps) && filterState.view === 'graph' && canvas.width > 0;
+      const categorySteps = canStepCategories();
+      const show = (gallery ? gallery.ids.size > 1 : cardSteps || categorySteps) && filterState.view === 'graph' && canvas.width > 0;
       galleryNav.hidden = !show;
       if (!show) return;
+      const what = categorySteps ? 'category' : 'card';
+      if (galleryNav.dataset.steps !== what) {
+        galleryNav.dataset.steps = what;
+        galleryPrevButton.title = 'Previous ' + what + ' (swipe right)';
+        galleryPrevButton.setAttribute('aria-label', 'Previous ' + what);
+        galleryNextButton.title = 'Next ' + what + ' (swipe left)';
+        galleryNextButton.setAttribute('aria-label', 'Next ' + what);
+      }
       // Side by side at the bottom of the free part of the screen, in the dark space below the wall, so they never sit
       // on top of a card's picture.
       const free = getFreeView(getCardCover());
@@ -5456,6 +5475,23 @@ export default {
       }
       return true;
     };
+    // Highlighted categories (two or more, picked in the legend) are toured in legend order: with no card or wall open, a
+    // sideways swipe on the 3D view, the ◀ ▶ arrows, a trackpad's sideways flick and the ← → keys fly to the next one.
+    const highlightedCategories = () => {
+      const present = new Set(Graph.graphData().nodes.map(getNodeCategory));
+      return [...filterState.highlighted].filter(category => present.has(category)).sort((a, b) => legendRank(a) - legendRank(b) || a.localeCompare(b));
+    };
+    const canStepCategories = () => filterState.view === 'graph' && !filterState.flat && !xrPresenting() && !gallery && !focus.node && highlightedCategories().length > 1;
+    const stepCategory = delta => {
+      if (!canStepCategories()) return false;
+      const categories = highlightedCategories();
+      const current = clusterFrame && clusterFrame.key.indexOf('category:') === 0 ? clusterFrame.key.slice('category:'.length) : null;
+      const index = categories.indexOf(current);
+      const next = index < 0 ? categories[delta > 0 ? 0 : categories.length - 1] : categories[((index + delta) % categories.length + categories.length) % categories.length];
+      cancelPendingFit();
+      flyToCategory(next);
+      return true;
+    };
     // The next or previous card on the wall, as the arrows step (false with no wall up, or a wall of one card).
     const swipeCard = delta => {
       if (filterState.view !== 'graph' || filterState.flat || xrPresenting() || !gallery || gallery.ids.size < 2) return false;
@@ -5470,8 +5506,9 @@ export default {
         return;
       }
       const touch = event.pointerType === 'touch' || event.pointerType === 'pen';
-      const eligible = gallery && GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && !xrPresenting()
-        && (touch || (event.pointerType === 'mouse' && event.button === 0 && zoomStop === 'atomic'));
+      const eligible = (gallery && GROUP_SWIPE_STOPS.includes(zoomStop) && !filterState.flat && !xrPresenting()
+        && (touch || (event.pointerType === 'mouse' && event.button === 0 && zoomStop === 'atomic')))
+        || (touch && canStepCategories());
       cardSwipe = eligible ? { x: event.clientX, y: event.clientY, time: Date.now(), touch } : null;
     }, { capture: true, passive: true });
     graphElement.addEventListener('pointerup', event => {
@@ -5482,7 +5519,8 @@ export default {
       const dx = event.clientX - start.x;
       const dy = event.clientY - start.y;
       if ((start.touch && Date.now() - start.time > GROUP_SWIPE_MS) || Math.abs(dx) < GROUP_SWIPE_PX || Math.abs(dx) < 1.5 * Math.abs(dy)) return;
-      if (!swipeCard(dx < 0 ? 1 : -1)) return;
+      const delta = dx < 0 ? 1 : -1;
+      if (!swipeCard(delta) && !stepCategory(delta)) return;
       ignoreClickUntil = Date.now() + 500;
       lastBackgroundTap = null;
     }, { capture: true, passive: true });
@@ -5770,6 +5808,14 @@ export default {
         if (step) swipeCard(step);
         return;
       }
+      if (canStepCategories() && (sideways || performance.now() < cardWheelUntil) && event.deltaX) {
+        event.stopPropagation();
+        cardWheelUntil = performance.now() + WHEEL_GESTURE_MS;
+        if (!cardWheelStepper) cardWheelStepper = window.AetherSpatial.createWheelStepper({ threshold: 90, idleMs: WHEEL_GESTURE_MS });
+        const step = cardWheelStepper(event.deltaX, performance.now());
+        if (step) stepCategory(step);
+        return;
+      }
       const now = performance.now();
       if (!gallery && now > wheelGestureUntil) return;
       event.stopPropagation();
@@ -5916,6 +5962,13 @@ export default {
       if (filterState.highlighted.has(category)) filterState.highlighted.delete(category);
       else filterState.highlighted.add(category);
       applyGraphFilters();
+      // Two or more highlighted: the ◀ ▶ arrows step between them.
+      startGalleryNav();
+    };
+    // The legend's order: the fixed category order, then anything else alphabetically.
+    const legendRank = category => {
+      const index = CATEGORY_ORDER.indexOf(category);
+      return index >= 0 ? index : CATEGORY_ORDER.length;
     };
 
     const renderLegend = visibleNodes => {
@@ -5927,11 +5980,7 @@ export default {
       // Keep highlighted categories listed (at 0) so they can still be toggled off.
       filterState.highlighted.forEach(category => { if (!counts.has(category)) counts.set(category, 0); });
 
-      const rank = category => {
-        const index = CATEGORY_ORDER.indexOf(category);
-        return index >= 0 ? index : CATEGORY_ORDER.length;
-      };
-      const categories = [...counts.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+      const categories = [...counts.keys()].sort((a, b) => legendRank(a) - legendRank(b) || a.localeCompare(b));
 
       legendItems.replaceChildren(...categories.map(category => {
         const item = document.createElement('button');
@@ -5959,6 +6008,10 @@ export default {
           if (!highlighting && !filterState.highlighted.size && clusterFrame && !gallery && !focus.node) recentreOrbit();
           if (!highlighting || filterState.view !== 'graph') return;
           cancelPendingFit();
+          // An open card or wall would hold the camera; the category's flight takes over from them.
+          if (focus.node) hideNodeCard();
+          if (gallery) closeClusterDrawer({ fly: false });
+          if (gallery) exitGallery({ fly: false });
           flyToCategory(category);
         });
         return item;
