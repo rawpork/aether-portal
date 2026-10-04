@@ -1187,7 +1187,76 @@ export default {
     #topbar .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
     #topbar .user-greeting { color: #8a93a6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
     #topbar .user-greeting[hidden] { display: none; }
-    #topbar .bar-spacer { flex: 1; }
+    #topbar #search-input { flex: 1; min-width: 0; max-width: 640px; margin-right: auto; }
+    #menu-toggle { flex: none; width: 36px; padding: 0; justify-content: center; }
+    /* Menu tray (☰): slides in from the left over the graph on every screen size, like Claude and Gemini; the scrim,
+       Escape or ✕ close it. The controls inside keep their own ids and behaviour; these rules only lay them out as
+       stacked sections. */
+    #portal-tray {
+      position: fixed;
+      z-index: 36;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: min(340px, 88vw);
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: calc(14px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-right: var(--hairline);
+      background: var(--bg-panel);
+      color: var(--text);
+      transform: translateX(-102%);
+      visibility: hidden;
+      transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1), visibility 0s linear 0.26s;
+    }
+    body.tray-open #portal-tray { transform: none; visibility: visible; transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); }
+    /* Rows keep their height (the panel scrolls instead of squeezing them). */
+    #portal-tray > *, .tray-section > * { flex: none; }
+    #portal-tray { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
+    #portal-tray .depth-control, #portal-tray .zoom-control { flex-wrap: wrap; height: auto; padding: 8px 10px; }
+    #portal-tray .depth-control::before, #portal-tray .zoom-control::before { flex-basis: 100%; margin-bottom: 4px; color: var(--text-muted); font-size: 11px; }
+    #portal-tray .depth-control::before { content: 'Connection depth'; }
+    #portal-tray .zoom-control::before { content: 'Zoom'; }
+    /* Phones hide these from the screen (the wheel has them), but the tray is the full menu, so it shows them. */
+    @media (max-width: 767px) {
+      #portal-tray #view-switch, #portal-tray #scope-stepper, #portal-tray #platform-bar, #portal-tray .depth-control { display: flex !important; }
+      #portal-tray #view-toggle { display: inline-flex !important; }
+      #portal-tray .depth-stops span:not(.active) { display: inline !important; }
+      #portal-tray .depth-control input[type="range"], #portal-tray .depth-stops { width: 150px; }
+      #portal-tray .depth-stops { justify-content: space-between; }
+    }
+    @media (prefers-reduced-motion: reduce) { #portal-tray, body.tray-open #portal-tray { transition: none; } }
+    #tray-scrim { position: fixed; inset: 0; z-index: 35; border: 0; padding: 0; background: rgba(0,0,0,0.5); }
+    #tray-scrim[hidden] { display: none; }
+    .tray-head { position: relative; display: flex; flex-direction: column; gap: 2px; padding-right: 40px; }
+    .tray-head .brand { color: var(--accent); font-size: 15px; font-weight: 600; }
+    .tray-head .user-greeting { color: var(--text-muted); font-size: 13px; }
+    .tray-head .user-greeting[hidden] { display: none; }
+    .tray-head .card-close { position: absolute; top: -4px; right: -6px; width: 44px; height: 44px; border: 0; background: none; color: var(--text-muted); font-size: 22px; cursor: pointer; }
+    .tray-section { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--hairline); }
+    .tray-section h3 { margin: 0; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    #portal-tray .tray-row { width: 100%; height: 44px; justify-content: flex-start; gap: 10px; }
+    #portal-tray .tray-row .bar-label { display: inline !important; }
+    #portal-tray #view-switch { display: flex; flex-direction: column; height: auto; overflow: visible; }
+    #portal-tray #view-switch button { min-height: 40px; justify-content: flex-start; }
+    #portal-tray #view-switch .view-label { display: inline !important; }
+    #portal-tray .view-toggle { width: 100%; height: 40px; justify-content: flex-start; }
+    #portal-tray .view-toggle .bar-label { display: inline !important; }
+    #portal-tray .view-toggle::after { content: none !important; }
+    #portal-tray .depth-control, #portal-tray .zoom-control { width: 100%; box-sizing: border-box; }
+    #portal-tray #filter-toolbar { position: static; transform: none; max-width: none; flex-direction: column; align-items: stretch; gap: 8px; }
+    #portal-tray #platform-bar { flex-wrap: wrap; height: auto; overflow: visible; }
+    #portal-tray .platform-pill { height: 32px; }
+    #portal-tray #filter-menu summary { width: 100%; justify-content: space-between; box-sizing: border-box; }
+    #portal-tray .filter-dropdown { position: static; width: auto; margin-top: 8px; }
+    #portal-tray .settings-wrap { position: static; }
+    #portal-tray #settings-toggle { display: none; }
+    #portal-tray .settings-menu { position: static; display: block; width: auto; padding: 0; border: 0; background: none; }
+    #portal-tray #telegram-help-button { display: inline-flex !important; }
     .bar-btn {
       appearance: none;
       display: inline-flex;
@@ -1638,7 +1707,7 @@ export default {
       body.card-open #thumb-wheel { transform: translateY(calc(env(safe-area-inset-bottom, 0px) - 24vh - 16px)); }
       body:has(#node-card.expanded) #thumb-wheel,
       body:has(#cluster-drawer.expanded) #thumb-wheel { display: none; }
-      #view-switch, #view-toggle, #add-node-button, #scope-stepper, #depth-control, #platform-bar, #board-modes { display: none !important; }
+      #view-switch, #view-toggle, #scope-stepper, #depth-control, #platform-bar, #board-modes { display: none !important; }
     }
     /* Phones: the group list at Horizon is a small tab beside the wheel; tapping its title opens the full sheet. */
     @media (max-width: 600px) {
@@ -1650,7 +1719,7 @@ export default {
     #collection-view {
       display: none;
       position: fixed;
-      top: 104px;
+      top: 64px;
       left: 0;
       right: 0;
       bottom: 0;
@@ -2297,7 +2366,7 @@ export default {
        the focused 3D card (and the gallery arrows between them). */
     #cluster-drawer {
       position: absolute;
-      top: 102px;
+      top: 64px;
       left: 12px;
       bottom: 20px;
       width: 320px;
@@ -2543,7 +2612,7 @@ export default {
     .card-handle { display: none; }
     /* Desktop / laptop: the node card is the right sidebar, full height below the toolbars. */
     @media (min-width: 768px) {
-      #node-card { left: auto; right: 12px; top: 102px; bottom: auto; width: clamp(340px, 27vw, 420px); max-height: calc(100vh - 122px); }
+      #node-card { left: auto; right: 12px; top: 64px; bottom: auto; width: clamp(340px, 27vw, 420px); max-height: calc(100vh - 84px); }
     }
     /* The details panel eases in from its edge as the camera moves to the card (the right side on desktop, up from the
        bottom on phones), instead of appearing at once. It animates the translate property, not transform, so the phone
@@ -2819,11 +2888,11 @@ export default {
       #topbar .brand, #topbar .user-greeting { display: none; }
       #topbar { gap: 6px; padding: 0 7px; }
       .bar-btn { padding: 0 10px; }
-      .filter-dropdown { position: fixed; top: 100px; left: 10px; right: 10px; width: auto; }
+
       #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
       #cluster-cards { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; padding-bottom: 4px; }
       .mini-card { flex: 0 0 78%; scroll-snap-align: start; }
-      #filter-toolbar { left: 10px; right: 10px; transform: none; max-width: none; }
+
       #platform-bar { flex: 1 1 auto; }
       .platform-pill { padding: 0 10px; }
       #view-switch .view-label { display: none; }
@@ -2865,104 +2934,122 @@ export default {
 </head>
 <body>
   <header id="topbar">
-    <span class="brand">Aether Portal</span>
-    <span class="user-greeting" id="user-greeting" hidden></span>
-    <a class="bar-btn mc-tab" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
+    <button type="button" class="bar-btn" id="menu-toggle" aria-controls="portal-tray" aria-expanded="false" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <span class="brand">Aether</span>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
-    <button type="button" class="bar-btn" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
-    <span class="bar-spacer"></span>
-    <div id="view-switch" role="group" aria-label="View mode">
-      <button type="button" data-view="graph" aria-pressed="true" title="Graph view"><span class="view-icon">◉</span><span class="view-label">Graph</span></button>
-      <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
-      <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
-      <button type="button" data-view="board" aria-pressed="false" title="Board view: drag cards between Inbox, Active, Reference and Done"><span class="view-icon">▥</span><span class="view-label">Board</span></button>
-      <button type="button" data-view="carousel" aria-pressed="false" title="Carousel view: swipe through cards one at a time"><span class="view-icon">❐</span><span class="view-label">Carousel</span></button>
-    </div>
-    <div class="depth-control" id="depth-control" title="Connection depth: how far Aether reaches when it links your saves. It shapes the wires, and the Outcomes synthesis proposes.">
-      <input type="range" id="depth-slider" min="0" max="2" step="1" value="1" aria-label="Connection depth" aria-valuetext="Logical">
-      <div class="depth-stops" aria-hidden="true"><span data-depth="obvious">Obvious</span><span data-depth="logical">Logical</span><span data-depth="abstract">Abstract</span></div>
-    </div>
-    <div class="zoom-control" id="zoom-control" title="Spatial zoom: Space (everything), Cluster (one group), Horizon (the group's 180° wall), Atomic (one card). The mouse wheel steps between them too.">
-      <input type="range" id="zoom-slider" min="0" max="3" step="1" value="2" aria-label="Spatial zoom" aria-valuetext="Zoom">
-      <div class="zoom-stops"><span data-stop="space">Space</span><span data-stop="cluster">Cluster</span><span data-stop="horizon">Horizon</span><span data-stop="atomic">Atomic</span></div>
-    </div>
-    <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
-    <div class="xr-wrap">
-      <button class="view-toggle bar-btn" id="xr-button" data-short="XR" title="Step into your graph with a headset" aria-haspopup="menu" hidden><span class="bar-label">Enter XR</span></button>
-      <div id="xr-menu" class="xr-menu" role="menu" hidden>
-        <button type="button" role="menuitem" data-xr-mode="immersive-ar"><strong>Mixed reality</strong><span>See your room around the graph</span></button>
-        <button type="button" role="menuitem" data-xr-mode="immersive-vr"><strong>Virtual reality</strong><span>Dark space, no passthrough</span></button>
-      </div>
-    </div>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
-  <div class="settings-wrap">
-    <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
-    <div class="settings-menu" id="settings-menu">
-      <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
-      <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
-      <button class="settings-option" id="synthesize-button">✦ Synthesize Outcomes Now</button>
-      <button class="settings-option" id="remine-button">🏷️ Mine Tags &amp; Groups for Old Nodes</button>
-      <button class="settings-option" id="clear-filters-button">Clear Filters</button>
-      <button class="settings-option phone-only" id="telegram-help-menu-option">✈️ Telegram Commands</button>
-      <button class="settings-option phone-only" id="dial-sound-option" hidden>🔈 Wheel clicks: On</button>
-      <button class="settings-option" id="display-name-button">✎ Display Name</button>
-      <button class="settings-option" id="logout-button">⎋ Sign Out</button>
-    </div>
-  </div>
   </header>
-
-  <!-- Second toolbar row: one segmented origin control, then the secondary filters popover at its right end. -->
-  <div id="filter-toolbar">
-    <div id="scope-stepper" role="group" aria-label="Time scope">
-      <button type="button" id="scope-narrow" title="Show a shorter time span" aria-label="Show a shorter time span">−</button>
-      <span id="scope-label" aria-live="polite">All time</span>
-      <button type="button" id="scope-widen" title="Show a longer time span" aria-label="Show a longer time span">+</button>
+  <!-- Menu tray (☰): everything that used to crowd the top bar and the filter row, in one panel that slides in from the left. -->
+  <button type="button" id="tray-scrim" aria-label="Close menu" tabindex="-1" hidden></button>
+  <aside id="portal-tray" aria-label="Menu" aria-hidden="true" inert>
+    <div class="tray-head">
+      <span class="brand">Aether Portal</span>
+      <span class="user-greeting" id="user-greeting" hidden></span>
+      <button type="button" id="tray-close" class="card-close" title="Close menu" aria-label="Close menu">×</button>
     </div>
-    <nav id="platform-bar" role="group" aria-label="Platform filter">
-      <button type="button" class="platform-pill" data-platform="all" aria-pressed="true">All</button>
-      <button type="button" class="platform-pill" data-platform="youtube" aria-pressed="false">YouTube</button>
-      <button type="button" class="platform-pill" data-platform="x" aria-pressed="false">X/Twitter</button>
-      <button type="button" class="platform-pill" data-platform="facebook" aria-pressed="false">Facebook</button>
-      <button type="button" class="platform-pill" data-platform="links" aria-pressed="false">Links</button>
-      <button type="button" class="platform-pill" data-platform="notes" aria-pressed="false">Notes</button>
-      <button type="button" class="platform-pill" data-platform="images" aria-pressed="false">Images</button>
-    </nav>
-    <details id="filter-menu">
-      <summary class="bar-btn" aria-label="Filters">Filters ⚙️<span id="filter-badge" class="filter-badge" hidden></span></summary>
-      <div class="filter-dropdown">
-        <label class="filter-field"><span>Time</span>
-          <select id="time-filter">
-            <option value="all">All Time</option>
-            <option value="day">Today</option>
-            <option value="week">Last 7 Days</option>
-            <option value="month">Last 30 Days</option>
-            <option value="groups">All Time as Groups</option>
-          </select>
-        </label>
-        <label class="filter-field"><span>Category</span>
-          <select id="type-filter">
-            <option value="all">All Categories</option>
-            <option value="link">Links</option>
-            <option value="dev_task">Dev Tasks</option>
-            <option value="video">Videos</option>
-            <option value="note">Notes</option>
-            <option value="image">Images</option>
-          </select>
-        </label>
-        <label class="filter-field"><span>Group by</span>
-          <select id="group-by">
-            <option value="group">Groups</option>
-            <option value="category">Category</option>
-            <option value="platform">Platform</option>
-            <option value="tag">Top tag</option>
-          </select>
-        </label>
-        <div class="filter-field"><span>Graph Colors</span><button type="button" id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button></div>
-        <div class="filter-field"><span>Unlinked Nodes</span><button type="button" id="orphan-toggle" class="toggle-button" aria-pressed="false">Hide Unlinked</button></div>
-        <button type="button" id="filters-reset" class="filters-reset">Clear All Filters</button>
+    <a class="bar-btn mc-tab tray-row" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><span aria-hidden="true">🛰</span><span class="bar-label">Mission Control</span></a>
+    <section class="tray-section" aria-label="View">
+      <h3>View</h3>
+      <div id="view-switch" role="group" aria-label="View mode">
+        <button type="button" data-view="graph" aria-pressed="true" title="Graph view"><span class="view-icon">◉</span><span class="view-label">Graph</span></button>
+        <button type="button" data-view="list" aria-pressed="false" title="List and grid view"><span class="view-icon">☰</span><span class="view-label">List</span></button>
+        <button type="button" data-view="timeline" aria-pressed="false" title="Timeline view"><span class="view-icon">⏱</span><span class="view-label">Timeline</span></button>
+        <button type="button" data-view="board" aria-pressed="false" title="Board view: drag cards between Inbox, Active, Reference and Done"><span class="view-icon">▥</span><span class="view-label">Board</span></button>
+        <button type="button" data-view="carousel" aria-pressed="false" title="Carousel view: swipe through cards one at a time"><span class="view-icon">❐</span><span class="view-label">Carousel</span></button>
       </div>
-    </details>
-  </div>
+      <button class="view-toggle bar-btn" id="view-toggle" data-short="2D" title="Morph between the 3D space and the 2D board"><span class="bar-label">2D Board</span></button>
+      <div class="xr-wrap">
+        <button class="view-toggle bar-btn" id="xr-button" data-short="XR" title="Step into your graph with a headset" aria-haspopup="menu" hidden><span class="bar-label">Enter XR</span></button>
+        <div id="xr-menu" class="xr-menu" role="menu" hidden>
+          <button type="button" role="menuitem" data-xr-mode="immersive-ar"><strong>Mixed reality</strong><span>See your room around the graph</span></button>
+          <button type="button" role="menuitem" data-xr-mode="immersive-vr"><strong>Virtual reality</strong><span>Dark space, no passthrough</span></button>
+        </div>
+      </div>
+      <div class="depth-control" id="depth-control" title="Connection depth: how far Aether reaches when it links your saves. It shapes the wires, and the Outcomes synthesis proposes.">
+        <input type="range" id="depth-slider" min="0" max="2" step="1" value="1" aria-label="Connection depth" aria-valuetext="Logical">
+        <div class="depth-stops" aria-hidden="true"><span data-depth="obvious">Obvious</span><span data-depth="logical">Logical</span><span data-depth="abstract">Abstract</span></div>
+      </div>
+      <div class="zoom-control" id="zoom-control" title="Spatial zoom: Space (everything), Cluster (one group), Horizon (the group's 180° wall), Atomic (one card). The mouse wheel steps between them too.">
+        <input type="range" id="zoom-slider" min="0" max="3" step="1" value="2" aria-label="Spatial zoom" aria-valuetext="Zoom">
+        <div class="zoom-stops"><span data-stop="space">Space</span><span data-stop="cluster">Cluster</span><span data-stop="horizon">Horizon</span><span data-stop="atomic">Atomic</span></div>
+      </div>
+    </section>
+    <section class="tray-section" aria-label="Filters">
+      <h3>Filters</h3>
+      <div id="filter-toolbar">
+        <div id="scope-stepper" role="group" aria-label="Time scope">
+          <button type="button" id="scope-narrow" title="Show a shorter time span" aria-label="Show a shorter time span">−</button>
+          <span id="scope-label" aria-live="polite">All time</span>
+          <button type="button" id="scope-widen" title="Show a longer time span" aria-label="Show a longer time span">+</button>
+        </div>
+        <nav id="platform-bar" role="group" aria-label="Platform filter">
+          <button type="button" class="platform-pill" data-platform="all" aria-pressed="true">All</button>
+          <button type="button" class="platform-pill" data-platform="youtube" aria-pressed="false">YouTube</button>
+          <button type="button" class="platform-pill" data-platform="x" aria-pressed="false">X/Twitter</button>
+          <button type="button" class="platform-pill" data-platform="facebook" aria-pressed="false">Facebook</button>
+          <button type="button" class="platform-pill" data-platform="links" aria-pressed="false">Links</button>
+          <button type="button" class="platform-pill" data-platform="notes" aria-pressed="false">Notes</button>
+          <button type="button" class="platform-pill" data-platform="images" aria-pressed="false">Images</button>
+        </nav>
+        <details id="filter-menu">
+          <summary class="bar-btn" aria-label="Filters">Filters ⚙️<span id="filter-badge" class="filter-badge" hidden></span></summary>
+          <div class="filter-dropdown">
+            <label class="filter-field"><span>Time</span>
+              <select id="time-filter">
+                <option value="all">All Time</option>
+                <option value="day">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+                <option value="groups">All Time as Groups</option>
+              </select>
+            </label>
+            <label class="filter-field"><span>Category</span>
+              <select id="type-filter">
+                <option value="all">All Categories</option>
+                <option value="link">Links</option>
+                <option value="dev_task">Dev Tasks</option>
+                <option value="video">Videos</option>
+                <option value="note">Notes</option>
+                <option value="image">Images</option>
+              </select>
+            </label>
+            <label class="filter-field"><span>Group by</span>
+              <select id="group-by">
+                <option value="group">Groups</option>
+                <option value="category">Category</option>
+                <option value="platform">Platform</option>
+                <option value="tag">Top tag</option>
+              </select>
+            </label>
+            <div class="filter-field"><span>Graph Colors</span><button type="button" id="cluster-toggle" class="toggle-button active" data-mode="category">Category View</button></div>
+            <div class="filter-field"><span>Unlinked Nodes</span><button type="button" id="orphan-toggle" class="toggle-button" aria-pressed="false">Hide Unlinked</button></div>
+            <button type="button" id="filters-reset" class="filters-reset">Clear All Filters</button>
+          </div>
+        </details>
+      </div>
+    </section>
+    <section class="tray-section" aria-label="Help">
+      <h3>Help</h3>
+      <button type="button" class="bar-btn tray-row" id="telegram-help-button" title="Telegram commands" aria-label="Telegram commands" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg><span class="bar-label">Telegram Commands</span></button>
+    </section>
+    <section class="tray-section" aria-label="Settings">
+      <h3>Settings</h3>
+      <div class="settings-wrap">
+        <button class="settings-button bar-btn" id="settings-toggle" title="Settings">⚙️</button>
+        <div class="settings-menu" id="settings-menu">
+          <button class="settings-option" id="recluster-button">⚡ Recluster Graph with AI</button>
+          <button class="settings-option" id="backfill-button">🔗 Fetch Titles &amp; Previews for Old Links</button>
+          <button class="settings-option" id="synthesize-button">✦ Synthesize Outcomes Now</button>
+          <button class="settings-option" id="remine-button">🏷️ Mine Tags &amp; Groups for Old Nodes</button>
+          <button class="settings-option" id="clear-filters-button">Clear Filters</button>
+              <button class="settings-option phone-only" id="dial-sound-option" hidden>🔈 Wheel clicks: On</button>
+          <button class="settings-option" id="display-name-button">✎ Display Name</button>
+          <button class="settings-option" id="logout-button">⎋ Sign Out</button>
+        </div>
+      </div>
+    </section>
+  </aside>
+
 
   <div id="node-card">
     <button id="card-close" class="card-close" title="Close" aria-label="Close">×</button>
@@ -5033,7 +5120,7 @@ export default {
           // Only sheets that span the screen count; a narrow side panel on a small tablet leaves the band open.
           const sheets = panels.filter(rect => rect.width >= 0.6 * canvas.width);
           const middle = canvas.top + canvas.height / 2;
-          const chrome = [document.getElementById('topbar'), document.getElementById('filter-toolbar')]
+          const chrome = [document.getElementById('topbar')]
             .map(element => element.getBoundingClientRect()).filter(rect => rect.width && rect.height);
           const top = Math.max(0, ...sheets.filter(rect => rect.top + rect.height / 2 < middle).map(rect => rect.bottom - canvas.top),
             ...chrome.map(rect => rect.bottom - canvas.top)) / canvas.height;
@@ -7262,7 +7349,7 @@ export default {
     const getTopChrome = () => {
       const canvas = Graph.renderer().domElement.getBoundingClientRect();
       if (!canvas.height) return 0;
-      const bottoms = [document.getElementById('topbar'), document.getElementById('filter-toolbar')]
+      const bottoms = [document.getElementById('topbar')]
         .map(element => element.getBoundingClientRect()).filter(rect => rect.width && rect.height).map(rect => rect.bottom - canvas.top);
       return Math.min(0.4, Math.max(0, ...bottoms) / canvas.height);
     };
@@ -7721,6 +7808,40 @@ export default {
       applyGraphFilters();
     });
 
+    // ---- Menu tray (☰): opens over the graph from the left; ✕, the scrim and Escape close it. Picking a view, Mission
+    // Control or anything that opens a dialog closes it too; filters and sliders keep it open so changes show behind. ----
+    const portalTray = document.getElementById('portal-tray');
+    const trayScrim = document.getElementById('tray-scrim');
+    const menuToggle = document.getElementById('menu-toggle');
+    const trayIsOpen = () => document.body.classList.contains('tray-open');
+    const openTray = () => {
+      document.body.classList.add('tray-open');
+      portalTray.removeAttribute('inert');
+      portalTray.setAttribute('aria-hidden', 'false');
+      trayScrim.hidden = false;
+      menuToggle.setAttribute('aria-expanded', 'true');
+      const first = portalTray.querySelector('.tray-row, button');
+      if (first) first.focus();
+    };
+    const closeTray = (focusToggle = true) => {
+      if (!trayIsOpen()) return;
+      document.body.classList.remove('tray-open');
+      portalTray.setAttribute('inert', '');
+      portalTray.setAttribute('aria-hidden', 'true');
+      trayScrim.hidden = true;
+      menuToggle.setAttribute('aria-expanded', 'false');
+      if (focusToggle) menuToggle.focus();
+    };
+    menuToggle.addEventListener('click', () => (trayIsOpen() ? closeTray() : openTray()));
+    document.getElementById('tray-close').addEventListener('click', () => closeTray());
+    trayScrim.addEventListener('click', () => closeTray());
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && trayIsOpen() && !document.querySelector('.modal-backdrop:not([hidden])')) closeTray();
+    });
+    portalTray.addEventListener('click', event => {
+      if (event.target.closest('#view-switch button, #view-toggle, #mission-control-tab, #telegram-help-button, #display-name-button, #logout-button, [data-xr-mode]')) closeTray(false);
+    });
+
     const settingsToggle = document.getElementById('settings-toggle');
     const settingsMenu = document.getElementById('settings-menu');
     settingsToggle.addEventListener('click', () => {
@@ -7730,7 +7851,8 @@ export default {
     const filterMenu = document.getElementById('filter-menu');
     const settingsWrap = document.querySelector('.settings-wrap');
     document.addEventListener('pointerdown', event => {
-      if (filterMenu.open && !filterMenu.contains(event.target)) filterMenu.open = false;
+      // Inside the tray the filters stay open while the other tray controls are used.
+      if (filterMenu.open && !filterMenu.contains(event.target) && !portalTray.contains(event.target)) filterMenu.open = false;
       if (!settingsWrap.contains(event.target)) settingsMenu.classList.remove('open');
     });
 
@@ -8139,7 +8261,6 @@ export default {
       document.getElementById('telegram-help-close').focus();
     };
     telegramHelpButton.addEventListener('click', openTelegramHelp);
-    document.getElementById('telegram-help-menu-option').addEventListener('click', openTelegramHelp);
     document.getElementById('telegram-help-close').addEventListener('click', closeTelegramHelp);
     telegramHelpModal.addEventListener('click', event => { if (event.target === telegramHelpModal) closeTelegramHelp(); });
     document.addEventListener('keydown', event => {

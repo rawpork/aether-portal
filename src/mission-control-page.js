@@ -93,8 +93,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --accent-soft: #E3F6F2;
       --accent-line: #7FCFC0;
       --on-accent: #FFFFFF;
-      --lime: #D4F24A;
-      --on-lime: #18181B;
+      --lime: #00ffcc;
+      --on-lime: #041016;
       --ok-bg: #DCFCE7; --ok: #15803D; --ok-dot: #22C55E;
       --alert-bg: #FFEDD5; --alert: #C2410C; --alert-dot: #F97316;
       --queued-bg: #F4F4F5; --queued: #52525B; --queued-dot: #71717A;
@@ -207,7 +207,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     /* ---------- Sidebar rail */
     .mc-rail { flex: none; width: 248px; display: flex; flex-direction: column; gap: 6px; padding: calc(24px + env(safe-area-inset-top, 0px)) 14px calc(14px + env(safe-area-inset-bottom, 0px)) calc(14px + env(safe-area-inset-left, 0px)); background: var(--rail); color: var(--rail-text); border-right: 1px solid var(--rail-edge); overflow-y: auto; }
     .rail-brand { display: flex; align-items: center; gap: 12px; padding: 0 10px 22px; color: var(--rail-strong); font-weight: 800; letter-spacing: 0.14em; font-size: 15px; text-decoration: none; }
-    .rail-logo { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 10px; background: var(--lime); color: var(--on-lime); }
+    .rail-logo { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: var(--radius-m); background: var(--lime); color: var(--on-lime); }
     .rail-nav { display: flex; flex-direction: column; gap: 4px; }
     .rail-item { appearance: none; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-m); background: none; color: var(--rail-text); font-size: 15px; font-weight: 500; text-align: left; text-decoration: none; cursor: pointer; }
     .rail-item:hover { color: var(--rail-strong); background: rgba(255,255,255,0.04); }
