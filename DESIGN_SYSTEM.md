@@ -8,9 +8,13 @@
   - igma-reference_4.png: Terminal output sub-tab view
 
 ## 2. Color System & Materials
-- **Left Sidebar Rail:** Dark Charcoal (#18181B) with light gray icons and active highlight background.
-- **Canvas Background:** Very light cool gray (#F4F5F7 / #F8FAFC).
-- **Surface Cards:** Pure White (#FFFFFF) with soft neutral borders (#E4E4E7) and subtle rounded corners (ounded-2xl / 16px).
+Mission Control follows the portal's single visual system (DESIGN.md, System 2: the teal accent hybrid) since
+2026-10-04, so the 3D viewer, the 2D cards and Mission Control read as one app. The figma references above still set
+the layout; their charcoal / violet colours are retired.
+- **Left Sidebar Rail:** Navy (#0b1320, #060a11 in dark mode) with muted icons; the active item has a raised fill and a hairline. A ☰ menu tray folds it to icons on desktop (remembered per browser; medium screens start folded) and opens it as a drawer from the left on phones. The star logo is the way back to the portal; there is no separate Portal item.
+- **Canvas & Surfaces:** Dark mode uses the portal tokens (#080c14 canvas, #0b1320 panels, 1px rgba(255,255,255,0.08) hairlines, #dffdf7 text). Light mode keeps light panels (#F4F5F7 canvas, white cards) with a deeper teal accent (#00796B) so text on white stays readable.
+- **Accent:** teal (#00ffcc dark, #00796B light) only for selection, the primary action and focus; text on it uses --on-accent.
+- **Corners & type:** 6px / 8px radiuses, system fonts (-apple-system, SF Pro, Segoe UI). Solid panels: no blur, no glow.
 - **Accent Badges:**
   - Running / Active: Soft Green pill (#DCFCE7 text #15803D)
   - Needs Input / Alert: Soft Orange pill (#FFEDD5 text #C2410C)

@@ -27,13 +27,18 @@ describe('theme', () => {
     expect(parseTheme('blue')).toBe('');
   });
 
-  it('defines the shared dark tokens for both the system setting and an explicit choice', () => {
+  it('defines the shared dark tokens (the portal navy and teal, DESIGN.md) for both the system setting and an explicit choice', () => {
     const html = renderMissionControlPage({});
     expect(html).toMatch(/prefers-color-scheme: dark[\s\S]*:root:not\(\[data-theme="light"\]\)/);
     expect(html).toContain(':root[data-theme="dark"]');
-    for (const value of ['--canvas: #09090B', '--surface: #18181B', '--line: #27272A', '--ok-bg: #052E16', '--alert-bg: #451A03', '--off-bg: #450A0A']) {
-      expect(html).toContain(value);
+    for (const value of ['--canvas: #080c14', '--surface: #0b1320', '--line: rgba(255,255,255,0.08)', '--accent: #00ffcc', '--on-accent: #041016', '--ok-bg: #052E16', '--alert-bg: #451A03', '--off-bg: #450A0A']) {
+      expect(html.split(value).length - 1, value).toBe(2);
     }
+    // One system: 6 / 8px corners and system fonts, and no blur anywhere (DESIGN.md).
+    expect(html).toContain('--radius-s: 6px;');
+    expect(html).toContain('--radius-m: 8px;');
+    expect(html).toContain('--font: -apple-system');
+    expect(html).not.toMatch(/backdrop-filter/);
   });
 
   it('toggles, saves the choice and updates the label', () => {

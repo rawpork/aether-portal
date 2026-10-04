@@ -506,6 +506,13 @@ export function mountBrainDock(container, options = {}) {
   render();
 
   return {
+    // Sends a typed turn as if entered in the dock (Mission Control's command bar). False while busy or halted.
+    send(text) {
+      const value = String(text || '').trim();
+      if (!value || view.busy || view.halted) return false;
+      sendTyped(value);
+      return true;
+    },
     getMode: () => view.mode,
     getSessionId: () => sessionId,
     elements: { panel, avatar, status, log, input, form, micButton, speakButton, sendButton, newButton, interim, hint },

@@ -62,8 +62,11 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).not.toMatch(/\n\s*\.btn-primary \{ width: 42px;/);
   expect(html).toMatch(/\.wfc-prompt \{[^}]*width: 100%;[^}]*min-width: 0;/);
   expect(html).toMatch(/\.wfc-prompt \{ flex: none; font-size: 16px;/);
-  // Phones hide the rail's Portal link, so the header carries a way back to the 3D space.
-  expect(html).toMatch(/<header class="mc-top">\s*<a class="mobile-return-btn" href="\/" aria-label="Return to the Portal \(3D space\)"/);
+  // The header opens with the ☰ menu tray, then (phones) the way back to the 3D space. The rail has no separate
+  // Portal item: its star logo is the way back on desktop.
+  expect(html).toMatch(/<header class="mc-top">\s*<button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail"[^>]*>[\s\S]*?<\/button>\s*<a class="mobile-return-btn" href="\/" aria-label="Return to the Portal \(3D space\)"/);
+  expect(html).not.toContain('rail-portal');
+  expect(html).toMatch(/<a class="rail-brand" href="\/" title="Back to the Aether Portal \(3D space\)">/);
   document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
   document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
 

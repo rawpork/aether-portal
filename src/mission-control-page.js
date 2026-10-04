@@ -20,6 +20,8 @@ const ICONS = {
 	pulse: icon('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
 	layers: icon('<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'),
 	clock: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+	mic: icon('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'),
+	menu: icon('<path d="M4 7h16M4 12h16M4 17h16"/>'),
 	console: icon('<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9.5 3 2.5-3 2.5"/><path d="M12.5 15H17"/>'),
 	nodes: icon('<rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="3" y="15" width="6" height="5" rx="1.5"/><rect x="15" y="9.5" width="6" height="5" rx="1.5"/><path d="M9 6.5c3 0 3 5.5 6 5.5M9 17.5c3 0 3-5.5 6-5.5"/>'),
 	back: icon('<path d="M10 6 4 12l6 6"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/>'),
@@ -68,14 +70,16 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <meta name="aether-engine-relay" content="${enginePublicUrl ? '1' : ''}">
   <meta name="aether-engine-public" content="${escapeAttr(enginePublicUrl)}">
   <style>
-    /* DESIGN_SYSTEM.md (Figma Operations edition): charcoal rail, cool-gray canvas, white 16px cards with zinc
-       hairlines, soft status pills. Red stays reserved for breakers. */
+    /* One visual system with the portal and the 3D viewer (DESIGN.md, System 2: the teal accent hybrid): navy rail,
+       solid panels with hairlines, 6 / 8px corners, system fonts, teal only for selection, primary actions and focus.
+       The light theme keeps light panels with a deeper teal so text on white stays readable. Red stays reserved for
+       breakers. No blur, no glow. */
     :root {
-      --rail: #18181B;
-      --rail-raised: #27272A;
-      --rail-line: #3F3F46;
-      --rail-text: #A1A1AA;
-      --rail-strong: #FAFAFA;
+      --rail: #0b1320;
+      --rail-raised: rgba(255,255,255,0.06);
+      --rail-line: rgba(255,255,255,0.10);
+      --rail-text: #8a93a6;
+      --rail-strong: #dffdf7;
       --canvas: #F4F5F7;
       --surface: #FFFFFF;
       --surface-soft: #F8FAFC;
@@ -85,9 +89,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --text-2: #3F3F46;
       --muted: #71717A;
       --faint: #A1A1AA;
-      --accent: #7C5CFC;
-      --accent-soft: #F3F0FF;
-      --accent-line: #C9BCFD;
+      --accent: #00796B;
+      --accent-soft: #E3F6F2;
+      --accent-line: #7FCFC0;
+      --on-accent: #FFFFFF;
       --lime: #D4F24A;
       --on-lime: #18181B;
       --ok-bg: #DCFCE7; --ok: #15803D; --ok-dot: #22C55E;
@@ -99,15 +104,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --danger-soft: #FEF6F6;
       --terminal: #1B201D;
       --terminal-text: #D7E8DE;
-      --radius-s: 8px;
-      --radius-m: 12px;
-      --radius-l: 16px;
+      --radius-s: 6px;
+      --radius-m: 8px;
+      --radius-l: 8px;
       --shadow: 0 1px 2px rgba(24,24,27,0.04);
       --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-      --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, system-ui, sans-serif;
       --rail-edge: transparent;
       --ink: #18181B; --on-ink: #FFFFFF; --ink-hover: #2E2E33;
-      --accent-tint: #EAE4FF;
+      --accent-tint: #CDEFE8;
       --ok-strong: #14532D;
       --alert-soft: #FFF7ED; --alert-line: #FED7AA;
       --danger-line: #F3B4B4;
@@ -121,21 +126,23 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) {
         color-scheme: dark;
-        --rail-edge: #27272A;
-        --canvas: #09090B;
-        --surface: #18181B;
-        --surface-soft: #1F1F23;
-        --line: #27272A;
-        --line-strong: #3F3F46;
-        --text: #FAFAFA;
-        --text-2: #D4D4D8;
-        --muted: #A1A1AA;
-        --faint: #71717A;
-        --ink: #FAFAFA; --on-ink: #18181B; --ink-hover: #E4E4E7;
-        --accent: #8F73FD;
-        --accent-soft: #1E1B2E;
-        --accent-line: #3B3363;
-        --accent-tint: #2A2448;
+        --rail: #060a11;
+        --rail-edge: rgba(255,255,255,0.08);
+        --canvas: #080c14;
+        --surface: #0b1320;
+        --surface-soft: #0f1928;
+        --line: rgba(255,255,255,0.08);
+        --line-strong: rgba(255,255,255,0.14);
+        --text: #dffdf7;
+        --text-2: #c2d3cf;
+        --muted: #8a93a6;
+        --faint: #5f6879;
+        --ink: #dffdf7; --on-ink: #080c14; --ink-hover: #b9f7ea;
+        --accent: #00ffcc;
+        --on-accent: #041016;
+        --accent-soft: rgba(0,255,204,0.14);
+        --accent-line: rgba(0,255,204,0.55);
+        --accent-tint: rgba(0,255,204,0.22);
         --ok-bg: #052E16; --ok: #86EFAC; --ok-strong: #BBF7D0;
         --alert-bg: #451A03; --alert: #FDBA74; --alert-soft: #2A1606; --alert-line: #7C2D12;
         --queued-bg: #27272A; --queued: #D4D4D8;
@@ -145,28 +152,30 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         --danger-soft: #1F0F0F;
         --danger-line: #7F1D1D;
         --danger-text: #FCA5A5;
-        --terminal: #0F1211;
+        --terminal: #05080e;
         --shadow: none;
         --flow-mcp: #4ADE80; --flow-a2a: #60A5FA; --flow-action: #FB923C;
       }
     }
     :root[data-theme="dark"] {
       color-scheme: dark;
-      --rail-edge: #27272A;
-      --canvas: #09090B;
-      --surface: #18181B;
-      --surface-soft: #1F1F23;
-      --line: #27272A;
-      --line-strong: #3F3F46;
-      --text: #FAFAFA;
-      --text-2: #D4D4D8;
-      --muted: #A1A1AA;
-      --faint: #71717A;
-      --ink: #FAFAFA; --on-ink: #18181B; --ink-hover: #E4E4E7;
-      --accent: #8F73FD;
-      --accent-soft: #1E1B2E;
-      --accent-line: #3B3363;
-      --accent-tint: #2A2448;
+      --rail: #060a11;
+      --rail-edge: rgba(255,255,255,0.08);
+      --canvas: #080c14;
+      --surface: #0b1320;
+      --surface-soft: #0f1928;
+      --line: rgba(255,255,255,0.08);
+      --line-strong: rgba(255,255,255,0.14);
+      --text: #dffdf7;
+      --text-2: #c2d3cf;
+      --muted: #8a93a6;
+      --faint: #5f6879;
+      --ink: #dffdf7; --on-ink: #080c14; --ink-hover: #b9f7ea;
+      --accent: #00ffcc;
+      --on-accent: #041016;
+      --accent-soft: rgba(0,255,204,0.14);
+      --accent-line: rgba(0,255,204,0.55);
+      --accent-tint: rgba(0,255,204,0.22);
       --ok-bg: #052E16; --ok: #86EFAC; --ok-strong: #BBF7D0;
       --alert-bg: #451A03; --alert: #FDBA74; --alert-soft: #2A1606; --alert-line: #7C2D12;
       --queued-bg: #27272A; --queued: #D4D4D8;
@@ -176,7 +185,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       --danger-soft: #1F0F0F;
       --danger-line: #7F1D1D;
       --danger-text: #FCA5A5;
-      --terminal: #0F1211;
+      --terminal: #05080e;
       --shadow: none;
       --flow-mcp: #4ADE80; --flow-a2a: #60A5FA; --flow-action: #FB923C;
     }
@@ -229,6 +238,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-greeting { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mc-actions { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin-left: auto; }
     /* Phones and small tablets: the rail's Portal link is hidden there, so the header carries the way back. */
+    .menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    .menu-toggle:hover { background: var(--surface-soft); }
+    .menu-toggle:active { transform: scale(0.98); }
     .mobile-return-btn { display: none; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); text-decoration: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     .mobile-return-btn:hover { background: var(--surface-soft); }
     .mobile-return-btn:active { transform: scale(0.96); }
@@ -275,7 +287,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .switch:disabled:not([aria-checked="true"]) { background: var(--line-strong); }
     .switch-row { display: inline-flex; align-items: center; gap: 8px; }
     .switch-text { font-size: 12px; color: var(--switch-on); font-weight: 600; min-width: 20px; }
-    .avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; color: #fff; font-weight: 700; font-size: 14px; background: var(--accent); }
+    .avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; color: var(--on-accent); font-weight: 700; font-size: 14px; background: var(--accent); }
     .avatar-lg { width: 54px; height: 54px; border-radius: 13px; font-size: 18px; }
     [data-tone="violet"] { --tone: #7C5CFC; }
     [data-tone="blue"] { --tone: #3B7DDD; }
@@ -446,7 +458,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .oc-panes { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 8px 24px 24px; }
     .oc-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
     .oc-pane-title { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-    .oc-count { padding: 1px 7px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; letter-spacing: 0; }
+    .oc-count { padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 11px; letter-spacing: 0; }
     .oc-empty { margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius-m); color: var(--muted); font-size: 13px; }
     .oc-log { list-style: none; margin: 0; padding: 10px 12px; height: min(60vh, 560px); overflow-y: auto; border-radius: var(--radius-m); background: var(--terminal); color: var(--terminal-text); font-family: var(--mono); font-size: 12px; line-height: 1.55; }
     .oc-log:empty { display: none; }
@@ -464,9 +476,49 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .oc-chip { min-height: 40px; padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
     .oc-chip:hover:not(:disabled), .oc-chip:focus-visible { border-color: var(--accent); outline: none; }
     .oc-chip:disabled { cursor: default; opacity: 0.55; }
-    .oc-chip.chosen { border-color: var(--accent); background: var(--accent); color: #fff; opacity: 1; }
+    .oc-chip.chosen { border-color: var(--accent); background: var(--accent); color: var(--on-accent); opacity: 1; }
     .oc-chip-num { font-family: var(--mono); font-weight: 600; }
     .oc-prompt-message { margin: 8px 0 0; min-height: 1em; font-size: 12px; color: var(--muted); }
+    .oc-tabs { padding: 0 24px; }
+    /* Agent dialogue (public/js/engine/agent-dialogue.js): one thread per run, a coloured badge per agent. */
+    .ad { padding: 8px 24px 24px; }
+    .ad-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .ad-picker { min-height: 40px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }
+    .ad-thread { list-style: none; margin: 0; padding: 4px 2px; display: flex; flex-direction: column; gap: 12px; max-height: min(64vh, 640px); overflow-y: auto; }
+    .ad-thread:empty { display: none; }
+    .ad-turn { --agent: var(--accent); padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--agent); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .ad-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .ad-badge { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--radius-s); background: var(--agent); color: #041016; font-size: 11px; font-weight: 700; }
+    .ad-name { font-size: 14px; }
+    .ad-meta { margin-left: auto; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+    .ad-brief { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
+    .ad-brief summary { cursor: pointer; }
+    .ad-brief p { margin: 6px 0 0; white-space: pre-wrap; }
+    .ad-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.55; }
+    .ad-handoff { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--agent); border-radius: var(--radius-s); font-size: 13px; white-space: pre-wrap; }
+    .ad-handoff-label { display: block; margin-bottom: 2px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+    .ad-typing .ad-meta::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--agent); animation: ad-pulse 1.2s ease-in-out infinite; }
+    @keyframes ad-pulse { 50% { opacity: 0.25; } }
+    @media (prefers-reduced-motion: reduce) { .ad-typing .ad-meta::after { animation: none; } }
+    .ad-choice { list-style: none; }
+    .ad-chosen { color: var(--accent); font-size: 13px; font-weight: 600; }
+    .ad-pending { padding: 4px 14px; color: var(--faint); font-size: 12px; }
+    .ad-system { padding: 4px 14px; color: var(--muted); font-size: 12px; text-align: center; }
+    .ad-system[data-tone="alert"] { color: var(--alert); }
+    .ad-system[data-tone="ok"] { color: var(--ok); }
+    /* Command bar (public/js/engine/command-bar.js): ask Elarion from any view; the mic types by voice. */
+    .mc-command { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px calc(40px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) 40px; border-top: 1px solid var(--line); background: var(--surface); }
+    body[data-view="elaron"] .mc-command { display: none; }
+    .mc-command input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--canvas); color: var(--text); font: inherit; font-size: 16px; }
+    .mc-command input:focus { outline: none; border-color: var(--accent-line); }
+    .mc-command button { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+    .mc-command button[type="submit"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+    .mc-command button:active { transform: scale(0.98); }
+    .mc-command .mic[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+    @media (max-width: 680px) {
+      .mc-command { padding: 8px calc(12px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)); }
+      .oc-tabs, .ad { padding-left: 14px; padding-right: 14px; }
+    }
     @media (max-width: 900px) {
       .oc-panes { grid-template-columns: 1fr; padding: 8px 14px 18px; }
       .oc-pane-prompts { order: -1; }
@@ -631,7 +683,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .brain-hint { min-height: 1em; margin: 0; padding: 4px 22px 14px; color: var(--muted); font-size: 11px; }
     .elaron { position: relative; flex: none; width: 42px; height: 42px; }
     .elaron-core, .elaron-ring { position: absolute; border-radius: 50%; }
-    .elaron-core { inset: 9px; background: radial-gradient(circle at 35% 30%, #E4DCFF, #7C5CFC 55%, #3A2A86); }
+    .elaron-core { inset: 9px; background: radial-gradient(circle at 35% 30%, #D6FFF5, #00C9A7 55%, #0B4F48); }
     .elaron-ring { inset: 2px; border: 2px solid var(--accent-line); opacity: 0.6; }
     .elaron[data-mode="connecting"] .elaron-ring { border-style: dashed; opacity: 0.9; animation: elaron-spin 2.4s linear infinite; }
     .elaron[data-mode="listening"] .elaron-ring { border-color: var(--accent); animation: elaron-listen 1.2s ease-out infinite; }
@@ -872,18 +924,21 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .engine-badge[data-state="HALTED"] { animation: none; }
       .elaron-ring, .elaron-core { animation: none !important; }
       .elaron[data-mode="listening"] .elaron-ring, .elaron[data-mode="thinking"] .elaron-ring { opacity: 1; border-color: var(--accent); }
-      .mc-progress-fill, .bar-fill, .switch, .switch-knob { transition: none; }
+      .mc-progress-fill, .bar-fill, .switch, .switch-knob, .mc-rail { transition: none; }
       .wfc-line, .wfc-port::before { transition: none; }
       .wfc-shake { animation: none; }
     }
     /* Medium screens: the detail panel moves under the workforce, whose cards go two across. */
+    /* The menu tray folded to icons (☰ on desktop, or a medium screen by default). */
+    @media (min-width: 680.02px) {
+      body[data-rail="icons"] .mc-rail { width: 84px; padding-left: 12px; padding-right: 12px; align-items: center; }
+      body[data-rail="icons"] .rail-brand { padding: 0 0 22px; }
+      body[data-rail="icons"] .rail-brand-word, body[data-rail="icons"] .rail-label, body[data-rail="icons"] .rail-compute, body[data-rail="icons"] .rail-user-text { display: none; }
+      body[data-rail="icons"] .rail-item { justify-content: center; padding: 0; width: 52px; position: relative; }
+      body[data-rail="icons"] .rail-count { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; font-size: 10px; padding: 0 4px; }
+      body[data-rail="icons"] .rail-user { justify-content: center; padding: 14px 0 4px; }
+    }
     @media (max-width: 1180px) {
-      .mc-rail { width: 84px; padding-left: 12px; padding-right: 12px; align-items: center; }
-      .rail-brand { padding: 0 0 22px; }
-      .rail-brand-word, .rail-label, .rail-compute, .rail-user-text { display: none; }
-      .rail-item { justify-content: center; padding: 0; width: 52px; position: relative; }
-      .rail-count { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; font-size: 10px; padding: 0 4px; }
-      .rail-user { justify-content: center; padding: 14px 0 4px; }
       .wf-split { grid-template-columns: minmax(0, 1fr); }
       .wf-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
       .wf-detail { position: static; }
@@ -903,19 +958,14 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .mc-breaker .engine-trip-long { display: none; }
       .mc-breaker .engine-trip-short { display: inline; }
     }
-    /* Phones: the rail becomes a bottom tab bar; the header keeps the breaker and drops the clock. */
+    /* Phones: the rail is a menu tray that slides in from the left under ☰ (like Claude and Gemini), over a scrim
+       that closes it; the header keeps the breaker and drops the clock. */
     @media (max-width: 680px) {
       body { flex-direction: column; }
-      .mc-rail { order: 2; width: auto; flex-direction: row; align-items: center; justify-content: space-around; gap: 0; padding: 6px calc(6px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px)); overflow: visible; }
-      .rail-brand, .rail-spacer, .rail-user, .rail-portal { display: none; }
-      .rail-nav { flex-direction: row; display: contents; }
-      .rail-item { width: auto; flex: 1; min-height: 52px; flex-direction: column; gap: 3px; border-radius: 10px; font-size: 10.5px; }
-      .rail-item .rail-label { display: block; flex: none; }
-      /* Seven slots share the bar, so long labels switch to their short form (Control, Runs, Engine, Theme). */
-      .rail-item .rail-label[data-short] { font-size: 0; }
-      .rail-item .rail-label[data-short]::after { content: attr(data-short); font-size: 10.5px; }
-      .rail-count { top: 2px; right: calc(50% - 22px); }
-      .mc-canvas { order: 1; min-height: 0; }
+      .mc-rail { position: fixed; z-index: 300; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); border-right: 1px solid var(--rail-line); }
+      body.rail-open .mc-rail { transform: none; }
+      .mc-scrim { position: fixed; inset: 0; z-index: 290; border: 0; padding: 0; background: rgba(0,0,0,0.5); }
+      .mc-canvas { min-height: 0; }
       .mc-top { gap: 8px 10px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
       .mc-heading { flex: 1 1 150px; min-width: 0; }
       /* Wraps to a second line rather than clipping the name on the narrowest phones. */
@@ -963,8 +1013,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   </style>
 </head>
 <body data-view="overview">
-  <aside class="mc-rail" aria-label="Aether">
-    <a class="rail-brand" href="/" title="Back to the Aether Portal"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
+  <aside class="mc-rail" id="mc-rail" aria-label="Aether">
+    <a class="rail-brand" href="/" title="Back to the Aether Portal (3D space)"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
     <nav class="rail-nav" aria-label="Mission Control views">
       <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
@@ -978,7 +1028,6 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         <div class="rail-compute-bar" aria-hidden="true"><span id="mc-compute-bar"></span></div>
         <div class="rail-compute-sub" id="mc-compute-sub">tokens · 0 / 0 runs done</div>
       </div>
-      <a class="rail-item rail-portal" href="/" title="Aether Portal">${ICONS.home}<span class="rail-label">Portal</span></a>
       <a class="rail-item" id="mc-nav-engine" href="#" title="Engine State: the Aether Engine's own status page">${ICONS.engine}<span class="rail-label" data-short="Engine">Engine State</span></a>
       <button type="button" class="rail-item" id="mc-nav-connect" aria-controls="mc-view-connect" title="Settings">${ICONS.gear}<span class="rail-label">Settings</span></button>
       <button type="button" class="rail-item" id="mc-theme-toggle" title="Switch between light and dark">${ICONS.theme}<span class="rail-label" id="mc-theme-label" data-short="Theme">Dark mode</span></button>
@@ -988,8 +1037,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <span class="rail-user-text"><span class="rail-user-name">${escapeAttr(displayName || 'Operator')}</span><span class="rail-user-role">${escapeAttr(role || (tier === 'pro' ? 'Pro operator' : 'Operator'))}</span></span>
     </div>
   </aside>
+  <button type="button" class="mc-scrim" id="mc-scrim" aria-label="Close menu" hidden></button>
   <div class="mc-canvas">
     <header class="mc-top">
+      <button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" title="Menu" aria-label="Menu">${ICONS.menu}</button>
       <a class="mobile-return-btn" href="/" aria-label="Return to the Portal (3D space)" title="Return to the Portal (3D space)">${ICONS.back}</a>
       <div class="mc-heading">
         <p class="mc-crumbs">Operations / <span id="mc-crumb-view">Mission Control</span></p>
@@ -1020,7 +1071,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <div class="mc-view" id="mc-view-operator" hidden>
         <section class="surface mc-panel" aria-labelledby="mc-operator-title">
           <div class="mc-panel-head"><h2 id="mc-operator-title">Operator Console</h2><span id="mc-operator-status" class="mc-muted" aria-live="polite"></span></div>
-          <div id="mc-operator"></div>
+          <div class="subtabs oc-tabs" role="tablist" aria-label="Operator views">
+            <button type="button" role="tab" id="mc-operator-tab-log" aria-controls="mc-operator" aria-selected="true">Live log</button>
+            <button type="button" role="tab" id="mc-operator-tab-dialogue" aria-controls="mc-dialogue" aria-selected="false" tabindex="-1">Agent dialogue</button>
+          </div>
+          <div id="mc-operator" role="tabpanel" aria-labelledby="mc-operator-tab-log"></div>
+          <div id="mc-dialogue" role="tabpanel" aria-labelledby="mc-operator-tab-dialogue" hidden></div>
         </section>
       </div>
       <div class="mc-view" id="mc-view-monitor" hidden>
@@ -1039,6 +1095,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         </section>
       </div>
     </main>
+    <form class="mc-command" id="mc-command" autocomplete="off" aria-label="Command bar">
+      <label class="mc-visually-hidden" for="mc-command-input">Ask Elarion</label>
+      <input id="mc-command-input" type="text" enterkeyhint="send" placeholder="Ask Elarion, or describe what to do…" maxlength="4000">
+      <button type="button" class="mic" id="mc-command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone">${ICONS.mic}</button>
+      <button type="submit">Send</button>
+    </form>
   </div>
   <noscript><p class="mc-section">Mission Control needs JavaScript.</p></noscript>
   <script type="module" src="/js/engine/mission-control.js?v=${v}"></script>

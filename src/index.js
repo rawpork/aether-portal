@@ -1483,6 +1483,81 @@ export default {
       #thumb-wheel { transition: none; }
     }
     body.xr-presenting #thumb-wheel { display: none; }
+    /* Command bar: text first, with a mic that types by voice. Desktop: bottom centre, between the Categories list and
+       the wheel. Phones: beside the wheel, with the Categories pill lifted above it. Hidden while a card is open (the
+       card has its own Ask box), in a headset and over an expanded sheet. */
+    #command-bar {
+      position: fixed;
+      left: 50%;
+      bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: clamp(260px, calc(100vw - 560px), 560px);
+      padding: 4px;
+      transform: translateX(-50%);
+      box-sizing: border-box;
+      border: var(--hairline);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+    }
+    #command-input {
+      flex: 1;
+      min-width: 0;
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+    }
+    #command-input::placeholder { color: var(--text-muted); }
+    #command-input:focus { outline: none; border-color: var(--accent-line); }
+    #command-mic {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 40px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    #command-mic[aria-pressed="true"] { border-color: var(--accent-line); color: var(--accent); }
+    #command-mic:disabled { opacity: 0.4; cursor: default; }
+    #command-mic:active { transform: scale(0.98); }
+    #command-hint {
+      position: absolute;
+      left: 4px;
+      right: 4px;
+      bottom: calc(100% + 6px);
+      margin: 0;
+      padding: 6px 10px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-panel);
+      color: var(--text);
+      font-size: 13px;
+    }
+    .visually-hidden-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    body.card-open #command-bar, body.xr-presenting #command-bar, body:has(#cluster-drawer.expanded) #command-bar { display: none; }
+    @media (max-width: 767px) {
+      #command-bar {
+        left: 10px;
+        right: calc(164px * var(--wheel-grow, 1) + 4px);
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        width: auto;
+        transform: none;
+      }
+      body.drawer-open #command-bar { display: none; }
+      body:not(.card-open):not(.drawer-open) #legend { bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+    }
     .thumb-wheel-svg { display: block; overflow: hidden; pointer-events: none; font-family: inherit; user-select: none; -webkit-user-select: none; }
     .thumb-wheel-svg path, .thumb-wheel-svg text { pointer-events: auto; cursor: grab; }
     .thumb-wheel-svg .thumb-wheel-hub path, .thumb-wheel-svg .thumb-wheel-hub text { cursor: pointer; }
@@ -3074,6 +3149,12 @@ export default {
 
   <div id="3d-graph" style="width:100vw;height:100vh;margin:0;padding:0;overflow:hidden;"></div>
   <div id="thumb-wheel"><div class="wheel-actions"><button type="button" id="wheel-home" title="Home: recentre the current view (Home or H)" aria-label="Recentre view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div></div>
+  <form id="command-bar" autocomplete="off" aria-label="Command bar">
+    <label class="visually-hidden-label" for="command-input">Search or command</label>
+    <input id="command-input" type="text" enterkeyhint="go" maxlength="500" placeholder="Search, or: add …, ask …, go to …">
+    <button type="button" id="command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+    <p id="command-hint" role="status" aria-live="polite" hidden></p>
+  </form>
   <div id="media-player" hidden>
     <div id="media-frame"></div>
     <button type="button" id="media-close" title="Close video" aria-label="Close video">×</button>
@@ -3270,6 +3351,7 @@ export default {
     const BASE_NODE_OPACITY = 0.75;
     const BASE_LINK_OPACITY = 0.2;
     const focus = { node: null, nodeIds: new Set() };
+    const commandBar = document.getElementById('command-bar');
     // This tab's id for live sync (sent with API writes, so the tab skips its own events).
     const LIVE_CLIENT_ID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + String(Math.random()).slice(2);
     // Link to… pick mode: { source, relation } while waiting for a tap on the target card (declared early: node clicks read it).
@@ -5443,6 +5525,9 @@ export default {
       const free = getFreeView(getCardCover());
       const centreX = canvas.left + canvas.width * (1 + free.centreX) / 2;
       let freeBottom = canvas.top + canvas.height * (1 - free.centreY + free.height) / 2;
+      // Clear of the command bar along the bottom.
+      const commandBox = commandBar.getBoundingClientRect();
+      if (commandBox.height) freeBottom = Math.min(freeBottom, commandBox.top - 8 + (compactLayout.matches ? GALLERY_NAV_BOTTOM_COMPACT : GALLERY_NAV_BOTTOM));
       // Phones: the group list's small tab sits in the bottom-left corner (it does not count as a covering sheet), so
       // the arrows stand just above it.
       if (compactLayout.matches && clusterDrawer.classList.contains('open') && !clusterDrawer.classList.contains('expanded')) {
@@ -8400,6 +8485,135 @@ export default {
         setLinksStatus(err.message || 'Delete failed.', true);
       }
     };
+
+    // ---- Command bar: plain text searches; "add ..." opens Add Node, "ask ..." asks Elarion about the open card or
+    // group, "go to <category>" highlights that category and flies to it, "clear" resets. The mic types by voice
+    // (Web Speech API, where the browser has it); nothing runs until Enter. (No backslashes here: template string.) ----
+    const commandInput = document.getElementById('command-input');
+    const commandMic = document.getElementById('command-mic');
+    const commandHint = document.getElementById('command-hint');
+    let commandHintTimer = null;
+    const showCommandHint = text => {
+      clearTimeout(commandHintTimer);
+      commandHint.textContent = text;
+      commandHint.hidden = false;
+      commandHintTimer = setTimeout(() => { commandHint.hidden = true; }, 4000);
+    };
+    const findCategory = name => {
+      const wanted = name.toLowerCase().split('_').join(' ').trim();
+      const categories = [...new Set(graphData.nodes.map(getNodeCategory))];
+      return categories.find(c => c.split('_').join(' ') === wanted)
+        || categories.find(c => c.split('_').join(' ').indexOf(wanted) === 0)
+        || categories.find(c => c.split('_').join(' ').indexOf(wanted) !== -1)
+        || null;
+    };
+    const runCommand = text => {
+      const space = text.indexOf(' ');
+      const verb = (space === -1 ? text : text.slice(0, space)).toLowerCase().split(':').join('');
+      let rest = space === -1 ? '' : text.slice(space + 1).trim();
+      if (['add', 'note', 'save', 'new'].includes(verb) && rest) {
+        const isUrl = /^https?:/i.test(rest);
+        let title = rest;
+        if (isUrl) {
+          try { title = new URL(rest).hostname; } catch (err) { title = 'Link'; }
+        }
+        openAddNodeModal({ title: truncate(title, 200), content: isUrl ? rest : '' });
+        return;
+      }
+      if (verb === 'ask' && rest) {
+        if (focus.node && nodeCard.style.display === 'block') {
+          cardAskInput.value = rest;
+          cardAskButton.click();
+        } else if (clusterDrawer.classList.contains('open')) {
+          drawerAskInput.value = rest;
+          drawerAskButton.click();
+        } else {
+          showCommandHint('Open a card or a group first, then ask about it.');
+        }
+        return;
+      }
+      if (['go', 'fly', 'show', 'goto'].includes(verb) && rest) {
+        if (rest.toLowerCase().indexOf('to ') === 0) rest = rest.slice(3).trim();
+        const category = findCategory(rest);
+        if (!category) {
+          showCommandHint('No category called "' + truncate(rest, 40) + '".');
+          return;
+        }
+        if (filterState.view !== 'graph') setView('graph');
+        filterState.highlighted = new Set([category]);
+        applyGraphFilters();
+        cancelPendingFit();
+        if (focus.node) hideNodeCard();
+        if (gallery) closeClusterDrawer({ fly: false });
+        if (gallery) exitGallery({ fly: false });
+        flyToCategory(category);
+        return;
+      }
+      if (['clear', 'reset'].includes(verb) && !rest) {
+        searchInput.value = '';
+        filterState.query = '';
+        filterState.highlighted = new Set();
+        applyGraphFilters();
+        showCommandHint('Search and highlights cleared.');
+        return;
+      }
+      searchInput.value = text;
+      filterState.query = text.toLowerCase();
+      applyGraphFilters();
+      reframeAfterFilter();
+      showCommandHint(Graph.graphData().nodes.length + ' card(s) match "' + truncate(text, 40) + '".');
+    };
+    commandBar.addEventListener('submit', event => {
+      event.preventDefault();
+      const text = commandInput.value.trim();
+      if (!text) return;
+      if (commandVoice) commandVoice.stop();
+      commandInput.value = '';
+      commandInput.blur();
+      runCommand(text);
+    });
+    // Voice input hook: fills the bar; Enter (or Go) runs it.
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let commandVoice = null;
+    if (SpeechRecognitionCtor) {
+      let listening = false;
+      let recognition = null;
+      let before = '';
+      const setListening = on => {
+        listening = on;
+        commandMic.setAttribute('aria-pressed', String(on));
+        commandMic.title = on ? 'Listening… (tap to stop)' : 'Speak (Microphone)';
+      };
+      commandVoice = {
+        start() {
+          recognition = new SpeechRecognitionCtor();
+          recognition.lang = navigator.language || 'en-US';
+          recognition.interimResults = true;
+          recognition.onresult = event => {
+            let heard = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) heard += event.results[i][0].transcript;
+            commandInput.value = (before ? before + ' ' : '') + heard.trim();
+          };
+          recognition.onend = () => { setListening(false); commandInput.focus(); };
+          recognition.onerror = () => setListening(false);
+          try {
+            recognition.start();
+            setListening(true);
+          } catch (err) {
+            setListening(false);
+          }
+        },
+        stop() { if (recognition && listening) recognition.stop(); }
+      };
+      commandMic.addEventListener('click', () => {
+        before = commandInput.value.trim();
+        if (listening) commandVoice.stop();
+        else commandVoice.start();
+      });
+    } else {
+      commandMic.disabled = true;
+      commandMic.title = 'Voice input is not available in this browser';
+    }
 
     // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
     // finish(updated, processed, bodies), when given, runs after the graph reloads; returning true skips the summary alert.

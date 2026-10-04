@@ -9,6 +9,8 @@ import { mountBrainDock } from './brain-dock.js';
 import { describeUnreachableEngine, mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { mountOperatorConsole } from './operator-console.js';
+import { mountAgentDialogue } from './agent-dialogue.js';
+import { mountCommandBar } from './command-bar.js';
 import { mountStudioCanvas } from './studio-canvas.js';
 import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
@@ -18,6 +20,101 @@ import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 // view -> sidebar button id (its aria-controls names the view's panel). #studio / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
 const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', blueprints: 'mc-nav-blueprints', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
 const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', blueprints: 'Projects', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
+
+// A set of tabs over panels (Operator: Live log / Agent dialogue): roving tabindex, arrow keys move between them.
+export function setupTabset(doc, pairs, onChange = () => {}) {
+  const tabs = pairs.map(([tabId, panelId]) => ({ tab: doc.getElementById(tabId), panel: doc.getElementById(panelId) })).filter((t) => t.tab && t.panel);
+  if (!tabs.length) return null;
+  function select(index, focus = false) {
+    tabs.forEach((t, i) => {
+      const on = i === index;
+      t.tab.setAttribute('aria-selected', String(on));
+      t.tab.setAttribute('tabindex', on ? '0' : '-1');
+      t.panel.hidden = !on;
+      if (on && focus) t.tab.focus();
+    });
+    onChange(index);
+  }
+  tabs.forEach((t, i) => {
+    t.tab.addEventListener('click', () => select(i));
+    t.tab.addEventListener('keydown', (event) => {
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      event.preventDefault();
+      select((i + step + tabs.length) % tabs.length, true);
+    });
+  });
+  return { select };
+}
+
+// Menu tray (☰), like Claude and Gemini. Desktop: the rail folds to icons and back, remembered per browser (medium
+// screens start folded). Phones: the rail is a drawer that slides in over a scrim; picking a view, the scrim or Escape
+// closes it.
+export const RAIL_KEY = 'aether.mc.rail';
+export function setupMenuTray(doc, { win = doc.defaultView, storage = win.localStorage } = {}) {
+  const body = doc.body;
+  const toggle = doc.getElementById('mc-menu-toggle');
+  const scrim = doc.getElementById('mc-scrim');
+  const rail = doc.getElementById('mc-rail');
+  if (!toggle || !rail) return null;
+  const phone = win.matchMedia('(max-width: 680px)');
+  const medium = win.matchMedia('(max-width: 1180px)');
+  let preference = null;
+  try {
+    preference = storage.getItem(RAIL_KEY);
+  } catch { /* storage blocked */ }
+  const isOpen = () => body.classList.contains('rail-open');
+  function apply() {
+    if (phone.matches) {
+      body.dataset.rail = 'full';
+      toggle.setAttribute('aria-expanded', String(isOpen()));
+      return;
+    }
+    body.classList.remove('rail-open');
+    if (scrim) scrim.hidden = true;
+    const mode = preference === 'icons' || preference === 'full' ? preference : medium.matches ? 'icons' : 'full';
+    body.dataset.rail = mode;
+    toggle.setAttribute('aria-expanded', String(mode === 'full'));
+  }
+  function open() {
+    body.classList.add('rail-open');
+    if (scrim) scrim.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+    const first = rail.querySelector('.rail-item');
+    if (first) first.focus();
+  }
+  function close(focusToggle = true) {
+    if (!isOpen()) return;
+    body.classList.remove('rail-open');
+    if (scrim) scrim.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    if (focusToggle) toggle.focus();
+  }
+  toggle.addEventListener('click', () => {
+    if (phone.matches) {
+      if (isOpen()) close();
+      else open();
+      return;
+    }
+    preference = body.dataset.rail === 'full' ? 'icons' : 'full';
+    try {
+      storage.setItem(RAIL_KEY, preference);
+    } catch { /* storage blocked */ }
+    apply();
+  });
+  if (scrim) scrim.addEventListener('click', () => close());
+  doc.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && isOpen()) close();
+  });
+  rail.addEventListener('click', (event) => {
+    if (phone.matches && event.target.closest('.rail-item')) close(false);
+  });
+  const listen = (query) => (query.addEventListener ? query.addEventListener('change', apply) : query.addListener(apply));
+  listen(phone);
+  listen(medium);
+  apply();
+  return { open, close, apply, getMode: () => body.dataset.rail };
+}
 
 // Studio sub-tabs (Workflow console, Engine activity): roving tabindex, arrow keys move between them.
 export function setupStudioTabs(doc, onChange = () => {}) {
@@ -191,6 +288,10 @@ export async function mountMissionControl(doc = document, options = {}) {
       operatorCount.textContent = String(count);
     },
   }) : null;
+  const dialogue = byId('mc-dialogue') ? mountAgentDialogue(byId('mc-dialogue'), { api }) : null;
+  const operatorTabs = setupTabset(doc, [['mc-operator-tab-log', 'mc-operator'], ['mc-operator-tab-dialogue', 'mc-dialogue']], (index) => {
+    if (index === 1 && dialogue) dialogue.refresh();
+  });
   const wizard = mountConnectionWizard(byId('mc-connect'), { api, ...options.wizard });
   // Opens Settings once tabs exist (the badge can be clicked before then only in theory).
   const quickSetup = mountQuickSetup(byId('mc-quick-setup'), {
@@ -244,11 +345,27 @@ export async function mountMissionControl(doc = document, options = {}) {
       if (editor) editor.focus();
     });
   }
+  const tray = setupMenuTray(doc);
+  // Command bar: whatever is typed (or spoken) goes to Elarion, and the view opens on the reply.
+  const commandForm = byId('mc-command');
+  const commandBar = commandForm ? mountCommandBar(commandForm, {
+    input: byId('mc-command-input'),
+    mic: byId('mc-command-mic'),
+    win: doc.defaultView || globalThis,
+    onSubmit: (text) => {
+      tabs.select('elaron');
+      if (!dock.send(text)) {
+        // Busy or halted: leave the text in the dock's own box so it isn't lost.
+        dock.elements.input.value = text;
+        dock.elements.input.focus();
+      }
+    },
+  }) : null;
   const stopHeader = startHeader(doc);
   offerPairingFromLink(doc, wizard, tabs);
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, operator, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, operator, dialogue, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();
