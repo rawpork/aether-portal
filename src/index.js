@@ -1189,6 +1189,44 @@ export default {
     #topbar .user-greeting[hidden] { display: none; }
     #topbar #search-input { flex: 1; min-width: 0; max-width: 640px; margin-right: auto; }
     #menu-toggle { flex: none; width: 36px; padding: 0; justify-content: center; }
+    /* Time range chip (top bar): the span on screen, one tap to change it. */
+    .scope-chip-wrap { position: relative; flex: none; }
+    #scope-chip { gap: 6px; padding: 0 10px; font-weight: 600; white-space: nowrap; }
+    #scope-chip[aria-expanded="true"] { border-color: var(--accent-line); color: var(--accent); }
+    .scope-chip-caret { color: var(--text-muted); font-size: 10px; }
+    #scope-menu {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 31;
+      min-width: 190px;
+      padding: 4px;
+      box-sizing: border-box;
+      border: var(--hairline);
+      border-radius: var(--radius-m);
+      background: var(--bg-panel);
+    }
+    #scope-menu[hidden] { display: none; }
+    #scope-menu button {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 44px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: var(--radius-s);
+      background: none;
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      text-align: left;
+      cursor: pointer;
+    }
+    #scope-menu button:hover, #scope-menu button:focus-visible { background: var(--bg-raised); outline: none; }
+    #scope-menu button[aria-checked="true"] { color: var(--accent); font-weight: 600; }
+    #scope-menu .scope-count { margin-left: auto; color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    #scope-menu .scope-check { width: 14px; color: var(--accent); }
     /* Menu tray (☰): slides in from the left over the graph on every screen size, like Claude and Gemini; the scrim,
        Escape or ✕ close it. The controls inside keep their own ids and behaviour; these rules only lay them out as
        stacked sections. */
@@ -2973,6 +3011,10 @@ export default {
     <button type="button" class="bar-btn" id="menu-toggle" aria-controls="portal-tray" aria-expanded="false" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <span class="brand">Aether</span>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
+    <div class="scope-chip-wrap">
+      <button type="button" class="bar-btn" id="scope-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="scope-menu" title="Time range"><span id="scope-chip-label">All</span><span class="scope-chip-caret" aria-hidden="true">▾</span></button>
+      <div id="scope-menu" role="menu" aria-label="Time range" hidden></div>
+    </div>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   </header>
   <!-- Menu tray (☰): everything that used to crowd the top bar and the filter row, in one panel that slides in from the left. -->
@@ -5906,8 +5948,64 @@ export default {
     const scopeLabel = document.getElementById('scope-label');
     const scopeNarrow = document.getElementById('scope-narrow');
     const scopeWiden = document.getElementById('scope-widen');
+    // ---- Time range chip (top bar): shows the span on screen; tap for Today / Week / Month / Groups / All, each with
+    // how many cards it holds. Changes from the wheel or the tray's stepper show here too (renderScope). ----
+    const SCOPE_CHIP_LABELS = { day: 'Today', week: 'Week', month: 'Month', groups: 'Groups', all: 'All' };
+    const scopeChip = document.getElementById('scope-chip');
+    const scopeChipLabel = document.getElementById('scope-chip-label');
+    const scopeMenu = document.getElementById('scope-menu');
+    const closeScopeMenu = (focusChip = false) => {
+      if (scopeMenu.hidden) return;
+      scopeMenu.hidden = true;
+      scopeChip.setAttribute('aria-expanded', 'false');
+      if (focusChip) scopeChip.focus();
+    };
+    const openScopeMenu = () => {
+      scopeMenu.replaceChildren(...SCOPES.map(horizon => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.setAttribute('role', 'menuitemradio');
+        item.setAttribute('aria-checked', String(horizon === filterState.horizon));
+        const check = document.createElement('span');
+        check.className = 'scope-check';
+        check.textContent = horizon === filterState.horizon ? '✓' : '';
+        const name = document.createElement('span');
+        name.textContent = SCOPE_LABELS[horizon];
+        const count = document.createElement('span');
+        count.className = 'scope-count';
+        count.textContent = horizon === 'groups' ? '' : String(graphData.nodes.filter(node => isWithinHorizon(node, horizon)).length);
+        item.append(check, name, count);
+        item.addEventListener('click', () => {
+          closeScopeMenu();
+          setScope(horizon);
+        });
+        return item;
+      }));
+      scopeMenu.hidden = false;
+      scopeChip.setAttribute('aria-expanded', 'true');
+      const current = scopeMenu.querySelector('[aria-checked="true"]') || scopeMenu.firstElementChild;
+      if (current) current.focus();
+    };
+    scopeChip.addEventListener('click', () => (scopeMenu.hidden ? openScopeMenu() : closeScopeMenu()));
+    document.addEventListener('pointerdown', event => {
+      if (!scopeMenu.hidden && !event.target.closest('.scope-chip-wrap')) closeScopeMenu();
+    });
+    scopeMenu.addEventListener('keydown', event => {
+      const items = [...scopeMenu.querySelectorAll('button')];
+      const index = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeScopeMenu(true);
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const next = items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length];
+        if (next) next.focus();
+      }
+    });
     const renderScope = () => {
       syncThumbWheel();
+      scopeChipLabel.textContent = SCOPE_CHIP_LABELS[filterState.horizon] || 'All';
+      scopeChip.title = 'Time range: ' + (SCOPE_LABELS[filterState.horizon] || 'All time') + ' (' + currentVisibleNodes.length + ' cards)';
       const index = SCOPES.indexOf(filterState.horizon);
       scopeLabel.textContent = (SCOPE_LABELS[filterState.horizon] || 'All time') + ' · ' + currentVisibleNodes.length;
       scopeNarrow.disabled = index <= 0;
