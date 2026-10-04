@@ -168,6 +168,24 @@ export type TaskOutcome = TaskCompleted | TaskHalted;
 
 export type TaskStatus = 'RUNNING' | 'COMPLETED' | 'HALTED' | 'FAILED';
 
+// A choice step waiting for the operator (the task stays RUNNING); options are numbered from 1.
+export interface PendingChoice {
+	step_index: number;
+	step_id: string;
+	question: string;
+	options: string[];
+	asked_at: string;
+	expires_at: string;
+}
+
+export interface ChoiceMade {
+	step_id: string;
+	question: string;
+	option: number;
+	choice: string;
+	at: string;
+}
+
 export interface TaskHistoryEntry {
 	at: string;
 	event: 'STARTED' | 'STEP_STARTED' | 'STEP_COMPLETED' | 'STEP_FAILED' | 'HALTED' | 'COMPLETED';
@@ -192,6 +210,8 @@ export interface TaskRecord {
 	finished_at: string | null;
 	halt?: { halted_at: string; reason?: string };
 	failure?: { step_index: number; status: number; error: string };
+	awaiting?: PendingChoice | null;
+	choices?: ChoiceMade[];
 }
 
 // GET /api/tasks: one entry per task (latest run), without per-step results.
@@ -209,6 +229,7 @@ export interface TaskListItem {
 	finished_at: string | null;
 	halt?: { halted_at: string; reason?: string };
 	failure?: { step_index: number; status: number; error: string };
+	awaiting?: PendingChoice;
 }
 
 export interface TaskList {
@@ -722,6 +743,14 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			return request<TaskRecord>('GET', agentPath(agentId) + '/tasks/' + encodeURIComponent(taskId));
 		},
 
+		// POST /api/agents/:agentId/tasks/:taskId/choice: answers the choice step the task is waiting on (option from 1).
+		answerTaskChoice(agentId: string, taskId: string, option: number): Promise<{ ok: true; task_id: string; agent_id: string; option: number }> {
+			requireText('agentId', agentId);
+			requireText('taskId', taskId);
+			if (!Number.isInteger(option) || option < 1) throw new TypeError('option must be a whole number from 1.');
+			return request('POST', agentPath(agentId) + '/tasks/' + encodeURIComponent(taskId) + '/choice', { body: { option } });
+		},
+
 		// GET /api/tasks: the caller's task runs, newest first (optionally one agent's).
 		listTasks(opts: { agentId?: string; limit?: number } = {}): Promise<TaskList> {
 			const query = new URLSearchParams();
@@ -838,5 +867,6 @@ export const executeSubAgentTask: EngineApi['executeSubAgentTask'] = (...args) =
 export const getTaskStatus: EngineApi['getTaskStatus'] = (...args) => getEngineApi().getTaskStatus(...args);
 export const compileBlueprint: EngineApi['compileBlueprint'] = (...args) => getEngineApi().compileBlueprint(...args);
 export const listTasks: EngineApi['listTasks'] = (...args) => getEngineApi().listTasks(...args);
+export const answerTaskChoice: EngineApi['answerTaskChoice'] = (...args) => getEngineApi().answerTaskChoice(...args);
 export const listArtifacts: EngineApi['listArtifacts'] = () => getEngineApi().listArtifacts();
 export const getArtifact: EngineApi['getArtifact'] = (...args) => getEngineApi().getArtifact(...args);

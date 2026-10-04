@@ -20,6 +20,7 @@ const ICONS = {
 	pulse: icon('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
 	layers: icon('<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'),
 	clock: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+	console: icon('<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9.5 3 2.5-3 2.5"/><path d="M12.5 15H17"/>'),
 	nodes: icon('<rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="3" y="15" width="6" height="5" rx="1.5"/><rect x="15" y="9.5" width="6" height="5" rx="1.5"/><path d="M9 6.5c3 0 3 5.5 6 5.5M9 17.5c3 0 3-5.5 6-5.5"/>'),
 	back: icon('<path d="M10 6 4 12l6 6"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/>'),
 	home: icon('<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>'),
@@ -441,6 +442,36 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-panel { display: flex; flex-direction: column; }
     .mc-panel-head { display: flex; align-items: baseline; gap: 12px; padding: 22px 24px 8px; }
     .mc-panel-head h2 { font-size: 17px; font-weight: 600; }
+    /* Operator Console (public/js/engine/operator-console.js): activity log beside the choices waiting on you. */
+    .oc-panes { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 8px 24px 24px; }
+    .oc-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .oc-pane-title { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .oc-count { padding: 1px 7px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; letter-spacing: 0; }
+    .oc-empty { margin: 0; padding: 14px; border: 1px dashed var(--line); border-radius: var(--radius-m); color: var(--muted); font-size: 13px; }
+    .oc-log { list-style: none; margin: 0; padding: 10px 12px; height: min(60vh, 560px); overflow-y: auto; border-radius: var(--radius-m); background: var(--terminal); color: var(--terminal-text); font-family: var(--mono); font-size: 12px; line-height: 1.55; }
+    .oc-log:empty { display: none; }
+    .oc-line { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; overflow-wrap: anywhere; }
+    .oc-time { opacity: 0.55; }
+    .oc-line[data-kind="done"] .oc-text, .oc-line[data-kind="complete"] .oc-text { color: var(--ok-dot); }
+    .oc-line[data-kind="fail"] .oc-text, .oc-line[data-kind="halt"] .oc-text { color: var(--alert-dot); }
+    .oc-line[data-kind="ask"] .oc-text, .oc-line[data-kind="answer"] .oc-text { color: var(--accent-line); }
+    .oc-prompts { display: flex; flex-direction: column; gap: 12px; outline: none; }
+    .oc-prompts:empty { display: none; }
+    .oc-prompt { padding: 14px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); background: var(--accent-soft); }
+    .oc-prompt-who { margin: 0 0 4px; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    .oc-prompt-question { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); }
+    .oc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .oc-chip { min-height: 40px; padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+    .oc-chip:hover:not(:disabled), .oc-chip:focus-visible { border-color: var(--accent); outline: none; }
+    .oc-chip:disabled { cursor: default; opacity: 0.55; }
+    .oc-chip.chosen { border-color: var(--accent); background: var(--accent); color: #fff; opacity: 1; }
+    .oc-chip-num { font-family: var(--mono); font-weight: 600; }
+    .oc-prompt-message { margin: 8px 0 0; min-height: 1em; font-size: 12px; color: var(--muted); }
+    @media (max-width: 900px) {
+      .oc-panes { grid-template-columns: 1fr; padding: 8px 14px 18px; }
+      .oc-pane-prompts { order: -1; }
+      .oc-log { height: 50vh; }
+    }
     .mc-muted { color: var(--muted); font-size: 12px; }
     .mc-section { padding: 8px 24px 18px; }
     .mc-section h2 { margin: 10px 0; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
@@ -939,6 +970,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
       <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
       <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
+      <button type="button" class="rail-item" id="mc-nav-operator" aria-controls="mc-view-operator" title="Operator Console: live agent activity, and the choices agents are waiting on">${ICONS.console}<span class="rail-label" data-short="Operator">Operator</span><span class="rail-count" id="mc-operator-count" aria-label="choices waiting" hidden>0</span></button>
       <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label" data-short="Runs">Run history</span></button>
       <span class="rail-spacer"></span>
       <div class="rail-compute">
@@ -985,6 +1017,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       </div>
       <div class="mc-view surface" id="mc-view-elaron" hidden><section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section></div>
       <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div></div>
+      <div class="mc-view" id="mc-view-operator" hidden>
+        <section class="surface mc-panel" aria-labelledby="mc-operator-title">
+          <div class="mc-panel-head"><h2 id="mc-operator-title">Operator Console</h2><span id="mc-operator-status" class="mc-muted" aria-live="polite"></span></div>
+          <div id="mc-operator"></div>
+        </section>
+      </div>
       <div class="mc-view" id="mc-view-monitor" hidden>
         <section class="surface mc-panel" aria-labelledby="mc-monitor-title">
           <div class="mc-panel-head"><h2 id="mc-monitor-title">Run history</h2><span id="mc-monitor-status" class="mc-muted" aria-live="polite"></span></div>
