@@ -36,6 +36,8 @@ export function arcNeighbourEdge(radius, distance, step, halfWidth) {
 // Arc radius and viewing distance for stop 3. perRow is the number of slots in a row of the gallery (the slots are
 // pi / perRow apart, galleryLayout), minRadius the radius the layout needs anyway. tanHalfWidth and tanHalfHeight are
 // the tangents of half the free part of the view (the part the panels leave), horizontally and vertically.
+// minDistance keeps the camera at least that far back, so on a wide screen the card stops at a set size in pixels
+// (centred, with the wall's dark space around it) instead of stretching across the view.
 // Returns { radius, distance }: distance is from the camera to the wall, along the middle card's radius.
 export function arcFraming({
   cardWidth,
@@ -47,11 +49,12 @@ export function arcFraming({
   fill = ARC_FILL,
   heightFill = ARC_HEIGHT_FILL,
   edge = ARC_EDGE,
-  minFill = ARC_MIN_FILL
+  minFill = ARC_MIN_FILL,
+  minDistance = 0
 }) {
   const halfWidth = cardWidth / 2;
   const halfHeight = cardHeight / 2;
-  const framed = Math.max(halfWidth / (fill * tanHalfWidth), halfHeight / (heightFill * tanHalfHeight));
+  const framed = Math.max(halfWidth / (fill * tanHalfWidth), halfHeight / (heightFill * tanHalfHeight), minDistance);
   if (!(perRow > 1)) return { radius: minRadius, distance: framed };
   const step = Math.PI / perRow;
   const want = edge * tanHalfWidth;

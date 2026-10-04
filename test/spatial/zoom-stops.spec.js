@@ -41,6 +41,19 @@ describe("arcFraming", () => {
 		expect(card.cardWidth / 2 / widest.distance / desktop.tanHalfWidth).toBeCloseTo(ARC_MIN_FILL, 6);
 	});
 
+	it("keeps the card from stretching across a wide screen (minDistance), the neighbours still at the edges", () => {
+		// A 2560 px wide canvas capped at a 680 px card: the card spans 680 / 2560 of the width, not ARC_FILL.
+		const minDistance = (card.cardWidth * 2560) / (2 * desktop.tanHalfWidth * 680);
+		const { radius, distance } = arcFraming({ ...card, ...desktop, perRow: 9, minRadius: layoutRadius(9), minDistance });
+		expect(distance).toBeCloseTo(minDistance, 6);
+		expect((card.cardWidth / 2 / distance / desktop.tanHalfWidth) * 2560).toBeCloseTo(680, 3);
+		const edge = arcNeighbourEdge(radius, distance, Math.PI / 9, card.cardWidth / 2) / desktop.tanHalfWidth;
+		expect(edge).toBeGreaterThanOrEqual(ARC_EDGE - 1e-6);
+		// A cap the fill already respects changes nothing.
+		expect(arcFraming({ ...card, ...desktop, perRow: 9, minRadius: layoutRadius(9), minDistance: 1 }))
+			.toEqual(arcFraming({ ...card, ...desktop, perRow: 9, minRadius: layoutRadius(9) }));
+	});
+
 	it("frames a lone card on its own", () => {
 		const { radius, distance } = arcFraming({ ...card, ...desktop, perRow: 1, minRadius: 18 });
 		expect(radius).toBe(18);

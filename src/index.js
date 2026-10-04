@@ -1386,10 +1386,21 @@ export default {
     .zoom-stops span.active { color: var(--accent); font-weight: 700; }
     body.collection-mode .zoom-control,
     body.flat-board .zoom-control { display: none; }
-    /* Stop 4 (Atomic) on wide screens: the group list steps aside so the card has the room between it and the details;
-       it comes back at stop 3. */
+    /* Stop 4 (Atomic) on wide screens: the group list slides out to the left so the card has the room between it and
+       the details, and slides back at stop 3. Transform and opacity only, so nothing reflows mid-move; visibility
+       drops once it is out so it takes no clicks or focus. The camera frames for the end state (getCardCover). */
     @media (min-width: 768px) {
-      body.zoom-atomic #cluster-drawer { display: none; }
+      #cluster-drawer { transition: transform 0.3s ease, opacity 0.3s ease, visibility 0s linear 0s; }
+      body.zoom-atomic #cluster-drawer {
+        transform: translateX(calc(-100% - 24px));
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: transform 0.3s ease, opacity 0.3s ease, visibility 0s linear 0.3s;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #cluster-drawer, body.zoom-atomic #cluster-drawer { transition: none; }
     }
     body.collection-mode .depth-control,
     body.collection-mode #view-toggle,
@@ -1405,7 +1416,12 @@ export default {
       width: 232px;
       height: 232px;
       touch-action: none;
-      transition: right 300ms cubic-bezier(0.25, 1, 0.5, 1), bottom 300ms cubic-bezier(0.25, 1, 0.5, 1);
+      /* It steps aside for the open card by a transform (below), which eases without reflowing anything; right and
+         bottom only change with the view (List, Timeline, Board, Carousel). */
+      transition: transform 0.3s ease, opacity 0.3s ease, right 300ms cubic-bezier(0.25, 1, 0.5, 1), bottom 300ms cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #thumb-wheel { transition: none; }
     }
     body.xr-presenting #thumb-wheel { display: none; }
     .thumb-wheel-svg { display: block; overflow: hidden; pointer-events: none; font-family: inherit; user-select: none; -webkit-user-select: none; }
@@ -1469,7 +1485,7 @@ export default {
        from script) and a small gap, so the scrollbar and its arrows stay reachable. */
     @media (min-width: 768px) {
       body.collection-mode #thumb-wheel { right: calc(var(--scrollbar-w, 0px) + 6px); bottom: 6px; }
-      body.card-open #thumb-wheel { right: calc(clamp(340px, 27vw, 420px) + 24px); }
+      body.card-open #thumb-wheel { transform: translateX(calc(-1 * (clamp(340px, 27vw, 420px) + 24px))); }
       body.collection-mode #collection-view { padding-bottom: 240px; }
     }
     @media (max-width: 767px) {
@@ -1481,7 +1497,7 @@ export default {
       /* The graph library's mouse hint means nothing on a touch screen, and sits under the wheel. */
       .scene-nav-info { display: none; }
       /* Above the node card's peek sheet; out of the way while a sheet is expanded. */
-      body.card-open #thumb-wheel { bottom: calc(24vh + 6px); }
+      body.card-open #thumb-wheel { transform: translateY(calc(env(safe-area-inset-bottom, 0px) - 24vh - 6px)); }
       body:has(#node-card.expanded) #thumb-wheel,
       body:has(#cluster-drawer.expanded) #thumb-wheel { display: none; }
       #view-switch, #view-toggle, #add-node-button, #scope-stepper, #depth-control, #platform-bar, #board-modes { display: none !important; }
@@ -2244,7 +2260,11 @@ export default {
       background: rgba(8,12,20,0.45);
       color: rgba(223,253,247,0.85);
       cursor: pointer;
-      transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1), background 300ms cubic-bezier(0.25, 1, 0.5, 1);
+      /* left and top follow the free area (placed from script) and ease with the panels when Atomic opens or closes. */
+      transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1), background 300ms cubic-bezier(0.25, 1, 0.5, 1), left 0.3s ease, top 0.3s ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #gallery-nav button { transition: none; }
     }
     #gallery-nav button:hover, #gallery-nav button:focus-visible { background: rgba(8,12,20,0.7); border-color: var(--accent-line); color: #fff; outline: none; }
     #gallery-nav button:active { transform: scale(0.98); transition-duration: 0s; }
@@ -2317,6 +2337,17 @@ export default {
     /* Desktop / laptop: the node card is the right sidebar, full height below the toolbars. */
     @media (min-width: 768px) {
       #node-card { left: auto; right: 12px; top: 102px; bottom: auto; width: clamp(340px, 27vw, 420px); max-height: calc(100vh - 122px); }
+    }
+    /* The details panel eases in from its edge as the camera moves to the card (the right side on desktop, up from the
+       bottom on phones), instead of appearing at once. It animates the translate property, not transform, so the phone
+       sheet's drag (an inline transform) is untouched; getCardCover reads the panel's resting place. */
+    body.card-open #node-card { animation: node-card-in 0.3s ease; }
+    @keyframes node-card-in { from { translate: 24px 0; opacity: 0; } to { translate: 0 0; opacity: 1; } }
+    @media (max-width: 767px) {
+      @keyframes node-card-in { from { translate: 0 24px; opacity: 0; } to { translate: 0 0; opacity: 1; } }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      body.card-open #node-card { animation: none; }
     }
     @media (min-width: 1100px) {
       body.collection-mode.card-open #collection-view { padding-right: 450px; padding-bottom: 24px; }
@@ -4010,7 +4041,8 @@ export default {
           const free = getWallView(cover);
           const fits = Math.max(
             (spatial.CARD_WIDTH * 1.15) / (ATOMIC_FILL.width * free.width * 2 * Math.tan(hFov / 2)),
-            (spatial.CARD_HEIGHT * 1.15) / (ATOMIC_FILL.height * free.height * 2 * Math.tan(vFov / 2))
+            (spatial.CARD_HEIGHT * 1.15) / (ATOMIC_FILL.height * free.height * 2 * Math.tan(vFov / 2)),
+            cappedCardDistance(spatial.CARD_WIDTH * 1.15, ATOMIC_MAX_CARD_PX)
           );
           const slide = Math.min(ATOMIC_SLIDE * fits, 0.5 * gallery.radius);
           cardField.setGallerySlide(slide);
@@ -4721,11 +4753,23 @@ export default {
     // Share of the canvas the open panels (node card, cluster drawer) cover: sidebars on the left and right edges on
     // wide screens ({ side: 'sides', left, right } as shares of the width); on phones, sheets across the top and bottom
     // ({ side: 'band', top, bottom } as shares of the height), leaving the band between them for the 3D view.
+    // A panel's box where it comes to rest: its on-screen box less the offset of an entrance or exit still under way
+    // (the translate property the panels ease in with), so the camera frames for where the panels end up.
+    const restingRect = element => {
+      const rect = element.getBoundingClientRect();
+      const translate = getComputedStyle(element).translate;
+      if (!translate || translate === 'none') return rect;
+      const [x = 0, y = 0] = translate.split(' ').map(value => parseFloat(value) || 0);
+      return x || y ? new DOMRect(rect.x - x, rect.y - y, rect.width, rect.height) : rect;
+    };
     const getCardCover = () => {
       const canvas = Graph.renderer().domElement.getBoundingClientRect();
       if (!canvas.width || !canvas.height) return null;
-      const panels = [nodeCard.style.display === 'block' ? nodeCard : null, clusterDrawer.classList.contains('open') ? clusterDrawer : null]
-        .filter(Boolean).map(panel => panel.getBoundingClientRect()).filter(rect => rect.width && rect.height);
+      // On wide screens the group list is slid out in Atomic (body.zoom-atomic), so it covers nothing even while it is
+      // still on its way out.
+      const drawerCovers = clusterDrawer.classList.contains('open') && (compactLayout.matches || !document.body.classList.contains('zoom-atomic'));
+      const panels = [nodeCard.style.display === 'block' ? nodeCard : null, drawerCovers ? clusterDrawer : null]
+        .filter(Boolean).map(restingRect).filter(rect => rect.width && rect.height);
       if (!panels.length) return null;
       return compactLayout.matches
         ? (() => {
@@ -4937,6 +4981,19 @@ export default {
     const ATOMIC_SLIDE = 0.15;
     // Stop 4: the card fills most of the free part of the view.
     const ATOMIC_FILL = { width: 0.88, height: 0.86 };
+    // The widest a card is framed on the wall, in CSS pixels (stop 3 for the card in front, stop 4 for the open card).
+    // On a wide screen the fill shares above would stretch a card across most of the view and blow its face texture up
+    // past its pixels; capped, it stays centred with the dark space around it, and its hero face (1536 px wide) still
+    // lands at about one texel per device pixel on a 2x display.
+    const HORIZON_MAX_CARD_PX = 680;
+    const ATOMIC_MAX_CARD_PX = 760;
+    // Camera distance at which a card width world units wide spans maxPx CSS pixels of the canvas (0 when unknown).
+    const cappedCardDistance = (width, maxPx) => {
+      const canvasWidth = Graph.renderer().domElement.clientWidth;
+      if (!canvasWidth) return 0;
+      const tanH = Math.tan(cameraFov() / 2) * Graph.camera().aspect;
+      return (width * canvasWidth) / (2 * tanH * maxPx);
+    };
     // Room kept between the top bar (and filter row) and the top of a card on the wall, in pixels.
     const WALL_TOP_GAP_PX = 14;
     // The part of the view a card on the wall is framed in (stops 3 and 4): what the panels leave free, and on wide
@@ -4984,7 +5041,8 @@ export default {
         perRow,
         minRadius: Math.max(minRadius, (perRow * spatial.CARD_WIDTH * GALLERY_PITCH) / Math.PI),
         tanHalfWidth: tanH * free.width,
-        tanHalfHeight: tanV * free.height
+        tanHalfHeight: tanV * free.height,
+        minDistance: cappedCardDistance(spatial.CARD_WIDTH, HORIZON_MAX_CARD_PX)
       });
     };
     const arcDistance = () => arcFramingFor(gallery.ids.size, gallery.radius).distance;
@@ -6627,7 +6685,20 @@ export default {
       const height = Math.round(rect.height);
       // Hidden (List, Timeline, Board or Carousel view): keep the last size until the graph is shown again.
       if (!width || !height) return;
-      if (Graph.width() === width && Graph.height() === height) return;
+      // The graph library reads the pixel density once, at start-up; a browser zoom or a move to another display
+      // changes it, and the canvas would then be stretched (blurred) or wastefully oversized. Capped at 2 like the
+      // library does; the composer's passes follow the renderer.
+      const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+      const renderer = Graph.renderer();
+      const densityChanged = renderer.getPixelRatio() !== pixelRatio;
+      if (densityChanged) {
+        renderer.setPixelRatio(pixelRatio);
+        const composer = Graph.postProcessingComposer && Graph.postProcessingComposer();
+        if (composer && composer.setPixelRatio) composer.setPixelRatio(pixelRatio);
+      }
+      if (!densityChanged && Graph.width() === width && Graph.height() === height) return;
+      // Same size with a new density: setSize re-applies it to the canvas's drawing buffer.
+      if (densityChanged && Graph.width() === width && Graph.height() === height) renderer.setSize(width, height, false);
       Graph.width(width).height(height);
     };
     let fitGraphFrame = 0;
@@ -6642,6 +6713,18 @@ export default {
     if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleGraphFit);
     if (window.ResizeObserver) new ResizeObserver(scheduleGraphFit).observe(graphElement);
     window.addEventListener('load', scheduleGraphFit);
+    // A move to a display of another density fires no resize when the window keeps its size.
+    const watchPixelDensity = () => {
+      if (!window.matchMedia) return;
+      const query = window.matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+      const onChange = () => {
+        query.removeEventListener('change', onChange);
+        scheduleGraphFit();
+        watchPixelDensity();
+      };
+      if (query.addEventListener) query.addEventListener('change', onChange);
+    };
+    watchPixelDensity();
     scheduleGraphFit();
 
     // ---- 2D board (SPATIAL_ARCHITECTURE.md 3, Phase 5). The 2D mode is a morph: the same cards glide from their 3D

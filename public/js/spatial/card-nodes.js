@@ -27,16 +27,18 @@ const GALLERY_TIME = 0.45;
 const BOARD_TIME = 0.5;
 const BOARD_GLIDE = 10;
 const STAGGER_SECONDS = 0.02;
-// Face textures come in resolutions of the same drawing: 'hero' (1536 x 960) for the focused card only, so its text
-// stays sharp when it fills much of the screen on a high-density display; 'near' (512 x 320) for the closest cards,
+// Face textures come in resolutions of the same drawing: 'hero' (1536 x 960) for the focused card and the card in
+// front on the wall only, so their text stays sharp when they fill much of the screen on a high-density display; 'near' (512 x 320) for the closest cards,
 // 'far' (256 x 160) for the next ones, and only past those budgets the shared plain face. Moving between tiers shows
 // the same content, so re-ranking as the camera moves is invisible; a margin on each budget stops cards at a cutoff
-// from flipping back and forth. About 5.9 MB + 32 x 0.65 MB + 192 x 0.16 MB = 58 MB of GPU memory at most.
+// from flipping back and forth. About 2 x 5.9 MB + 32 x 0.65 MB + 192 x 0.16 MB = 64 MB of GPU memory at most.
 const NEAR_BUDGET = 32;
 const FAR_BUDGET = 192;
 const NEAR_MARGIN = 8;
 const FAR_MARGIN = 24;
 const TIER_SCALE = { hero: 3, near: 1, far: 0.5 };
+// The wall's front card keeps its hero face until another card is this much nearer.
+const FRONT_KEEP = 0.9;
 // Faces are re-ranked every this many frames; at most this many faces are drawn per frame.
 const RANK_EVERY = 20;
 const DRAWS_PER_FRAME = 3;
@@ -128,6 +130,8 @@ export function createCardField({ THREE, reducedMotion = false }) {
   // Counters for debugging texture churn: faces drawn, and cards that went to or came back from the plain face.
   const stats = { draws: 0, toPlain: 0, fromPlain: 0 };
   let frameCount = 0;
+  // The gallery card straight ahead of the viewer, drawn at the hero resolution (rankTextures).
+  let heroFront = null;
   let gallery = null;
   // World units a focused gallery card slides forward; the page lowers it when open panels leave little room.
   let gallerySlide = null;
@@ -296,6 +300,7 @@ export function createCardField({ THREE, reducedMotion = false }) {
   }
 
   function dispose(card) {
+    if (heroFront === card) heroFront = null;
     if (card.glow) card.glow.material.dispose();
     if (card.texture) card.texture.dispose();
     card.faceMaterial.dispose();
@@ -333,15 +338,23 @@ export function createCardField({ THREE, reducedMotion = false }) {
   // Near faces go to the hot card, gallery cards and then the nearest cards; far faces to the next ones. Each card
   // keeps its tier until it is clearly past the cutoff.
   function rankTextures(viewer) {
+    let front = null;
     const ranked = [...cards.values()].map(card => {
       const p = card.root.position;
       const distance = Math.hypot(p.x - viewer.x, p.y - viewer.y, p.z - viewer.z);
       const boost = (card.gallery.goal ? 1e6 : 0) + (card.heatGoal ? 2e6 : 0) + (proxyTops.has(card.id) ? 5e5 : 0) - (card.lod > 0.98 ? 1e5 : 0);
+      // On the wall the card straight ahead is the nearest one and is shown large, so it gets the hero face too. The
+      // card that has it keeps it until another is clearly nearer, so turning along the wall doesn't redraw it twice.
+      if (card.gallery.goal) {
+        const reach = card === heroFront ? distance * FRONT_KEEP : distance;
+        if (!front || reach < front.reach) front = { card, reach };
+      }
       return { card, score: boost - distance };
     }).sort((a, b) => b.score - a.score);
+    heroFront = front ? front.card : null;
     ranked.forEach(({ card }, index) => {
-      // heat 1 is the focused card (at most one).
-      if (card.heatGoal >= 1) {
+      // heat 1 is the focused card (at most one); the wall's front card is the other hero.
+      if (card.heatGoal >= 1 || card === heroFront) {
         setTier(card, 'hero');
         return;
       }
