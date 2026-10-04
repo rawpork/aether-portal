@@ -20,6 +20,11 @@
   "version_metadata": {
     "binding": "CF_VERSION_METADATA"
   },
+  // Live sync (src/graph-events.js): one GraphEvents object per user holds its open /api/events streams.
+  "durable_objects": {
+    "bindings": [{ "name": "GRAPH_EVENTS", "class_name": "GraphEvents" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GraphEvents"] }],
   "d1_databases": [
     {
       "binding": "DB",

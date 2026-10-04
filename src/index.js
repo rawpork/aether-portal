@@ -10,6 +10,10 @@ import { renderMissionControlPage } from "./mission-control-page.js";
 import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { seedOnboardingGraph } from "./onboarding.js";
+import { graphEventFor, publishGraphEvent, subscribeGraphEvents } from "./graph-events.js";
+
+// The live sync Durable Object (wrangler.jsonc durable_objects).
+export { GraphEvents } from "./graph-events.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
@@ -95,7 +99,15 @@ export default {
     }
   },
 
+  // Every request goes through route(); a write that succeeded is then announced to the user's other open tabs.
   async fetch(request, env, ctx) {
+    const response = await this.route(request, env, ctx);
+    const event = response.ok ? graphEventFor(request.method, new URL(request.url).pathname) : null;
+    if (event && env.GRAPH_EVENTS) ctx.waitUntil(announceWrite(request, env, event));
+    return response;
+  },
+
+  async route(request, env, ctx) {
     const url = new URL(request.url);
 
     // Endpoint 0: Session auth (HttpOnly cookie) and admin-managed accounts
@@ -105,6 +117,15 @@ export default {
 
     // Endpoint 0a: The deployed version id (public). Long-lived pages (iOS keeps home-screen apps alive) compare it
     // with the version they were built from and offer a reload (public/js/update-check.js).
+    // Live sync: the signed-in user's graph events as Server-Sent Events (src/graph-events.js).
+    if (url.pathname === "/api/events") {
+      if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      if (!env.GRAPH_EVENTS) return jsonResponse({ error: "Live sync is not configured.", configured: false }, 404);
+      return subscribeGraphEvents(env, auth.user.id);
+    }
+
     if (url.pathname === "/api/version") {
       if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
       return jsonResponse({ version: env.CF_VERSION_METADATA?.id || "dev" }, 200, { "Cache-Control": "no-store" });
@@ -1049,6 +1070,7 @@ export default {
         }));
       }
 
+      let telegramUserId = null;
       try {
         const update = await request.json();
         const chatId = update.message?.chat?.id;
@@ -1062,6 +1084,7 @@ export default {
           return new Response("OK");
         }
         const userId = owner.id;
+        telegramUserId = userId;
         const image = pickTelegramImage(update.message);
         if (image) {
           await saveTelegramImage(env, chatId, userId, { ...image, caption: String(update.message.caption || "").trim() });
@@ -1101,6 +1124,11 @@ export default {
       } catch (err) {
         console.error("Worker Execution Error:", err.message, err.stack);
         return new Response("OK");
+      } finally {
+        // Whatever the message saved (a link, note, photo or research), the user's open tabs pick it up.
+        if (telegramUserId && env.GRAPH_EVENTS) {
+          ctx.waitUntil(publishGraphEvent(env, telegramUserId, { type: "graph.changed" }).catch(err => console.warn("Live sync publish failed:", err.message)));
+        }
       }
     }
 
@@ -3242,6 +3270,8 @@ export default {
     const BASE_NODE_OPACITY = 0.75;
     const BASE_LINK_OPACITY = 0.2;
     const focus = { node: null, nodeIds: new Set() };
+    // This tab's id for live sync (sent with API writes, so the tab skips its own events).
+    const LIVE_CLIENT_ID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + String(Math.random()).slice(2);
     // Link to… pick mode: { source, relation } while waiting for a tap on the target card (declared early: node clicks read it).
     let linkPick = null;
 
@@ -6169,7 +6199,57 @@ export default {
       if (firstLoad && filterState.view === 'graph' && !deepLinkId) scheduleLaunch(FIT_SETTLE_MS + 600);
       else if (firstLoad && filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
       if (deepLinkId) openDeepLink();
+      openLiveSync();
     };
+
+    // ---- Live sync (src/graph-events.js): changes made in another tab or device (or by the Telegram bot) arrive on
+    // /api/events, and this tab reloads the graph in place (keepLayout holds positions and the camera). The stream is
+    // closed while the tab is hidden and reopened, with one catch-up reload, when it shows again. ----
+    const LIVE_RELOAD_DELAY_MS = 400;
+    const LIVE_EVENT_TYPES = ['node.created', 'node.updated', 'node.deleted', 'link.created', 'link.updated', 'link.deleted', 'group.updated', 'settings.updated', 'graph.changed'];
+    let liveEvents = null;
+    let liveReloadTimer = null;
+    const scheduleLiveReload = () => {
+      clearTimeout(liveReloadTimer);
+      liveReloadTimer = setTimeout(() => {
+        loadGraph().catch(err => console.warn('Live sync reload failed:', err));
+      }, LIVE_RELOAD_DELAY_MS);
+    };
+    const onLiveEvent = message => {
+      let event = null;
+      try {
+        event = JSON.parse(message.data);
+      } catch (err) {
+        return;
+      }
+      if (!event || event.origin === LIVE_CLIENT_ID) return;
+      scheduleLiveReload();
+      // For any view that wants to react to a particular change.
+      window.dispatchEvent(new CustomEvent('aether-graph-event', { detail: event }));
+    };
+    function openLiveSync() {
+      if (liveEvents || typeof EventSource !== 'function' || document.visibilityState === 'hidden' || !graphLoaded) return;
+      liveEvents = new EventSource('/api/events');
+      LIVE_EVENT_TYPES.forEach(type => liveEvents.addEventListener(type, onLiveEvent));
+      // A refused stream (signed out, or live sync not configured) closes for good; a dropped one retries by itself.
+      liveEvents.addEventListener('error', () => {
+        if (liveEvents && liveEvents.readyState === 2) liveEvents = null;
+      });
+    }
+    const closeLiveSync = () => {
+      if (!liveEvents) return;
+      liveEvents.close();
+      liveEvents = null;
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        closeLiveSync();
+        return;
+      }
+      if (!graphLoaded || liveEvents) return;
+      openLiveSync();
+      scheduleLiveReload();
+    });
 
     // A reload (after an admin run, for example) would otherwise rebuild every node without a position and regrow the
     // whole layout from the origin, so anything focused right after it would slide away. Known nodes keep their
@@ -7602,8 +7682,11 @@ export default {
     };
 
     // Signed-in JSON request (session cookie); an expired session brings back the login screen.
-    const apiFetch = async (path, options) => {
-      const res = await fetch(path, options);
+    const apiFetch = async (path, options = {}) => {
+      // The tab's id lets live sync skip this tab's own changes.
+      const headers = new Headers(options.headers || {});
+      headers.set('X-Aether-Client', LIVE_CLIENT_ID);
+      const res = await fetch(path, { ...options, headers });
       if (res.status === 401) {
         showLoginGate();
         throw new Error('Please sign in again.');
@@ -9589,6 +9672,17 @@ async function handleAuthRoute(request, env, url) {
 }
 
 // Data routes: a valid session cookie, plus a same-origin check on writes (on top of SameSite=Lax).
+// Live sync: tells the signed-in user's other tabs about a write this request made. The tab that made it sends its
+// X-Aether-Client id, so it can skip its own event.
+async function announceWrite(request, env, event) {
+  try {
+    const user = await getSessionUser(request, env);
+    if (user) await publishGraphEvent(env, user.id, event, request.headers.get("X-Aether-Client"));
+  } catch (err) {
+    console.warn("Live sync publish failed:", err.message);
+  }
+}
+
 async function authenticateUser(request, env, url) {
   const user = await getSessionUser(request, env);
   if (!user) return { error: jsonResponse({ error: "Unauthorized" }, 401) };
