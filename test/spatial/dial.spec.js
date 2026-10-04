@@ -84,10 +84,10 @@ describe("detentPosition", () => {
 
 describe("wheelRings", () => {
 	it("puts the View rim outermost, then the primary ring, then what the stop needs", () => {
-		expect(wheelRings({ view: "space", scale: "space" })).toEqual(["view", "scale", "filter", "time"]);
-		expect(wheelRings({ view: "space", scale: "cluster" })).toEqual(["view", "scale", "filter", "depth"]);
-		expect(wheelRings({ view: "space", scale: "horizon" })).toEqual(["view", "scale", "filter", "filters"]);
-		expect(wheelRings({ view: "space", scale: "atomic" })).toEqual(["view", "scale", "filter", "node"]);
+		expect(wheelRings({ view: "space", scale: "space" })).toEqual(["view", "scale", "time"]);
+		expect(wheelRings({ view: "space", scale: "cluster" })).toEqual(["view", "scale", "depth"]);
+		expect(wheelRings({ view: "space", scale: "horizon" })).toEqual(["view", "scale", "filters"]);
+		expect(wheelRings({ view: "space", scale: "atomic" })).toEqual(["view", "scale"]);
 		expect(wheelRings({ view: "board" })).toEqual(["view", "layout", "filters", "time"]);
 		expect(wheelRings({ view: "list" })).toEqual(["view", "time", "filters"]);
 	});

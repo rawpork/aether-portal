@@ -160,16 +160,15 @@ export function createDial({ count, index = 0, pitch = 0.4 }) {
 // ---- The wheel's rings, outer to inner ----
 // The View rim is outermost; inside it the primary ring for that view (the Scale in 3D Space, the Layout on the Board,
 // Time elsewhere); then the rings the current stop needs. Space opens Time, Cluster opens Depth, Horizon opens Filters
-// and Atomic opens Card (the focused card's cluster, one stop per card). In 3D Space a Filter ring (All, then the
-// graph's categories and top tags) sits just inside the Scale ring, so it shows only in Advanced. Idle, only the rim and the primary ring show. The Simple mode (for getting started)
+// and Atomic folds everything. Idle, only the rim and the primary ring show. The Simple mode (for getting started)
 // never shows more than those two; Advanced telescopes the inner rings out.
 export const WHEEL_VIEWS = ['space', 'list', 'timeline', 'board', 'carousel'];
 export const WHEEL_MODES = ['simple', 'advanced'];
-const INNER_BY_SCALE = { space: ['time'], cluster: ['depth'], horizon: ['filters'], atomic: ['node'] };
+const INNER_BY_SCALE = { space: ['time'], cluster: ['depth'], horizon: ['filters'], atomic: [] };
 
 export function wheelRings({ view = 'space', scale = 'horizon', collapsed = false, simple = false } = {}) {
   let rings;
-  if (view === 'space') rings = ['view', 'scale', 'filter', ...(INNER_BY_SCALE[scale] || [])];
+  if (view === 'space') rings = ['view', 'scale', ...(INNER_BY_SCALE[scale] || [])];
   else if (view === 'board') rings = ['view', 'layout', 'filters', 'time'];
   else rings = ['view', 'time', 'filters'];
   return collapsed || simple ? rings.slice(0, 2) : rings;

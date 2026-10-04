@@ -3059,8 +3059,8 @@ export default {
     <button type="button" data-board-mode="timeline" aria-pressed="false" title="Cards in date order, a column per day, week or month">Timeline</button>
   </div>
   <div id="gallery-nav" hidden>
-    <button type="button" id="gallery-prev" title="Previous card in the gallery" aria-label="Previous card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 3.5 8 11 13.5z" fill="currentColor"/></svg></button>
-    <button type="button" id="gallery-next" title="Next card in the gallery" aria-label="Next card in the gallery"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 12.5 8 5 13.5z" fill="currentColor"/></svg></button>
+    <button type="button" id="gallery-prev" title="Previous card (swipe right)" aria-label="Previous card"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11 2.5 3.5 8 11 13.5z" fill="currentColor"/></svg></button>
+    <button type="button" id="gallery-next" title="Next card (swipe left)" aria-label="Next card"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2.5 12.5 8 5 13.5z" fill="currentColor"/></svg></button>
   </div>
   <main id="collection-view" aria-label="Node collection">
     <div class="collection-inner">
@@ -3101,8 +3101,6 @@ export default {
       hideOrphans: false,
       // Categories highlighted from the legend; empty means everything is shown at full color.
       highlighted: new Set(),
-      // The wheel's Filter ring on a tag: only nodes carrying it show at full color (null: no tag filter).
-      tag: null,
       // Platform bar: 'all' or one platform; the graph dims the rest, list and timeline show only matches.
       platform: 'all',
       // Active view (graph, list, timeline, board or carousel) and the list view's layout and sort; remembered per browser.
@@ -3235,10 +3233,9 @@ export default {
       clusterOf = hierarchy.groupOf;
       clusterInfo = hierarchy.groups;
     };
-    const isDimming = () => filterState.highlighted.size > 0 || filterState.platform !== 'all' || Boolean(filterState.tag);
-    const matchesTag = node => !filterState.tag || (node.tags || []).some(entry => entry.tag === filterState.tag);
-    // Full color only for nodes that pass the legend highlight, the wheel's tag filter and the platform bar.
-    const isHighlighted = node => (filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node))) && matchesTag(node) && matchesPlatform(node);
+    const isDimming = () => filterState.highlighted.size > 0 || filterState.platform !== 'all';
+    // Full color only for nodes that pass both the legend highlight and the platform bar.
+    const isHighlighted = node => (filterState.highlighted.size === 0 || filterState.highlighted.has(getNodeCategory(node))) && matchesPlatform(node);
 
     // Selecting a node focuses its 1-hop neighborhood: everything else fades to FOCUS_DIM_OPACITY.
     const FOCUS_DIM_OPACITY = 0.15;
@@ -3537,10 +3534,7 @@ export default {
     // changes elsewhere, so the rings turn to match (the headset barrel follows the same values every frame).
     let thumbWheel = null;
     const syncThumbWheel = () => {
-      if (!thumbWheel) return;
-      syncWheelCards();
-      syncWheelFilters();
-      thumbWheel.sync();
+      if (thumbWheel) thumbWheel.sync();
     };
     compactLayout.addEventListener('change', () => { FOCUS_FILL = compactLayout.matches ? FOCUS_FILL_COMPACT : FOCUS_FILL_WIDE; });
     const cardTitle = document.getElementById('card-title');
@@ -4257,9 +4251,8 @@ export default {
     const resetSelection = (options = {}) => {
       closeClusterDrawer(options);
       hideNodeCard();
-      if (filterState.highlighted.size || filterState.tag) {
+      if (filterState.highlighted.size) {
         filterState.highlighted = new Set();
-        filterState.tag = null;
         applyGraphFilters();
       }
       clearTimeout(idleTimer);
@@ -4560,22 +4553,15 @@ export default {
       return order.filter(id => byId.has(id));
     };
 
-    // While a filter dims the graph (legend, the wheel's Filter ring, platform bar), the carousel steps only through the
-    // cards it leaves at full color, so "Card N of M" counts the matches.
-    const matchingIds = ids => {
-      if (!isDimming()) return ids;
-      const byId = new Map(Graph.graphData().nodes.map(item => [item.id, item]));
-      return ids.filter(id => byId.has(id) && isHighlighted(byId.get(id)));
-    };
     const buildCarousel = node => {
-      const connected = matchingIds(getConnectedCluster(node));
+      const connected = getConnectedCluster(node);
       if (connected.length > 1) {
         carousel.ids = connected;
         carousel.label = 'Connected Cluster';
         return;
       }
       const key = getClusterKey(node);
-      const members = matchingIds(getClusterNodes(key).map(item => item.id));
+      const members = getClusterNodes(key).map(item => item.id);
       carousel.ids = members.length > 1 ? members : [];
       carousel.label = titleCase(getClusterLabel(key)) + ' Cluster';
     };
@@ -4613,6 +4599,8 @@ export default {
       setFocus(node);
       syncDrawerSelection();
       syncDeck(node);
+      // The ◀ ▶ arrows under the card (placeGalleryNav decides whether it has anywhere to step to).
+      startGalleryNav();
       // The camera only matters while the graph is on screen.
       if (filterState.view !== 'graph') return;
       pauseAutoRotate();
@@ -5388,13 +5376,17 @@ export default {
     };
     window.addEventListener('pointerup', endArcDrag, { passive: true });
     window.addEventListener('pointercancel', endArcDrag, { passive: true });
-    galleryPrevButton.addEventListener('click', () => stepGallery(-1));
-    galleryNextButton.addEventListener('click', () => stepGallery(1));
+    // With a wall up the arrows step along it; otherwise (an open card on the Board, or one opened without a wall) they
+    // page the card through its cluster, as a sideways swipe on the card does.
+    const stepCards = delta => (gallery ? stepGallery(delta) : stepCarousel(delta));
+    galleryPrevButton.addEventListener('click', () => stepCards(-1));
+    galleryNextButton.addEventListener('click', () => stepCards(1));
     let galleryNavFrame = 0;
     const placeGalleryNav = () => {
       galleryNavFrame = 0;
       const canvas = Graph.renderer().domElement.getBoundingClientRect();
-      const show = Boolean(gallery) && gallery.ids.size > 1 && filterState.view === 'graph' && canvas.width > 0;
+      const cardSteps = !gallery && Boolean(focus.node) && nodeCard.style.display === 'block' && carousel.ids.length > 1;
+      const show = (gallery ? gallery.ids.size > 1 : cardSteps) && filterState.view === 'graph' && canvas.width > 0;
       galleryNav.hidden = !show;
       if (!show) return;
       // Side by side at the bottom of the free part of the screen, in the dark space below the wall, so they never sit
@@ -6091,7 +6083,6 @@ export default {
       refreshGallery();
       layoutBoard();
       renderActiveView();
-      syncThumbWheel();
     };
 
     const loadGraph = async () => {
@@ -7532,7 +7523,6 @@ export default {
       filterState.query = '';
       filterState.clusterMode = 'category';
       filterState.highlighted.clear();
-      filterState.tag = null;
       filterState.hideOrphans = false;
       orphanToggle.classList.remove('active');
       orphanToggle.setAttribute('aria-pressed', 'false');
@@ -9153,7 +9143,7 @@ export default {
 
     // ---- Control wheel (public/js/spatial/thumb-wheel.js; phones and desktop): View rim outermost (3D Space, List,
     // Timeline, Board, Carousel), then the primary ring (the Scale in 3D Space, the Layout on the Board, Time elsewhere),
-    // then what the stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: Card, the focused card's cluster). The hub is + Add. In the
+    // then what the stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: nothing). The hub is + Add. In the
     // Simple mode only the rim and the primary ring show. ----
     const thumbWheelMount = document.getElementById('thumb-wheel');
     const WHEEL_TIME_LABELS = { day: 'Today', week: 'Week', month: 'Month', groups: 'Groups', all: 'All' };
@@ -9170,82 +9160,8 @@ export default {
       layout: { name: 'Board layout', stops: BOARD_MODES.map(value => ({ value, label: WHEEL_BOARD_LABELS[value] })) },
       time: { name: 'Time', stops: SCOPES.map(value => ({ value, label: WHEEL_TIME_LABELS[value] })) },
       depth: { name: 'Depth', stops: DEPTH_LEVELS.map(value => ({ value, label: DEPTH_LABELS[value] })) },
-      filters: { name: 'Show', stops: Object.keys(PLATFORM_LABELS).map(value => ({ value, label: value === 'x' ? 'X' : PLATFORM_LABELS[value] })) },
-      // Filled from the graph by syncWheelCards and syncWheelFilters.
-      node: { name: 'Card', stops: [{ value: '', label: '—' }] },
-      filter: { name: 'Filter', stops: [{ value: 'all', label: 'All' }] }
+      filters: { name: 'Show', stops: Object.keys(PLATFORM_LABELS).map(value => ({ value, label: value === 'x' ? 'X' : PLATFORM_LABELS[value] })) }
     });
-    // The Filter ring: All, then every category in the graph (most cards first), then its most used tags. A category
-    // stop highlights that category, as the legend does; a tag stop dims every card without the tag.
-    const WHEEL_FILTER_TAGS = 12;
-    const WHEEL_FILTER_LABEL_MAX = 14;
-    let wheelFiltersKey = null;
-    const wheelFilterLabel = text => text.length > WHEEL_FILTER_LABEL_MAX ? text.slice(0, WHEEL_FILTER_LABEL_MAX - 1) + '…' : text;
-    const wheelFilterStops = () => {
-      const categories = new Map();
-      const tags = new Map();
-      graphData.nodes.forEach(node => {
-        const category = getNodeCategory(node);
-        categories.set(category, (categories.get(category) || 0) + 1);
-        new Set((node.tags || []).map(entry => entry.tag)).forEach(tag => tags.set(tag, (tags.get(tag) || 0) + 1));
-      });
-      const byCount = map => [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(entry => entry[0]);
-      const topTags = byCount(tags).filter(tag => tags.get(tag) > 1).slice(0, WHEEL_FILTER_TAGS);
-      // The current filter keeps its stop even when it would not make the list, so the ring can show it.
-      if (filterState.tag && !topTags.includes(filterState.tag)) topTags.push(filterState.tag);
-      const highlightedCategory = filterState.highlighted.size === 1 ? [...filterState.highlighted][0] : null;
-      const categoryList = byCount(categories);
-      if (highlightedCategory && !categoryList.includes(highlightedCategory)) categoryList.push(highlightedCategory);
-      return [
-        { value: 'all', label: 'All' },
-        ...categoryList.map(category => ({ value: 'cat:' + category, label: wheelFilterLabel(titleCase(category.split('_').join(' '))) })),
-        ...topTags.map(tag => ({ value: 'tag:' + tag, label: wheelFilterLabel('#' + tag) }))
-      ];
-    };
-    const syncWheelFilters = () => {
-      const stops = wheelFilterStops();
-      const key = JSON.stringify(stops);
-      if (key === wheelFiltersKey) return;
-      wheelFiltersKey = key;
-      thumbWheel.setStops('filter', stops);
-    };
-    // The ring reads All while several legend categories are highlighted at once.
-    const wheelFilterValue = () => filterState.tag ? 'tag:' + filterState.tag
-      : filterState.highlighted.size === 1 ? 'cat:' + [...filterState.highlighted][0] : 'all';
-    // Turning the Filter ring: the graph re-dims at once, and an open card follows. A card the filter dims hands the
-    // focus to the first matching card in its cluster; the counter then counts the matches.
-    const setWheelFilter = value => {
-      filterState.highlighted = new Set(value.indexOf('cat:') === 0 ? [value.slice(4)] : []);
-      filterState.tag = value.indexOf('tag:') === 0 ? value.slice(4) : null;
-      applyGraphFilters();
-      const node = focus.node;
-      if (!node || nodeCard.style.display !== 'block' || isHighlighted(node) || !carousel.ids.length) return;
-      const visible = new Map(Graph.graphData().nodes.map(item => [item.id, item]));
-      const next = carousel.ids.map(id => visible.get(id)).find(Boolean);
-      if (next) focusCard(next, { keepCarousel: true });
-    };
-    // The Card ring: one stop per card in the focused card's carousel (its connected or type cluster), in carousel
-    // order; cards hidden by filters are left out. Rebuilt only when the cards or their titles change.
-    const WHEEL_CARD_LABEL_MAX = 14;
-    let wheelCardsKey = null;
-    const wheelCardStops = () => {
-      if (!focus.node) return [{ value: '', label: '—' }];
-      const focusId = String(focus.node.id);
-      const ids = carousel.ids.map(String);
-      const visible = new Map(Graph.graphData().nodes.map(item => [String(item.id), item]));
-      const stops = (ids.includes(focusId) ? ids : [focusId]).map(id => visible.get(id)).filter(Boolean).map(node => {
-        const title = String(node.name || node.title || 'Untitled').trim() || 'Untitled';
-        return { value: String(node.id), label: title.length > WHEEL_CARD_LABEL_MAX ? title.slice(0, WHEEL_CARD_LABEL_MAX - 1) + '…' : title };
-      });
-      return stops.length ? stops : [{ value: '', label: '—' }];
-    };
-    const syncWheelCards = () => {
-      const stops = wheelCardStops();
-      const key = JSON.stringify(stops);
-      if (key === wheelCardsKey) return;
-      wheelCardsKey = key;
-      thumbWheel.setStops('node', stops);
-    };
     // The status Board view (kept for desktop) reads as the wheel's Board, in its Status layout.
     const wheelView = () => filterState.view === 'graph' ? (filterState.flat ? 'board' : 'space') : filterState.view;
     const wheelState = () => ({
@@ -9254,9 +9170,7 @@ export default {
       layout: filterState.view === 'board' ? 'status' : filterState.boardMode,
       time: filterState.horizon,
       depth: filterState.depth,
-      filters: filterState.platform,
-      node: focus.node ? String(focus.node.id) : '',
-      filter: wheelFilterValue()
+      filters: filterState.platform
     });
     const setWheelView = value => {
       if (value === 'space' || value === 'board') {
@@ -9276,12 +9190,6 @@ export default {
       } else if (ring === 'time') setScope(value);
       else if (ring === 'depth') setDepth(value);
       else if (ring === 'filters' && value !== filterState.platform) setPlatform(value);
-      else if (ring === 'filter' && value !== wheelFilterValue()) setWheelFilter(value);
-      else if (ring === 'node') {
-        // Selecting a card flies the camera to it (focusCard -> selectNode -> flyToNode), as the card's arrows do.
-        const node = value ? Graph.graphData().nodes.find(item => String(item.id) === value) : null;
-        if (node && node !== focus.node) focusCard(node, { keepCarousel: true });
-      }
       // A stop that could not be reached (nothing there) turns the ring back to where the view is.
       syncThumbWheel();
     };

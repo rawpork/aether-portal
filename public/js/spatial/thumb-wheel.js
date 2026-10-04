@@ -6,8 +6,7 @@
 // index mark on the diagonal. The + Add button is the hub. Idle, the wheel folds to the View rim and the primary ring;
 // a tap opens it again. In the Simple mode it never shows more than those two rings.
 //
-// The page gives it the rings' stops and a state() function, and hears back through onChange(ringId, value). A ring
-// whose stops follow the graph (Card: the focused card's cluster) gets new ones through setStops(ringId, stops).
+// The page gives it the rings' stops and a state() function, and hears back through onChange(ringId, value).
 
 import { createDial, createScrollTurner, gearTurn, wheelRings } from './dial.js';
 
@@ -95,8 +94,6 @@ export function wheelGrowth(roles, { collapsed = false } = {}) {
 // audibly where the device cannot vibrate. simple(): whether the wheel is in the Simple mode.
 export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound = () => true, simple = () => false }) {
   const canVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
-  // Our own copy, since setStops replaces a ring's stops.
-  rings = { ...rings };
   const size = { w: 0, h: 0 };
   // The mount's size over the phone's: every width, gap and font is multiplied by it.
   let k = 1;
@@ -450,20 +447,6 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
           layer.dial.set(index, { silent: true });
         }
       });
-      kick();
-    },
-    // Replaces a ring's stops (non-empty). A ring already drawn is rebuilt in place, keeping its width, and turned to
-    // the stop state() names for it.
-    setStops(id, stops) {
-      rings[id] = { ...rings[id], stops };
-      const old = layers.get(id);
-      if (!old) return;
-      if (press && press.target === old) press = null;
-      old.group.remove();
-      old.labels.forEach(label => label.arc.remove());
-      layers.delete(id);
-      const layer = makeLayer(id);
-      Object.assign(layer, { width: old.width, target: old.target, inner: old.inner, outer: old.outer, role: old.role });
       kick();
     },
     // Opens the wheel, as a tap would.
