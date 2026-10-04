@@ -187,7 +187,7 @@ describe("Aether Portal worker", () => {
 		const html = await response.text();
 		expect(response.headers.get("Content-Type")).toContain("text/html");
 		expect(html).toContain("Aether Portal");
-		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status", "filter-toolbar", "filter-menu", "type-filter", "filters-reset", "card-transcript", "card-transcript-button", "card-transcript-read", "card-web", "card-web-button", "card-web-read", "google-signin", "card-link-button", "link-node-modal", "link-node-target", "link-pick-hint", "reader-modal", "reader-body"]) {
+		for (const id of ["view-switch", "collection-view", "collection-items", "login-gate", "reader-modal", "telegram-help-button", "telegram-help-modal", "platform-bar", "card-status", "filter-toolbar", "filter-menu", "type-filter", "filters-reset", "card-transcript", "card-transcript-button", "card-transcript-read", "card-web", "card-web-button", "card-web-read", "google-signin", "card-link-button", "link-node-modal", "link-node-target", "link-pick-hint", "reader-modal", "reader-body", "card-links", "card-links-list"]) {
 			expect(html, id).toContain(`id="${id}"`);
 		}
 		for (const usage of ["/research &lt;topic or link&gt;", "/ask &lt;question&gt;", "/link &lt;url&gt; [note]", "/help"]) {

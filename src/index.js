@@ -581,7 +581,7 @@ export default {
           tags: tags.map(tag => ({ tag, source: "user", weight: 1 })),
           ...preview
         };
-        const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual" } : null;
+        const link = linkTargetId ? { source: id, target: linkTargetId, value: 2, type: "ai", relation: "manual", stored: true } : null;
         return jsonResponse({ success: true, node, link });
       } catch (err) {
         console.error("Node Create Error:", err);
@@ -589,20 +589,23 @@ export default {
       }
     }
 
-    // Endpoint 4d: Link two of the user's existing nodes, { source, target, relationship? }
+    // Endpoint 4d: Stored links between two of the user's nodes. POST { source, target, relationship? } links them,
+    // PATCH { source, target, relationship } relabels the link, DELETE { source, target } removes it.
     if (url.pathname === "/api/link") {
-      if (request.method !== "POST") {
-        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      const handlers = { POST: createUserLink, PATCH: updateUserLink, DELETE: deleteUserLink };
+      const handler = handlers[request.method];
+      if (!handler) {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST, PATCH, DELETE" });
       }
       const auth = await authenticateUser(request, env, url);
       if (auth.error) return auth.error;
       const body = await request.json().catch(() => null);
       try {
-        const result = await createUserLink(env, auth.user.id, body);
+        const result = await handler(env, auth.user.id, body);
         return jsonResponse(result.body, result.status);
       } catch (err) {
-        console.error("Link Create Error:", err);
-        return jsonResponse({ error: "Link failed." }, 500);
+        console.error("Link " + request.method + " Error:", err);
+        return jsonResponse({ error: "Link update failed." }, 500);
       }
     }
 
@@ -2083,6 +2086,49 @@ export default {
     }
     .card-link-button:hover, .card-link-button:focus-visible { background: rgba(0,255,204,0.2); }
     #link-pick-hint[hidden] { display: none; }
+    .card-links { margin: 0 0 10px; }
+    .card-links[hidden] { display: none; }
+    .card-links-label { display: block; margin-bottom: 6px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(223,253,247,0.6); }
+    .card-links-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 30vh; overflow-y: auto; }
+    .card-link-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+    .card-link-row .card-link-target {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 4px 0;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .card-link-row input {
+      min-width: 0;
+      padding: 4px 8px;
+      border: var(--hairline);
+      border-radius: var(--radius-s);
+      background: var(--bg-raised);
+      color: var(--text);
+      font: inherit;
+      font-size: 12px;
+    }
+    .card-link-row input:focus { outline: none; border-color: var(--accent-line); }
+    .card-link-row button.card-link-save, .card-link-row button.card-link-delete {
+      padding: 4px 8px;
+      border: 1px solid rgba(0,255,204,0.4);
+      border-radius: var(--radius-s);
+      background: rgba(0,255,204,0.08);
+      color: var(--accent);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .card-link-row button.card-link-save:disabled { opacity: 0.35; cursor: default; }
+    .card-link-row button.card-link-delete { border-color: rgba(255,107,129,0.45); background: rgba(255,107,129,0.08); color: #ff8fa0; }
+    .card-links-status { display: block; min-height: 1em; margin-top: 4px; font-size: 11px; color: rgba(223,253,247,0.6); }
+    .card-links-status.error { color: #ff6b81; }
     #link-pick-hint button { cursor: pointer; }
     .reader-panel {
       position: relative;
@@ -2877,6 +2923,11 @@ export default {
       </div>
     </div>
     <p id="card-meta" class="card-meta"></p>
+    <div id="card-links" class="card-links" hidden>
+      <span class="card-links-label">Connections</span>
+      <ul id="card-links-list" class="card-links-list"></ul>
+      <span id="card-links-status" class="card-links-status" aria-live="polite"></span>
+    </div>
     <button type="button" id="card-link-button" class="card-link-button" title="Connect this node to another">🔗 Link to…</button>
     <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
@@ -3834,6 +3885,7 @@ export default {
       const readable = note + NEWLINE + fullText;
       const isLong = readable.length > READER_MIN_LENGTH || readable.split(NEWLINE).length > READER_MIN_LINES;
       cardReaderButton.style.display = isLong || readerMediaFor(node, readable) ? 'inline-block' : 'none';
+      renderCardLinks(node);
 
       const created = node.created_at ? new Date(node.created_at) : null;
       cardMeta.textContent = created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : '';
@@ -8087,7 +8139,7 @@ export default {
         const link = body.link;
         const pair = [link.source, link.target].sort().join('|');
         const existing = graphData.links.find(item => [linkEndId(item.source), linkEndId(item.target)].sort().join('|') === pair);
-        if (existing) Object.assign(existing, { value: link.value, type: link.type, relation: link.relation, depth: link.depth, confidence: link.confidence });
+        if (existing) Object.assign(existing, { value: link.value, type: link.type, relation: link.relation, depth: link.depth, confidence: link.confidence, stored: true });
         else graphData.links.push(link);
         closeLinkModal();
         applyGraphFilters();
@@ -8103,6 +8155,111 @@ export default {
         linkNodeSubmit.textContent = 'Link';
       }
     });
+
+    // ---- Connections (the node card): the node's stored links (mined, manual or tutorial), each relabelled or deleted in
+    // place. Computed links (shared keywords, categories, tags) are left out: they are rebuilt on every load. ----
+    const pairKeyOf = (a, b) => [String(a), String(b)].sort().join('|');
+    const storedLinksOf = node => graphData.links.filter(link => link.stored && (linkEndId(link.source) === node.id || linkEndId(link.target) === node.id));
+    const setLinksStatus = (message, isError = false) => {
+      const status = document.getElementById('card-links-status');
+      status.textContent = message;
+      status.classList.toggle('error', isError);
+    };
+    // A function declaration, so showNodeCard can call it whenever a card opens.
+    function renderCardLinks(node) {
+      const box = document.getElementById('card-links');
+      const list = document.getElementById('card-links-list');
+      const byId = new Map(graphData.nodes.map(item => [item.id, item]));
+      const rows = storedLinksOf(node).map(link => {
+        const otherId = linkEndId(link.source) === node.id ? linkEndId(link.target) : linkEndId(link.source);
+        return { link, other: byId.get(otherId) };
+      }).filter(row => row.other).sort((a, b) => String(a.other.title || '').localeCompare(String(b.other.title || '')));
+      box.hidden = rows.length === 0;
+      setLinksStatus('');
+      list.replaceChildren(...rows.map(({ link, other }) => {
+        const item = document.createElement('li');
+        item.className = 'card-link-row';
+        const target = document.createElement('button');
+        target.type = 'button';
+        target.className = 'card-link-target';
+        target.textContent = nodeLabel(other, 60);
+        target.title = 'Open ' + String(other.title || other.name || '');
+        target.addEventListener('click', () => focusCard(other));
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.maxLength = 80;
+        input.value = link.relation || '';
+        input.placeholder = 'relationship';
+        input.setAttribute('aria-label', 'Relationship to ' + String(other.title || other.name || ''));
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'card-link-save';
+        save.textContent = 'Save';
+        save.disabled = true;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'card-link-delete';
+        remove.textContent = '×';
+        remove.title = 'Delete this link';
+        remove.setAttribute('aria-label', 'Delete link to ' + String(other.title || other.name || ''));
+        input.addEventListener('input', () => { save.disabled = !input.value.trim() || input.value.trim() === (link.relation || ''); });
+        input.addEventListener('keydown', event => {
+          if (event.key === 'Enter' && !save.disabled) {
+            event.preventDefault();
+            save.click();
+          }
+        });
+        save.addEventListener('click', () => relabelLink(node, link, other, input.value.trim(), save));
+        remove.addEventListener('click', () => removeLink(node, link, other, remove));
+        item.append(target, input, save, remove);
+        return item;
+      }));
+    }
+    const relabelLink = async (node, link, other, relation, button) => {
+      button.disabled = true;
+      setLinksStatus('Saving…');
+      try {
+        const body = await apiFetch('/api/link', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: node.id, target: other.id, relationship: relation })
+        });
+        link.relation = body.relation;
+        if (isCardFor(node)) {
+          renderCardLinks(node);
+          setLinksStatus('Saved.');
+        }
+      } catch (err) {
+        console.error('Relabel failed:', err);
+        button.disabled = false;
+        setLinksStatus(err.message || 'Save failed.', true);
+      }
+    };
+    const removeLink = async (node, link, other, button) => {
+      if (!window.confirm('Delete the link to "' + nodeLabel(other, 80) + '"?')) return;
+      button.disabled = true;
+      setLinksStatus('Deleting…');
+      try {
+        await apiFetch('/api/link', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: node.id, target: other.id })
+        });
+        const pair = pairKeyOf(node.id, other.id);
+        graphData.links = graphData.links.filter(item => !(item.stored && pairKeyOf(linkEndId(item.source), linkEndId(item.target)) === pair));
+        applyGraphFilters();
+        // The card stays on the node, with its cluster (and the wheel's Card ring) rebuilt without the wire.
+        if (isCardFor(node)) {
+          selectNode(node);
+          setLinksStatus('Link deleted.');
+        }
+        syncThumbWheel();
+      } catch (err) {
+        console.error('Link delete failed:', err);
+        button.disabled = false;
+        setLinksStatus(err.message || 'Delete failed.', true);
+      }
+    };
 
     // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
     // finish(updated, processed, bodies), when given, runs after the graph reloads; returning true skips the summary alert.
@@ -10704,26 +10861,68 @@ export function normalizeEdgePair(a, b) {
   return a < b ? [a, b] : [b, a];
 }
 
-// POST /api/link: links two nodes the user owns. Linking a pair that is already linked (by hand or by the miner)
-// replaces its relation with the user's. Returns { status, body } for the route to send.
-export async function createUserLink(env, userId, body) {
+// The pair and relationship a /api/link request names: { sourceId, targetId, relation } in stored order, or
+// { error } (a 400 body). relation is the trimmed relationship, or `fallback` when it is blank.
+function readLinkRequest(body, { fallback = null } = {}) {
   const source = typeof body?.source === "string" ? body.source.trim() : "";
   const target = typeof body?.target === "string" ? body.target.trim() : "";
-  const relation = typeof body?.relationship === "string" && body.relationship.trim() ? body.relationship.trim() : "manual";
-  if (!source || !target) return { status: 400, body: { error: "source and target are required." } };
-  if (source === target) return { status: 400, body: { error: "A node cannot link to itself." } };
-  if (relation.length > LINK_RELATION_MAX) {
-    return { status: 400, body: { error: `relationship must be at most ${LINK_RELATION_MAX} characters.` } };
-  }
-
-  const { results } = await env.DB.prepare("SELECT id FROM saved_nodes WHERE user_id = ? AND id IN (?, ?)").bind(userId, source, target).all();
-  if ((results || []).length !== 2) return { status: 404, body: { error: "Node not found." } };
-
+  const relation = typeof body?.relationship === "string" && body.relationship.trim() ? body.relationship.trim() : fallback;
+  if (!source || !target) return { error: "source and target are required." };
+  if (source === target) return { error: "A node cannot link to itself." };
+  if (relation && relation.length > LINK_RELATION_MAX) return { error: `relationship must be at most ${LINK_RELATION_MAX} characters.` };
   const [sourceId, targetId] = normalizeEdgePair(source, target);
+  return { sourceId, targetId, relation };
+}
+
+// Whether the user owns both nodes.
+async function ownsBothNodes(env, userId, a, b) {
+  const { results } = await env.DB.prepare("SELECT id FROM saved_nodes WHERE user_id = ? AND id IN (?, ?)").bind(userId, a, b).all();
+  return (results || []).length === 2;
+}
+
+const storedLink = (sourceId, targetId, relation) => ({ source: sourceId, target: targetId, value: 2, type: "ai", relation, depth: "logical", confidence: null, stored: true });
+
+// POST /api/link: links two nodes the user owns. Linking a pair that is already linked (by hand or by the miner)
+// replaces its relation with the user's. Each handler returns { status, body } for the route to send.
+export async function createUserLink(env, userId, body) {
+  const request = readLinkRequest(body, { fallback: "manual" });
+  if (request.error) return { status: 400, body: { error: request.error } };
+  const { sourceId, targetId, relation } = request;
+  if (!(await ownsBothNodes(env, userId, sourceId, targetId))) return { status: 404, body: { error: "Node not found." } };
+
   await env.DB.prepare(
     "INSERT INTO node_edges (source_id, target_id, relation, user_id) VALUES (?, ?, ?, ?) ON CONFLICT (source_id, target_id) DO UPDATE SET relation = excluded.relation WHERE node_edges.user_id = excluded.user_id"
   ).bind(sourceId, targetId, relation, userId).run();
-  return { status: 200, body: { success: true, link: { source: sourceId, target: targetId, value: 2, type: "ai", relation, depth: "logical", confidence: null } } };
+  return { status: 200, body: { success: true, link: storedLink(sourceId, targetId, relation) } };
+}
+
+// PATCH /api/link: relabels a stored link between two nodes the user owns (a relationship is required).
+export async function updateUserLink(env, userId, body) {
+  const request = readLinkRequest(body);
+  if (request.error) return { status: 400, body: { error: request.error } };
+  const { sourceId, targetId, relation } = request;
+  if (!relation) return { status: 400, body: { error: "relationship is required." } };
+  if (!(await ownsBothNodes(env, userId, sourceId, targetId))) return { status: 404, body: { error: "Node not found." } };
+
+  const result = await env.DB.prepare(
+    "UPDATE node_edges SET relation = ? WHERE source_id = ? AND target_id = ? AND user_id = ?"
+  ).bind(relation, sourceId, targetId, userId).run();
+  if (!result?.meta?.changes) return { status: 404, body: { error: "Link not found." } };
+  return { status: 200, body: { success: true, source: sourceId, target: targetId, relation } };
+}
+
+// DELETE /api/link: removes a stored link between two nodes the user owns.
+export async function deleteUserLink(env, userId, body) {
+  const request = readLinkRequest(body);
+  if (request.error) return { status: 400, body: { error: request.error } };
+  const { sourceId, targetId } = request;
+  if (!(await ownsBothNodes(env, userId, sourceId, targetId))) return { status: 404, body: { error: "Node not found." } };
+
+  const result = await env.DB.prepare(
+    "DELETE FROM node_edges WHERE source_id = ? AND target_id = ? AND user_id = ?"
+  ).bind(sourceId, targetId, userId).run();
+  if (!result?.meta?.changes) return { status: 404, body: { error: "Link not found." } };
+  return { status: 200, body: { success: true, deleted: { source: sourceId, target: targetId } } };
 }
 
 function mergeMinedEdges(links, nodes, edges) {
@@ -10739,6 +10938,8 @@ function mergeMinedEdges(links, nodes, edges) {
       value: 2,
       type: "ai",
       relation: edge.relation || null,
+      // A node_edges row (mined, manual or tutorial): the card can relabel or delete it, unlike the computed links.
+      stored: true,
       depth: normalizeDepth(edge.depth),
       confidence: Number.isFinite(Number(edge.confidence)) && edge.confidence !== null ? Number(edge.confidence) : null
     };

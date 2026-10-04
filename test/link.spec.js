@@ -1,12 +1,13 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { createUserLink, normalizeEdgePair } from "../src/index.js";
+import { createUserLink, deleteUserLink, normalizeEdgePair, updateUserLink } from "../src/index.js";
 
 // Mirrors LINK_RELATION_MAX in src/index.js (not exported: the Worker entry may only export handlers, functions and objects).
 const LINK_RELATION_MAX = 80;
 
-// A stand-in D1: owned holds the node ids each user owns; every statement run is recorded.
-const fakeEnv = (owned = {}) => {
+// A stand-in D1: owned holds the node ids each user owns; edges (optional) the stored links as "source|target|user",
+// which decides whether an UPDATE or DELETE finds its row. Every statement run is recorded.
+const fakeEnv = (owned = {}, edges = null) => {
 	const calls = [];
 	const DB = {
 		prepare(sql) {
@@ -21,6 +22,10 @@ const fakeEnv = (owned = {}) => {
 						},
 						async run() {
 							calls.push({ sql, args });
+							if (edges && /^(UPDATE|DELETE)/.test(sql)) {
+								const [source, target, user] = args.slice(-3);
+								return { meta: { changes: edges.includes(source + "|" + target + "|" + user) ? 1 : 0 } };
+							}
 							return { meta: { changes: 1 } };
 						},
 					};
@@ -81,19 +86,74 @@ describe("createUserLink", () => {
 	});
 });
 
-describe("/api/link route", () => {
-	it("only allows POST", async () => {
-		const response = await SELF.fetch("http://example.com/api/link");
-		expect(response.status).toBe(405);
-		expect(response.headers.get("Allow")).toBe("POST");
+describe("updateUserLink", () => {
+	it("relabels the stored link, whichever order the pair is given in", async () => {
+		const { env, calls } = fakeEnv({ user_1: ["node_a", "node_b"] }, ["node_a|node_b|user_1"]);
+		const result = await updateUserLink(env, "user_1", { source: "node_b", target: "node_a", relationship: " cites " });
+		expect(result).toEqual({ status: 200, body: { success: true, source: "node_a", target: "node_b", relation: "cites" } });
+		const update = calls.find(call => call.sql.startsWith("UPDATE"));
+		expect(update.sql).toContain("user_id = ?");
+		expect(update.args).toEqual(["cites", "node_a", "node_b", "user_1"]);
 	});
 
-	it("requires sign-in", async () => {
-		const response = await SELF.fetch("http://example.com/api/link", {
-			method: "POST",
-			headers: { "Content-Type": "application/json", Origin: "http://example.com" },
-			body: JSON.stringify({ source: "node_a", target: "node_b" }),
-		});
-		expect(response.status).toBe(401);
+	it("requires a relationship", async () => {
+		const { env, calls } = fakeEnv({ user_1: ["node_a", "node_b"] }, ["node_a|node_b|user_1"]);
+		for (const relationship of [undefined, "", "   "]) {
+			expect((await updateUserLink(env, "user_1", { source: "node_a", target: "node_b", relationship })).status).toBe(400);
+		}
+		expect(calls).toEqual([]);
+	});
+
+	it("refuses nodes the user does not own, and links that are not stored", async () => {
+		const { env, calls } = fakeEnv({ user_1: ["node_a", "node_c"], user_2: ["node_b"] }, ["node_a|node_b|user_2"]);
+		expect((await updateUserLink(env, "user_1", { source: "node_a", target: "node_b", relationship: "x" })).status).toBe(404);
+		expect(calls.some(call => call.sql.startsWith("UPDATE"))).toBe(false);
+		const missing = await updateUserLink(env, "user_1", { source: "node_a", target: "node_c", relationship: "x" });
+		expect(missing).toEqual({ status: 404, body: { error: "Link not found." } });
+	});
+});
+
+describe("deleteUserLink", () => {
+	it("deletes the user's stored link", async () => {
+		const { env, calls } = fakeEnv({ user_1: ["node_a", "node_b"] }, ["node_a|node_b|user_1"]);
+		const result = await deleteUserLink(env, "user_1", { source: "node_b", target: "node_a" });
+		expect(result).toEqual({ status: 200, body: { success: true, deleted: { source: "node_a", target: "node_b" } } });
+		const remove = calls.find(call => call.sql.startsWith("DELETE"));
+		expect(remove.sql).toContain("user_id = ?");
+		expect(remove.args).toEqual(["node_a", "node_b", "user_1"]);
+	});
+
+	it("refuses another user's nodes and reports a missing link", async () => {
+		const { env, calls } = fakeEnv({ user_1: ["node_a", "node_c"], user_2: ["node_b"] }, ["node_a|node_b|user_2"]);
+		expect((await deleteUserLink(env, "user_1", { source: "node_a", target: "node_b" })).status).toBe(404);
+		expect(calls.some(call => call.sql.startsWith("DELETE"))).toBe(false);
+		expect((await deleteUserLink(env, "user_1", { source: "node_a", target: "node_c" })).body.error).toBe("Link not found.");
+	});
+
+	it("rejects missing ids and self-links before touching the database", async () => {
+		const { env, calls } = fakeEnv({ user_1: ["node_a"] });
+		for (const body of [null, {}, { source: "node_a" }, { source: "node_a", target: "node_a" }]) {
+			expect((await deleteUserLink(env, "user_1", body)).status, JSON.stringify(body)).toBe(400);
+		}
+		expect(calls).toEqual([]);
+	});
+});
+
+describe("/api/link route", () => {
+	it("allows POST, PATCH and DELETE only", async () => {
+		const response = await SELF.fetch("http://example.com/api/link");
+		expect(response.status).toBe(405);
+		expect(response.headers.get("Allow")).toBe("POST, PATCH, DELETE");
+	});
+
+	it("requires sign-in for every method", async () => {
+		for (const method of ["POST", "PATCH", "DELETE"]) {
+			const response = await SELF.fetch("http://example.com/api/link", {
+				method,
+				headers: { "Content-Type": "application/json", Origin: "http://example.com" },
+				body: JSON.stringify({ source: "node_a", target: "node_b", relationship: "x" }),
+			});
+			expect(response.status, method).toBe(401);
+		}
 	});
 });
