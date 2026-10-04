@@ -121,7 +121,7 @@ describe('engine address on other devices', () => {
 		expect(isLoopbackUrl('http://[::1]:3333')).toBe(true);
 	});
 
-	it('uses the portal relay away from the engine computer when the page offers one; a saved address wins', async () => {
+	it('uses the portal relay away from the engine computer when the page offers one; a saved permanent address wins, a saved quick tunnel does not', async () => {
 		const { resolveEngineBaseUrl, DEFAULT_ENGINE_BASE_URL } = await import('../../src/services/engineApi.ts');
 		const store = new Map<string, string>();
 		const page = (href: string, relay: string) => {
@@ -136,9 +136,16 @@ describe('engine address on other devices', () => {
 			expect(resolveEngineBaseUrl()).toBe(DEFAULT_ENGINE_BASE_URL);
 			page('http://127.0.0.1:8787/mission-control', '1');
 			expect(resolveEngineBaseUrl()).toBe(DEFAULT_ENGINE_BASE_URL);
+			// A saved quick tunnel goes stale on the tunnel's next restart: the relay takes over where there is one.
 			store.set('aether.engine.baseUrl', 'https://abc.trycloudflare.com');
 			page('https://aether.example.workers.dev/mission-control', '1');
+			expect(resolveEngineBaseUrl()).toBe('https://aether.example.workers.dev/api/engine/relay');
+			page('https://aether.example.workers.dev/mission-control', '');
 			expect(resolveEngineBaseUrl()).toBe('https://abc.trycloudflare.com');
+			// A permanent address (or localhost) the operator saved still wins over the relay.
+			store.set('aether.engine.baseUrl', 'https://engine.example.com');
+			page('https://aether.example.workers.dev/mission-control', '1');
+			expect(resolveEngineBaseUrl()).toBe('https://engine.example.com');
 		} finally {
 			vi.unstubAllGlobals();
 		}

@@ -45,13 +45,25 @@ function relayAvailable(): boolean {
 	}
 }
 
+// A Cloudflare quick tunnel (*.trycloudflare.com): its address changes every time the tunnel restarts.
+export function isQuickTunnelUrl(value: string): boolean {
+	try {
+		return new URL(value).hostname.toLowerCase().endsWith('.trycloudflare.com');
+	} catch {
+		return false;
+	}
+}
+
 // Engine address for this browser: a saved address (Settings / pairing) wins; away from the engine's computer the
-// portal relay is used when the Worker has one; otherwise localhost.
+// portal relay is used when the Worker has one; otherwise localhost. A saved quick-tunnel address goes stale on the
+// tunnel's next restart while the relay follows the Worker's ENGINE_PUBLIC_URL, so where the relay is available it
+// takes over from a saved quick tunnel (a permanent address or localhost still wins).
 export function resolveEngineBaseUrl(): string {
 	const stored = readStorage(ENGINE_BASE_URL_STORAGE_KEY);
-	if (stored) return stored;
 	const here = globalThis.location;
-	if (here && relayAvailable() && !isLoopbackUrl(here.href)) return here.origin + ENGINE_RELAY_PATH;
+	const relay = here && relayAvailable() && !isLoopbackUrl(here.href) ? here.origin + ENGINE_RELAY_PATH : null;
+	if (stored && !(relay && isQuickTunnelUrl(stored))) return stored;
+	if (relay) return relay;
 	return DEFAULT_ENGINE_BASE_URL;
 }
 
