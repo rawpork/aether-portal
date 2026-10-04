@@ -160,11 +160,11 @@ export function createDial({ count, index = 0, pitch = 0.4 }) {
 // ---- The wheel's rings, outer to inner ----
 // The View rim is outermost; inside it the primary ring for that view (the Scale in 3D Space, the Layout on the Board,
 // Time elsewhere); then the rings the current stop needs. Space opens Time, Cluster opens Depth, Horizon opens Filters
-// and Atomic folds everything. Idle, only the rim and the primary ring show. The Simple mode (for getting started)
+// and Atomic opens Card (the focused card's cluster, one stop per card). Idle, only the rim and the primary ring show. The Simple mode (for getting started)
 // never shows more than those two; Advanced telescopes the inner rings out.
 export const WHEEL_VIEWS = ['space', 'list', 'timeline', 'board', 'carousel'];
 export const WHEEL_MODES = ['simple', 'advanced'];
-const INNER_BY_SCALE = { space: ['time'], cluster: ['depth'], horizon: ['filters'], atomic: [] };
+const INNER_BY_SCALE = { space: ['time'], cluster: ['depth'], horizon: ['filters'], atomic: ['node'] };
 
 export function wheelRings({ view = 'space', scale = 'horizon', collapsed = false, simple = false } = {}) {
   let rings;

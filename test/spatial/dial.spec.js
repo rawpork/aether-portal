@@ -87,7 +87,7 @@ describe("wheelRings", () => {
 		expect(wheelRings({ view: "space", scale: "space" })).toEqual(["view", "scale", "time"]);
 		expect(wheelRings({ view: "space", scale: "cluster" })).toEqual(["view", "scale", "depth"]);
 		expect(wheelRings({ view: "space", scale: "horizon" })).toEqual(["view", "scale", "filters"]);
-		expect(wheelRings({ view: "space", scale: "atomic" })).toEqual(["view", "scale"]);
+		expect(wheelRings({ view: "space", scale: "atomic" })).toEqual(["view", "scale", "node"]);
 		expect(wheelRings({ view: "board" })).toEqual(["view", "layout", "filters", "time"]);
 		expect(wheelRings({ view: "list" })).toEqual(["view", "time", "filters"]);
 	});

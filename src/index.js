@@ -579,6 +579,23 @@ export default {
       }
     }
 
+    // Endpoint 4d: Link two of the user's existing nodes, { source, target, relationship? }
+    if (url.pathname === "/api/link") {
+      if (request.method !== "POST") {
+        return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      }
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const body = await request.json().catch(() => null);
+      try {
+        const result = await createUserLink(env, auth.user.id, body);
+        return jsonResponse(result.body, result.status);
+      } catch (err) {
+        console.error("Link Create Error:", err);
+        return jsonResponse({ error: "Link failed." }, 500);
+      }
+    }
+
     // Endpoint 4c: A Telegram photo node's image, fetched from Telegram on demand (the stored file_id never expires)
     if (url.pathname.startsWith("/api/node-image/")) {
       if (request.method !== "GET") {
@@ -2043,6 +2060,20 @@ export default {
       font-size: 12px;
       cursor: pointer;
     }
+    .card-link-button {
+      margin: 0 0 12px;
+      padding: 6px 12px;
+      border-radius: var(--radius-s);
+      border: 1px solid rgba(0,255,204,0.55);
+      background: rgba(0,255,204,0.08);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .card-link-button:hover, .card-link-button:focus-visible { background: rgba(0,255,204,0.2); }
+    #link-pick-hint[hidden] { display: none; }
+    #link-pick-hint button { cursor: pointer; }
     .reader-panel {
       position: relative;
       width: min(760px, 94vw);
@@ -2171,7 +2202,7 @@ export default {
     }
     .board-header-label { overflow: hidden; text-overflow: ellipsis; text-transform: capitalize; }
     .board-header-count { color: #8a93a6; font-weight: 400; }
-    #board-hint {
+    #board-hint, #link-pick-hint {
       position: fixed;
       left: 50%;
       bottom: 96px;
@@ -2824,6 +2855,7 @@ export default {
       </div>
     </div>
     <p id="card-meta" class="card-meta"></p>
+    <button type="button" id="card-link-button" class="card-link-button" title="Connect this node to another">🔗 Link to…</button>
     <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
       <div class="ask-row">
@@ -2913,6 +2945,26 @@ export default {
       </div>
     </form>
   </div>
+
+  <div id="link-node-modal" class="modal-backdrop" hidden>
+    <form id="link-node-form" class="modal-panel" autocomplete="off">
+      <h3>Link Node</h3>
+      <p id="link-node-source" class="card-meta"></p>
+      <label>Link To
+        <select id="link-node-target" required></select>
+      </label>
+      <label>Relationship
+        <input id="link-node-relation" type="text" maxlength="80" placeholder="e.g. inspired by (optional)">
+      </label>
+      <p id="link-node-error" class="modal-error"></p>
+      <div class="modal-actions">
+        <button type="button" id="link-node-pick" class="toggle-button" title="Close this and tap the card to link to">Pick on graph</button>
+        <button type="button" id="link-node-cancel" class="toggle-button">Cancel</button>
+        <button type="submit" id="link-node-submit" class="toggle-button active">Link</button>
+      </div>
+    </form>
+  </div>
+  <div id="link-pick-hint" role="status" hidden><span id="link-pick-text"></span><button type="button" id="link-pick-cancel" class="toggle-button">Cancel</button></div>
 
   <details id="legend" open>
     <summary class="legend-title"><span class="legend-label">Categories</span><span class="legend-hint"> · tap to highlight</span><span id="legend-active" class="legend-active" hidden></span></summary>
@@ -3117,6 +3169,8 @@ export default {
     const BASE_NODE_OPACITY = 0.75;
     const BASE_LINK_OPACITY = 0.2;
     const focus = { node: null, nodeIds: new Set() };
+    // Link to… pick mode: { source, relation } while waiting for a tap on the target card (declared early: node clicks read it).
+    let linkPick = null;
 
     // Hover is a lighter layer on top of focus: it only lifts one card and brightens its links.
     const hover = { id: null, source: null };
@@ -3407,7 +3461,9 @@ export default {
     // changes elsewhere, so the rings turn to match (the headset barrel follows the same values every frame).
     let thumbWheel = null;
     const syncThumbWheel = () => {
-      if (thumbWheel) thumbWheel.sync();
+      if (!thumbWheel) return;
+      syncWheelCards();
+      thumbWheel.sync();
     };
     compactLayout.addEventListener('change', () => { FOCUS_FILL = compactLayout.matches ? FOCUS_FILL_COMPACT : FOCUS_FILL_WIDE; });
     const cardTitle = document.getElementById('card-title');
@@ -4616,6 +4672,10 @@ export default {
         // The second tap of a double tap (handled on release) may land on a card sliding past.
         if (ignoringClick()) return;
         lastBackgroundTap = null;
+        if (linkPick) {
+          pickLinkTarget(node);
+          return;
+        }
         if (playFromFace(node)) return;
         focusCard(node);
       })
@@ -7866,6 +7926,107 @@ export default {
       }
     });
 
+    // ---- Link to… (the node card): connect the open node to another, chosen from the list or by tapping its card ----
+    const linkNodeModal = document.getElementById('link-node-modal');
+    const linkNodeForm = document.getElementById('link-node-form');
+    const linkNodeSource = document.getElementById('link-node-source');
+    const linkNodeTarget = document.getElementById('link-node-target');
+    const linkNodeRelation = document.getElementById('link-node-relation');
+    const linkNodeError = document.getElementById('link-node-error');
+    const linkNodeSubmit = document.getElementById('link-node-submit');
+    const linkPickHint = document.getElementById('link-pick-hint');
+    const linkPickText = document.getElementById('link-pick-text');
+    const nodeLabel = (node, max) => truncate(String(node.title || node.name || node.id), max);
+    // The node being linked, while the modal is open.
+    let linkSource = null;
+
+    const openLinkModal = (source, prefill = {}) => {
+      linkSource = source;
+      linkNodeForm.reset();
+      linkNodeError.textContent = '';
+      linkNodeSource.textContent = 'From: ' + nodeLabel(source, 80);
+      const sorted = graphData.nodes.filter(node => node.id !== source.id).sort((a, b) => String(a.title || '').localeCompare(String(b.title || '')));
+      linkNodeTarget.replaceChildren(new Option('— Choose a node —', ''), ...sorted.map(node => new Option(nodeLabel(node, 60), node.id)));
+      if (prefill.targetId) linkNodeTarget.value = prefill.targetId;
+      linkNodeRelation.value = prefill.relation || '';
+      filterMenu.open = false;
+      settingsMenu.classList.remove('open');
+      linkNodeModal.hidden = false;
+      (prefill.targetId ? linkNodeRelation : linkNodeTarget).focus();
+    };
+    const closeLinkModal = () => {
+      linkNodeModal.hidden = true;
+      linkSource = null;
+    };
+    const endLinkPick = () => {
+      linkPick = null;
+      linkPickHint.hidden = true;
+    };
+    const pickLinkTarget = node => {
+      const pick = linkPick;
+      if (node.id === pick.source.id) return;
+      endLinkPick();
+      openLinkModal(pick.source, { targetId: node.id, relation: pick.relation });
+    };
+
+    document.getElementById('card-link-button').addEventListener('click', () => {
+      if (focus.node) openLinkModal(focus.node);
+    });
+    document.getElementById('link-node-cancel').addEventListener('click', closeLinkModal);
+    linkNodeModal.addEventListener('click', event => { if (event.target === linkNodeModal) closeLinkModal(); });
+    // Pick on graph: the card steps aside so the graph is free to tap; Cancel (or Escape) drops the pick.
+    document.getElementById('link-node-pick').addEventListener('click', () => {
+      linkPick = { source: linkSource, relation: linkNodeRelation.value };
+      closeLinkModal();
+      hideNodeCard();
+      linkPickText.textContent = 'Tap the card to link to “' + nodeLabel(linkPick.source, 40) + '”';
+      linkPickHint.hidden = false;
+    });
+    document.getElementById('link-pick-cancel').addEventListener('click', endLinkPick);
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if (!linkNodeModal.hidden) closeLinkModal();
+      else if (linkPick) endLinkPick();
+    });
+
+    linkNodeForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const source = linkSource;
+      const targetId = linkNodeTarget.value;
+      if (!source || !targetId) {
+        linkNodeTarget.focus();
+        return;
+      }
+      linkNodeSubmit.disabled = true;
+      linkNodeSubmit.textContent = 'Linking…';
+      linkNodeError.textContent = '';
+      try {
+        const body = await apiFetch('/api/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: source.id, target: targetId, relationship: linkNodeRelation.value.trim() })
+        });
+        // One link per pair, as /api/graph draws it: a pair already wired (tags, concepts) takes on the user's relation.
+        const link = body.link;
+        const pair = [link.source, link.target].sort().join('|');
+        const existing = graphData.links.find(item => [linkEndId(item.source), linkEndId(item.target)].sort().join('|') === pair);
+        if (existing) Object.assign(existing, { value: link.value, type: link.type, relation: link.relation, depth: link.depth, confidence: link.confidence });
+        else graphData.links.push(link);
+        closeLinkModal();
+        applyGraphFilters();
+        // The source's card comes back (it stepped aside for a pick) with its cluster rebuilt around the new wire.
+        if (focus.node && focus.node.id === source.id) selectNode(source);
+        else focusCard(source);
+        syncThumbWheel();
+      } catch (err) {
+        console.error('Link failed:', err);
+        linkNodeError.textContent = err.message || 'Link failed.';
+      } finally {
+        linkNodeSubmit.disabled = false;
+        linkNodeSubmit.textContent = 'Link';
+      }
+    });
+
     // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
     // finish(updated, processed, bodies), when given, runs after the graph reloads; returning true skips the summary alert.
     const runAdminBatches = async ({ button, path, busyLabel, summarize, finish }) => {
@@ -8744,7 +8905,7 @@ export default {
 
     // ---- Control wheel (public/js/spatial/thumb-wheel.js; phones and desktop): View rim outermost (3D Space, List,
     // Timeline, Board, Carousel), then the primary ring (the Scale in 3D Space, the Layout on the Board, Time elsewhere),
-    // then what the stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: nothing). The hub is + Add. In the
+    // then what the stop needs (Space: Time; Cluster: Depth; Horizon: Show; Atomic: Card, the focused card's cluster). The hub is + Add. In the
     // Simple mode only the rim and the primary ring show. ----
     const thumbWheelMount = document.getElementById('thumb-wheel');
     const WHEEL_TIME_LABELS = { day: 'Today', week: 'Week', month: 'Month', groups: 'Groups', all: 'All' };
@@ -8761,8 +8922,32 @@ export default {
       layout: { name: 'Board layout', stops: BOARD_MODES.map(value => ({ value, label: WHEEL_BOARD_LABELS[value] })) },
       time: { name: 'Time', stops: SCOPES.map(value => ({ value, label: WHEEL_TIME_LABELS[value] })) },
       depth: { name: 'Depth', stops: DEPTH_LEVELS.map(value => ({ value, label: DEPTH_LABELS[value] })) },
-      filters: { name: 'Show', stops: Object.keys(PLATFORM_LABELS).map(value => ({ value, label: value === 'x' ? 'X' : PLATFORM_LABELS[value] })) }
+      filters: { name: 'Show', stops: Object.keys(PLATFORM_LABELS).map(value => ({ value, label: value === 'x' ? 'X' : PLATFORM_LABELS[value] })) },
+      // Filled from the graph by syncWheelCards.
+      node: { name: 'Card', stops: [{ value: '', label: '—' }] }
     });
+    // The Card ring: one stop per card in the focused card's carousel (its connected or type cluster), in carousel
+    // order; cards hidden by filters are left out. Rebuilt only when the cards or their titles change.
+    const WHEEL_CARD_LABEL_MAX = 14;
+    let wheelCardsKey = null;
+    const wheelCardStops = () => {
+      if (!focus.node) return [{ value: '', label: '—' }];
+      const focusId = String(focus.node.id);
+      const ids = carousel.ids.map(String);
+      const visible = new Map(Graph.graphData().nodes.map(item => [String(item.id), item]));
+      const stops = (ids.includes(focusId) ? ids : [focusId]).map(id => visible.get(id)).filter(Boolean).map(node => {
+        const title = String(node.name || node.title || 'Untitled').trim() || 'Untitled';
+        return { value: String(node.id), label: title.length > WHEEL_CARD_LABEL_MAX ? title.slice(0, WHEEL_CARD_LABEL_MAX - 1) + '…' : title };
+      });
+      return stops.length ? stops : [{ value: '', label: '—' }];
+    };
+    const syncWheelCards = () => {
+      const stops = wheelCardStops();
+      const key = JSON.stringify(stops);
+      if (key === wheelCardsKey) return;
+      wheelCardsKey = key;
+      thumbWheel.setStops('node', stops);
+    };
     // The status Board view (kept for desktop) reads as the wheel's Board, in its Status layout.
     const wheelView = () => filterState.view === 'graph' ? (filterState.flat ? 'board' : 'space') : filterState.view;
     const wheelState = () => ({
@@ -8771,7 +8956,8 @@ export default {
       layout: filterState.view === 'board' ? 'status' : filterState.boardMode,
       time: filterState.horizon,
       depth: filterState.depth,
-      filters: filterState.platform
+      filters: filterState.platform,
+      node: focus.node ? String(focus.node.id) : ''
     });
     const setWheelView = value => {
       if (value === 'space' || value === 'board') {
@@ -8791,6 +8977,11 @@ export default {
       } else if (ring === 'time') setScope(value);
       else if (ring === 'depth') setDepth(value);
       else if (ring === 'filters' && value !== filterState.platform) setPlatform(value);
+      else if (ring === 'node') {
+        // Selecting a card flies the camera to it (focusCard -> selectNode -> flyToNode), as the card's arrows do.
+        const node = value ? Graph.graphData().nodes.find(item => String(item.id) === value) : null;
+        if (node && node !== focus.node) focusCard(node, { keepCarousel: true });
+      }
       // A stop that could not be reached (nothing there) turns the ring back to where the view is.
       syncThumbWheel();
     };
@@ -10429,6 +10620,35 @@ async function loadMinedEdges(env, userId) {
 }
 
 // Mined edges override keyword/category links between the same pair so each pair is drawn once.
+const LINK_RELATION_MAX = 80;
+
+// node_edges is undirected and stored with source_id < target_id, so either order names the same edge.
+export function normalizeEdgePair(a, b) {
+  return a < b ? [a, b] : [b, a];
+}
+
+// POST /api/link: links two nodes the user owns. Linking a pair that is already linked (by hand or by the miner)
+// replaces its relation with the user's. Returns { status, body } for the route to send.
+export async function createUserLink(env, userId, body) {
+  const source = typeof body?.source === "string" ? body.source.trim() : "";
+  const target = typeof body?.target === "string" ? body.target.trim() : "";
+  const relation = typeof body?.relationship === "string" && body.relationship.trim() ? body.relationship.trim() : "manual";
+  if (!source || !target) return { status: 400, body: { error: "source and target are required." } };
+  if (source === target) return { status: 400, body: { error: "A node cannot link to itself." } };
+  if (relation.length > LINK_RELATION_MAX) {
+    return { status: 400, body: { error: `relationship must be at most ${LINK_RELATION_MAX} characters.` } };
+  }
+
+  const { results } = await env.DB.prepare("SELECT id FROM saved_nodes WHERE user_id = ? AND id IN (?, ?)").bind(userId, source, target).all();
+  if ((results || []).length !== 2) return { status: 404, body: { error: "Node not found." } };
+
+  const [sourceId, targetId] = normalizeEdgePair(source, target);
+  await env.DB.prepare(
+    "INSERT INTO node_edges (source_id, target_id, relation, user_id) VALUES (?, ?, ?, ?) ON CONFLICT (source_id, target_id) DO UPDATE SET relation = excluded.relation WHERE node_edges.user_id = excluded.user_id"
+  ).bind(sourceId, targetId, relation, userId).run();
+  return { status: 200, body: { success: true, link: { source: sourceId, target: targetId, value: 2, type: "ai", relation, depth: "logical", confidence: null } } };
+}
+
 function mergeMinedEdges(links, nodes, edges) {
   const nodeIds = new Set(nodes.map(node => node.id));
   const pairKey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
