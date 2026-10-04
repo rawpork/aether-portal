@@ -1,0 +1,13 @@
+# Local secrets for `wrangler dev` (copy to .dev.vars, which is gitignored). Never set DEV_AUTH_BYPASS as a deployed secret;
+# it also only works on localhost / 127.0.0.1 (src/dev-auth.js).
+SESSION_SECRET=replace-with-a-long-random-string
+
+# Dev sign-in: http://127.0.0.1:8787 signs in this operator without Google ("Dev Operator Login" on the gate).
+DEV_AUTH_BYPASS=true
+DEV_OPERATOR_NAME=Kenneth
+DEV_OPERATOR_ROLE=Lead Systems Architect
+# DEV_OPERATOR_TIER=pro
+
+# Optional: the Aether_Engine's SUPABASE_JWT_SECRET, so Mission Control mints engine tokens (needed when the engine
+# runs with REQUIRE_AUTH=true).
+# ENGINE_JWT_SECRET=

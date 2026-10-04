@@ -9,6 +9,7 @@ import { renderSharePage } from "./share-page.js";
 import { renderMissionControlPage } from "./mission-control-page.js";
 import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
+import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
 import { OAUTH_COOKIE, OAUTH_COOKIE_TTL_SECONDS, buildGoogleAuthUrl, createOAuthState, createPkcePair, exchangeGoogleCode, isAllowedGoogleEmail, readOAuthCookie, safeNextPath, signOAuthCookie, usernameFromEmail, verifyGoogleIdToken } from "./google-auth.js";
@@ -941,6 +942,7 @@ export default {
         assetVersion: env.CF_VERSION_METADATA?.id || "dev",
         tier: account?.tier || "free",
         userName: displayNameFor(account),
+        role: devRoleFor(env, url, session.id) || "",
         upgradeUrl: env.PRO_UPGRADE_URL || "",
         // ?theme= (from the Engine status page) wins over the saved cookie, so the first paint already matches.
         theme: url.searchParams.get("theme") || readCookie(request, "aether_theme") || ""
@@ -1076,6 +1078,7 @@ export default {
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="google-client-id" content="${escapeHtmlText(env.GOOGLE_CLIENT_ID || "")}">
+  <meta name="aether-dev-login" content="${isDevAuthEnabled(env, url) ? "1" : ""}">
   <meta name="aether-version" content="${assetVersion}">
   <style>
     /* DESIGN.md, main portal: navy surfaces and a teal accent for the brand, selected states and primary buttons;
@@ -1808,6 +1811,7 @@ export default {
     .google-button:active { transform: scale(0.98); }
     .google-button[hidden] { display: none; }
     .google-button svg { width: 20px; height: 20px; flex: none; }
+    .google-button.dev-button { background: transparent; color: var(--accent); border: 1px solid var(--accent-line); }
     .login-error { margin: 0; min-height: 1em; font-size: 13px; color: #ff6b81; }
     .login-error:empty { display: none; }
     .settings-option {
@@ -2814,6 +2818,7 @@ export default {
         <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
         <span>Sign in with Google</span>
       </a>
+      <a id="dev-signin" class="google-button dev-button" href="/api/auth/dev" hidden>Dev Operator Login</a>
       <p id="login-error" class="login-error" role="alert"></p>
     </div>
   </div>
@@ -8768,6 +8773,19 @@ export default {
     })();
     googleSignin.href = '/api/auth/google' + (nextPath ? '?next=' + encodeURIComponent(nextPath) : '');
 
+    // Local dev (src/dev-auth.js, DEV_AUTH_BYPASS in .dev.vars): the gate offers the dev operator and signs it in
+    // automatically, except right after a sign-out or when the last automatic attempt did not stick.
+    const devLoginEnabled = ((document.querySelector('meta[name="aether-dev-login"]') || {}).content || '') === '1';
+    const devSignin = document.getElementById('dev-signin');
+    devSignin.href = '/api/auth/dev?next=' + encodeURIComponent(nextPath || window.location.pathname + window.location.search);
+    const devFlag = (key, value) => {
+      try {
+        if (value === undefined) return sessionStorage.getItem(key);
+        if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, value);
+      } catch (err) { return null; }
+    };
+    devSignin.addEventListener('click', () => devFlag('aether.devSignedOut', null));
+
     const afterSignIn = async () => {
       if (nextPath) {
         window.location.href = nextPath;
@@ -8824,6 +8842,16 @@ export default {
         history.replaceState(null, '', window.location.pathname + (pageParams.toString() ? '?' + pageParams.toString() : ''));
       }
       loginGate.hidden = false;
+      if (devLoginEnabled) {
+        devSignin.hidden = false;
+        devSignin.focus();
+        const lastTry = Number(devFlag('aether.devAutoLogin') || 0);
+        if (!authError && !devFlag('aether.devSignedOut') && Date.now() - lastTry > 10000) {
+          devFlag('aether.devAutoLogin', String(Date.now()));
+          window.location.href = devSignin.href;
+        }
+        return;
+      }
       googleSignin.focus();
       startOneTap();
     }
@@ -8852,6 +8880,7 @@ export default {
 
     // Reloading after sign-out drops every in-memory node; the empty session then shows the gate.
     document.getElementById('logout-button').addEventListener('click', async () => {
+      if (devLoginEnabled) devFlag('aether.devSignedOut', '1');
       await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
       window.location.reload();
     });
@@ -8924,6 +8953,7 @@ const DUMMY_PASSWORD_HASH = `pbkdf2$${PBKDF2_ITERATIONS}$AAAAAAAAAAAAAAAAAAAAAA$
 async function handleAuthRoute(request, env, url) {
   const route = url.pathname.slice("/api/auth/".length);
   if (route === "google" || route === "callback") return handleGoogleAuthRoute(request, env, url, route);
+  if (route === "dev") return handleDevAuthRoute(request, env, url);
   const allowed = { login: "POST", logout: "POST", me: "GET", users: "POST" }[route];
   if (!allowed) return jsonResponse({ error: "Not found" }, 404);
   if (request.method !== allowed) {
@@ -8941,7 +8971,7 @@ async function handleAuthRoute(request, env, url) {
       : null;
     if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
     const preferredName = await loadPreferredName(env, user.id);
-    return jsonResponse({ user: { id: user.id, username: user.username, email: user.email || null, tier: user.tier || "free", preferred_name: preferredName } });
+    return jsonResponse({ user: { id: user.id, username: user.username, email: user.email || null, tier: user.tier || "free", preferred_name: preferredName, role: devRoleFor(env, url, user.id) } });
   }
 
   if (route === "login") {
@@ -9092,6 +9122,19 @@ async function handleGoogleAuthRoute(request, env, url, route) {
     console.error("Google Sign-in Error:", err);
     return fail("Google sign-in failed. Please try again.", 500);
   }
+}
+
+// Local dev sign-in (src/dev-auth.js): GET /api/auth/dev?next=/path signs in the dev operator and redirects back.
+// 404 unless DEV_AUTH_BYPASS is on and the request is to a loopback host.
+async function handleDevAuthRoute(request, env, url) {
+  if (!isDevAuthEnabled(env, url)) return jsonResponse({ error: "Not found" }, 404);
+  if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+  if (!env.SESSION_SECRET) return jsonResponse({ error: "Set SESSION_SECRET in .dev.vars for dev sign-in." }, 500);
+  const operator = await ensureDevOperator(env);
+  let cookie = sessionCookie(await signSession(operator.id, env.SESSION_SECRET));
+  // Plain http on a loopback host: drop Secure so every browser keeps the cookie.
+  if (url.protocol === "http:") cookie = cookie.replace("; Secure", "");
+  return redirectWithCookies(url.origin + safeNextPath(url.searchParams.get("next")), [cookie]);
 }
 
 // Matches the Google account by subject id, then by (verified) email; otherwise creates a free-tier account if the

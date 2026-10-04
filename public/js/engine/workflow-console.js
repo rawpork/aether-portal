@@ -1,0 +1,1029 @@
+// Mission Control → Studio → Workflow console (Phase 4, Step 4.1b; specs/ui/01-node-canvas.md).
+//
+// - Studio Command Bar: a goal generates a workflow on Aether_Engine (agents, A2A hand-offs, MCP tool bindings,
+//   actions behind approval checkpoints); with a workflow open, a prompt changes it ("add an agent to review the code
+//   before deployment"). New nodes are auto-arranged and flagged for a moment so the change is visible.
+// - Human override: drag nodes by their header (8px grid), drag from an output port to an input port to wire (or
+//   Enter on a port for "Connect to…"), select a cable or node and press Delete, edit an agent in the inspector.
+//   Every change is saved to the engine against the version it was made on; a 409 reloads the newer version.
+// - Runs: Run starts the workflow on the engine and polls its events. Each flow event sends a pulse along its cable
+//   (at most 3 per cable, extras count on a badge); node statuses update in place; a breaker halt freezes the canvas.
+//
+// Port rules and layout live in workflow-model.js (mirrors Aether_Engine src/workflows.ts).
+import { getEngineApi } from '../engine-api.bundle.js';
+import { describeAuthError } from './connection.js';
+import {
+  CABLE_TEXT, KIND_TEXT, NODE_H, NODE_W, PORT_TEXT, PORTS, autoLayout, cableLabel, cablePath, cablePoint, checkConnect,
+  compatibleTargets, ease, graphForSave, localId, portOffset, portPoint, snap, stageSize,
+} from './workflow-model.js';
+
+export const EVENT_POLL_MS = 500;
+export const PULSE_MS = 600;
+export const MAX_PULSES_PER_CABLE = 3;
+const SAVE_DELAY_MS = 450;
+const NEW_FLAG_MS = 2400;
+const BADGE_MS = 1500;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+const RUN_TEXT = { running: 'Running', done: 'Done', failed: 'Failed', halted: 'Halted', proposed: 'Proposed', waiting: 'Waiting' };
+const RUN_KIND = { running: 'running', done: 'running', failed: 'off', halted: 'off', proposed: 'alert', waiting: 'queued' };
+const SOURCE_TEXT = { model: 'Model', planner: 'Built-in planner', operator: 'You' };
+
+function el(doc, tag, props = {}, children = []) {
+  const node = doc.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (value === undefined || value === null || value === false) continue;
+    if (key === 'text') node.textContent = value;
+    else if (key === 'hidden') node.hidden = value;
+    else node.setAttribute(key, value === true ? '' : value);
+  }
+  for (const child of children) if (child !== null && child !== undefined && child !== false) node.append(child);
+  return node;
+}
+
+function svg(doc, tag, attrs = {}) {
+  const node = doc.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) if (value !== undefined && value !== null) node.setAttribute(key, String(value));
+  return node;
+}
+
+const cssEscape = (value) => (typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&'));
+
+export function mountWorkflowConsole(container, options = {}) {
+  const doc = container.ownerDocument;
+  const win = doc.defaultView || globalThis;
+  const api = options.api || getEngineApi();
+  const onConnect = options.onConnect || (() => {});
+  const now = options.now || (() => Date.now());
+  const raf = options.requestAnimationFrame || ((fn) => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : setTimeout(() => fn(now()), 16)));
+  const reducedMotion = options.reducedMotion ?? Boolean(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const pollMs = options.pollMs ?? EVENT_POLL_MS;
+
+  let list = [];
+  let workflow = null; // engine workflow with every node positioned
+  let selected = null; // { type: 'node' | 'cable', id }
+  let mode = 'generate'; // command bar: generate a new workflow or change the open one
+  let busy = false;
+  let error = null;
+  let message = '';
+  let run = null;
+  let lastSeq = 0;
+  let pollTimer = null;
+  let active = false;
+  let loaded = false;
+  let destroyed = false;
+  let saveTimer = null;
+  let saving = null;
+  let saveAgain = false;
+  let editable = options.editable ?? !(win.matchMedia && win.matchMedia('(max-width: 600px)').matches);
+  const fresh = new Map(); // node / cable id -> time it appeared (highlight)
+  const pulses = []; // { cableId, start, dot, halo }
+  const overflow = new Map(); // cable id -> extra events beyond the pulse cap
+  let animating = false;
+  let frozen = false;
+  let lastRunSummary = '';
+
+  // ---- static frame -------------------------------------------------------------------------------------------
+  const prompt = el(doc, 'textarea', { id: 'wfc-prompt', class: 'wfc-prompt', rows: '2', maxlength: '4000', 'aria-describedby': 'wfc-prompt-hint' });
+  const submit = el(doc, 'button', { type: 'submit', class: 'btn-primary wfc-submit' });
+  const hint = el(doc, 'span', { id: 'wfc-prompt-hint', class: 'mini-label' });
+  const newBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small btn-ghost wfc-new' });
+  const form = el(doc, 'form', { class: 'wfc-command surface', 'aria-label': 'Studio Command Bar' }, [
+    el(doc, 'label', { class: 'wfc-command-label', for: 'wfc-prompt', text: 'Studio Command Bar' }),
+    el(doc, 'div', { class: 'wfc-command-row' }, [prompt, submit]),
+    el(doc, 'div', { class: 'wfc-command-meta' }, [hint, newBtn]),
+  ]);
+  const picker = el(doc, 'select', { class: 'wfc-picker', 'aria-label': 'Open workflow' });
+  const version = el(doc, 'span', { class: 'mini-label wfc-version' });
+  const arrangeBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: 'Auto-arrange' });
+  const editBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-edit-toggle' });
+  const runBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-run', text: 'Run' });
+  const legend = el(doc, 'span', { class: 'wfc-legend mini-label', 'aria-hidden': 'true' }, Object.entries(CABLE_TEXT).map(([kind, text]) => el(doc, 'span', { class: 'wfc-legend-item', 'data-kind': kind }, [el(doc, 'span', { class: 'wfc-legend-line' }), text])));
+  const status = el(doc, 'p', { class: 'wfc-status mini-label', role: 'status', 'aria-live': 'polite' });
+  const banner = el(doc, 'div', { class: 'wfc-halted', role: 'alert', hidden: true });
+  const cableLayer = svg(doc, 'svg', { class: 'wfc-cables', 'aria-hidden': 'false' });
+  const defs = svg(doc, 'defs');
+  const marker = svg(doc, 'marker', { id: 'wfc-arrow', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
+  marker.append(svg(doc, 'path', { d: 'M0 0 L10 5 L0 10 z', class: 'wfc-arrow' }));
+  defs.append(marker);
+  const cableGroup = svg(doc, 'g', { class: 'wfc-cable-group' });
+  const ghost = svg(doc, 'path', { class: 'wfc-ghost', d: '' });
+  const pulseGroup = svg(doc, 'g', { class: 'wfc-pulses' });
+  cableLayer.append(defs, cableGroup, ghost, pulseGroup);
+  const nodeLayer = el(doc, 'div', { class: 'wfc-nodes' });
+  const stage = el(doc, 'div', { class: 'wfc-stage' }, [cableLayer, nodeLayer]);
+  const viewport = el(doc, 'div', { class: 'wfc-viewport', role: 'group', 'aria-label': 'Workflow canvas' }, [stage]);
+  const tip = el(doc, 'p', { class: 'wfc-tip', role: 'alert', hidden: true });
+  const menu = el(doc, 'div', { class: 'wfc-connect-menu surface', role: 'dialog', 'aria-label': 'Connect to', hidden: true });
+  const inspector = el(doc, 'aside', { class: 'wfc-inspector surface', 'aria-label': 'Workflow inspector' });
+  container.replaceChildren(
+    form,
+    el(doc, 'div', { class: 'wfc-toolbar' }, [picker, version, el(doc, 'span', { class: 'studio-spacer' }), legend, arrangeBtn, editBtn, runBtn]),
+    status,
+    banner,
+    el(doc, 'div', { class: 'wfc-body' }, [el(doc, 'div', { class: 'wfc-canvas-wrap' }, [viewport, tip, menu]), inspector]),
+  );
+
+  // ---- helpers ------------------------------------------------------------------------------------------------
+  const nodeById = (id) => workflow && workflow.nodes.find((n) => n.id === id);
+  const cableById = (id) => workflow && workflow.cables.find((c) => c.id === id);
+  const nodeEl = (id) => nodeLayer.querySelector('.wfc-node[data-node="' + cssEscape(id) + '"]');
+  const cableEl = (id) => cableGroup.querySelector('.wfc-cable[data-cable="' + cssEscape(id) + '"]');
+  const ends = (cable) => {
+    const from = nodeById(cable.from);
+    const to = nodeById(cable.to);
+    if (!from || !to) return null;
+    const a = portPoint(from, 'out', cable.from_port);
+    const b = portPoint(to, 'in', cable.to_port);
+    return a && b ? [a, b] : null;
+  };
+
+  function describeError(err, what) {
+    if (err && err.isUnauthorized) return { text: describeAuthError(err), connect: true };
+    if (err && err.status === 404 && /\/api\/workflows$/.test(err.path || '')) return { text: 'This engine has no workflow endpoints (/api/workflows). Update Aether_Engine and restart it.', connect: false };
+    const problems = err && err.body && Array.isArray(err.body.problems) ? ' ' + err.body.problems.join(' ') : '';
+    return { text: what + ' (' + (err && err.message ? err.message : 'engine unreachable') + ').' + problems, connect: !err || !err.status };
+  }
+
+  function setBusy(next) {
+    busy = next;
+    submit.disabled = busy;
+    runBtn.disabled = busy || !workflow || (run && run.status === 'RUNNING');
+    prompt.setAttribute('aria-busy', String(busy));
+  }
+
+  function showTip(text, anchor) {
+    tip.textContent = text;
+    tip.hidden = !text;
+    if (anchor && !reducedMotion) {
+      anchor.classList.remove('wfc-shake');
+      void anchor.offsetWidth;
+      anchor.classList.add('wfc-shake');
+    }
+    clearTimeout(showTip.timer);
+    if (text) showTip.timer = setTimeout(() => { tip.hidden = true; }, 4000);
+  }
+
+  // ---- rendering ----------------------------------------------------------------------------------------------
+  function renderCommand() {
+    const changing = mode === 'change' && workflow;
+    submit.textContent = busy ? (changing ? 'Applying…' : 'Generating…') : changing ? 'Apply' : 'Generate';
+    prompt.placeholder = changing
+      ? 'Change this workflow, e.g. "Add an agent to review the code before deployment"'
+      : 'Describe a goal, e.g. "Research competitor pricing, write a landing page and deploy it"';
+    hint.textContent = changing
+      ? 'Changes "' + workflow.title + '" on Aether_Engine. Ctrl+Enter to apply.'
+      : 'Aether_Engine designs the agents, A2A hand-offs and tool bindings. Ctrl+Enter to generate.';
+    newBtn.textContent = changing ? 'New workflow' : 'Change the open workflow';
+    newBtn.hidden = !workflow;
+  }
+
+  function renderToolbar() {
+    picker.replaceChildren(
+      ...(list.length ? list : [{ workflow_id: '', title: 'No workflows yet' }]).map((w) =>
+        el(doc, 'option', { value: w.workflow_id, text: w.title + (w.agents !== undefined ? ' · ' + w.agents + ' agent' + (w.agents === 1 ? '' : 's') : '') }),
+      ),
+    );
+    if (workflow) picker.value = workflow.workflow_id;
+    picker.disabled = !list.length;
+    version.textContent = workflow ? 'v' + workflow.version + (saving ? ' · saving…' : '') : '';
+    editBtn.textContent = editable ? 'Editing on' : 'Edit';
+    editBtn.setAttribute('aria-pressed', String(editable));
+    arrangeBtn.disabled = !workflow || !editable;
+    runBtn.disabled = busy || !workflow || Boolean(run && run.status === 'RUNNING');
+    runBtn.textContent = run && run.status === 'RUNNING' ? 'Running…' : 'Run';
+    container.setAttribute('data-editable', String(editable));
+  }
+
+  function renderStatus() {
+    if (error) {
+      status.replaceChildren(error.text + ' ');
+      if (error.connect) {
+        const btn = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: 'Open Settings' });
+        btn.addEventListener('click', onConnect);
+        status.append(btn);
+      }
+      status.setAttribute('data-kind', 'error');
+      return;
+    }
+    status.removeAttribute('data-kind');
+    if (message) {
+      status.textContent = message;
+      return;
+    }
+    if (!workflow) {
+      status.textContent = loaded ? 'No workflow open. Describe a goal in the Command Bar to generate one.' : 'Loading workflows…';
+      return;
+    }
+    const agents = workflow.nodes.filter((n) => n.kind === 'agent').length;
+    status.textContent = agents + ' agent' + (agents === 1 ? '' : 's') + ' · ' + workflow.cables.length + ' cable' + (workflow.cables.length === 1 ? '' : 's') + (editable ? ' · drag headers to move, drag from a port to wire' : '');
+  }
+
+  function renderBanner() {
+    const halted = run && run.status === 'HALTED';
+    banner.hidden = !halted;
+    banner.textContent = halted ? 'HALTED: ' + (run.error || 'the circuit breaker stopped this run') + '. Reset the breaker, then run again.' : '';
+    container.setAttribute('data-halted', String(Boolean(halted)));
+  }
+
+  function renderCanvas() {
+    nodeLayer.replaceChildren();
+    cableGroup.replaceChildren();
+    if (!workflow) {
+      stage.style.width = '';
+      stage.style.height = '';
+      return;
+    }
+    const { width, height } = stageSize(workflow.nodes);
+    stage.style.width = width + 'px';
+    stage.style.height = height + 'px';
+    cableLayer.setAttribute('width', String(width));
+    cableLayer.setAttribute('height', String(height));
+    cableLayer.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+    for (const cable of workflow.cables) cableGroup.append(renderCable(cable));
+    for (const node of workflow.nodes) nodeLayer.append(renderNode(node));
+  }
+
+  function renderCable(cable) {
+    const pts = ends(cable);
+    const g = svg(doc, 'g', { class: 'wfc-cable', 'data-cable': cable.id, 'data-kind': cable.kind, 'data-selected': String(selected && selected.type === 'cable' && selected.id === cable.id), 'data-new': String(fresh.has(cable.id)) });
+    if (!pts) return g;
+    const d = cablePath(pts[0], pts[1]);
+    if (cable.kind === 'a2a') g.append(svg(doc, 'path', { class: 'wfc-line wfc-line-outer', d }), svg(doc, 'path', { class: 'wfc-line wfc-line-inner', d }));
+    else g.append(svg(doc, 'path', { class: 'wfc-line', d, 'marker-end': cable.kind === 'action' ? 'url(#wfc-arrow)' : null }));
+    if (cable.kind === 'action') {
+      const mid = cablePoint(pts[0], pts[1], 0.5);
+      const bolt = svg(doc, 'text', { class: 'wfc-bolt', x: mid.x, y: mid.y + 4, 'text-anchor': 'middle', 'aria-hidden': 'true' });
+      bolt.textContent = '⚡';
+      g.append(bolt);
+    }
+    g.append(svg(doc, 'path', { class: 'wfc-hit', d, tabindex: '0', role: 'button', 'aria-label': cableLabel(cable, workflow.nodes) + (editable ? '. Press Delete to remove.' : '') }));
+    return g;
+  }
+
+  function renderNode(node) {
+    const runStatus = run && run.node_status ? run.node_status[node.id] : undefined;
+    const card = el(doc, 'div', {
+      class: 'wfc-node',
+      'data-node': node.id,
+      'data-kind': node.kind,
+      'data-selected': String(selected && selected.type === 'node' && selected.id === node.id),
+      'data-new': String(fresh.has(node.id)),
+      'data-run': runStatus || null,
+      style: 'left:' + node.x + 'px;top:' + node.y + 'px;width:' + NODE_W + 'px;height:' + NODE_H + 'px',
+    });
+    const head = el(doc, 'div', { class: 'wfc-node-head', tabindex: '0', role: 'button', 'aria-label': KIND_TEXT[node.kind] + ' ' + node.label + (editable ? '. Enter to inspect, arrow keys to move, Delete to remove.' : '. Enter to inspect.') }, [
+      el(doc, 'span', { class: 'wfc-kind', text: KIND_TEXT[node.kind] }),
+      el(doc, 'span', { class: 'wfc-node-label', text: node.label }),
+    ]);
+    card.append(head);
+    const sub = node.kind === 'mcp' ? (node.role || 'MCP server') : node.role || (node.kind === 'action' ? 'Not executed automatically' : '');
+    card.append(el(doc, 'p', { class: 'wfc-node-sub', text: sub, title: node.instructions || sub }));
+    if (runStatus) card.append(el(doc, 'span', { class: 'pill wfc-run-pill', 'data-kind': RUN_KIND[runStatus] || 'queued' }, [el(doc, 'span', { class: 'pill-dot' }), RUN_TEXT[runStatus] || runStatus]));
+    for (const dir of ['in', 'out']) {
+      for (const port of PORTS[node.kind][dir]) {
+        const off = portOffset(node.kind, dir, port);
+        const name = node.label + ': ' + PORT_TEXT[port] + (dir === 'in' ? ' input' : ' output');
+        card.append(
+          el(doc, 'button', {
+            type: 'button',
+            class: 'wfc-port',
+            'data-dir': dir,
+            'data-port': port,
+            'aria-label': name + (dir === 'out' && editable ? '. Enter to connect.' : ''),
+            title: name,
+            style: 'top:' + off.y + 'px;' + (dir === 'in' ? 'left:0' : 'left:' + NODE_W + 'px'),
+            tabindex: dir === 'out' && editable ? '0' : '-1',
+          }),
+          el(doc, 'span', { class: 'wfc-port-label', 'data-dir': dir, style: 'top:' + off.y + 'px', text: PORT_TEXT[port] }),
+        );
+      }
+    }
+    return card;
+  }
+
+  function renderInspector() {
+    inspector.replaceChildren();
+    if (!workflow) {
+      inspector.append(
+        el(doc, 'h3', { text: 'Workflow console' }),
+        el(doc, 'p', { class: 'mini-label', text: 'Generated workflows appear here: a trigger, agents that hand work to each other (A2A), the MCP servers they read, and actions behind human approvals.' }),
+      );
+      return;
+    }
+    const node = selected && selected.type === 'node' ? nodeById(selected.id) : null;
+    const cable = selected && selected.type === 'cable' ? cableById(selected.id) : null;
+    const close = el(doc, 'button', { type: 'button', class: 'btn btn-small inspector-close', text: 'Close', 'aria-label': 'Close the inspector' });
+    close.addEventListener('click', () => select(null));
+    if (node) {
+      inspector.append(el(doc, 'div', { class: 'inspector-head' }, [el(doc, 'h3', { text: KIND_TEXT[node.kind] }), close]));
+      const field = (label, key, multiline, max) => {
+        const id = 'wfc-field-' + key;
+        const input = el(doc, multiline ? 'textarea' : 'input', { id, class: 'wfc-field', maxlength: String(max), rows: multiline ? '5' : null, disabled: !editable });
+        input.value = node[key] || '';
+        input.addEventListener('change', () => {
+          const value = input.value.trim();
+          if (key === 'label' && !value) {
+            input.value = node.label;
+            return;
+          }
+          updateNode(node.id, { [key]: value });
+        });
+        return el(doc, 'label', { class: 'wfc-field-wrap', for: id }, [el(doc, 'span', { class: 'mini-label', text: label }), input]);
+      };
+      inspector.append(field('Name', 'label', false, 80));
+      if (node.kind !== 'mcp') inspector.append(field(node.kind === 'agent' ? 'Role' : 'Note', 'role', false, 120));
+      if (node.kind === 'agent') inspector.append(field('Instructions', 'instructions', true, 2000));
+      if (node.kind === 'mcp') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'MCP server "' + (node.server || node.label) + '" from the engine\'s mcp-config.json. Agents get its description as context; tool calls are not made by this run.' }));
+      if (node.kind === 'action') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Actions are proposed by the agent that acts on them. They are never executed automatically.' }));
+      if (node.kind === 'human') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'An approval checkpoint. Runs stop here: agents after it wait for approval.' }));
+      const meta = [['Id', node.id], ['Origin', node.origin === 'operator' ? 'Edited by you' : node.origin === 'prompt' ? 'Added by a prompt' : 'Generated']];
+      if (run && run.node_status && run.node_status[node.id]) meta.push(['Last run', RUN_TEXT[run.node_status[node.id]]]);
+      inspector.append(el(doc, 'dl', { class: 'inspector-meta' }, meta.flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })])));
+      if (editable && node.kind !== 'trigger') {
+        const remove = el(doc, 'button', { type: 'button', class: 'btn btn-small btn-danger-lite', text: 'Remove ' + KIND_TEXT[node.kind].toLowerCase() });
+        remove.addEventListener('click', () => removeNode(node.id));
+        inspector.append(remove);
+      }
+      return;
+    }
+    if (cable) {
+      inspector.append(
+        el(doc, 'div', { class: 'inspector-head' }, [el(doc, 'h3', { text: CABLE_TEXT[cable.kind] + ' cable' }), close]),
+        el(doc, 'p', { class: 'inspector-route' }, [el(doc, 'strong', { text: (nodeById(cable.from) || {}).label || cable.from }), ' · ' + PORT_TEXT[cable.from_port] + ' → ', el(doc, 'strong', { text: (nodeById(cable.to) || {}).label || cable.to }), ' · ' + PORT_TEXT[cable.to_port]]),
+        el(doc, 'p', { class: 'mini-label', text: cable.kind === 'mcp_read' ? 'Read-only tool context for the agent.' : cable.kind === 'a2a' ? 'Agent-to-agent hand-off: the next agent builds on this one\'s work.' : cable.kind === 'action' ? 'A side effect or approval request. Proposed only, never executed automatically.' : 'Starts the agent.' }),
+        el(doc, 'dl', { class: 'inspector-meta' }, [['Id', cable.id], ['Origin', cable.origin === 'operator' ? 'Wired by you' : cable.origin === 'prompt' ? 'Added by a prompt' : 'Generated']].flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })])),
+      );
+      if (editable) {
+        const remove = el(doc, 'button', { type: 'button', class: 'btn btn-small btn-danger-lite', text: 'Remove cable' });
+        remove.addEventListener('click', () => removeCable(cable.id));
+        inspector.append(remove);
+      }
+      return;
+    }
+    inspector.append(el(doc, 'h3', { text: workflow.title }), el(doc, 'p', { class: 'wfc-goal', text: workflow.goal }));
+    if (run) {
+      inspector.append(el(doc, 'h4', { text: 'Last run' }), el(doc, 'p', { class: 'mini-label', text: run.status.charAt(0) + run.status.slice(1).toLowerCase() + (run.error ? ': ' + run.error : '') + ' · ' + new Date(run.started_at).toLocaleTimeString() }));
+    }
+    inspector.append(el(doc, 'h4', { text: 'Changes' }));
+    inspector.append(
+      el(doc, 'ol', { class: 'wfc-history' }, workflow.history.slice(-6).reverse().map((h) => el(doc, 'li', {}, [el(doc, 'span', { class: 'wfc-source', 'data-source': h.source, text: SOURCE_TEXT[h.source] || h.source }), ' v' + h.version + ' · ' + h.summary]))),
+    );
+  }
+
+  function renderAll() {
+    renderCommand();
+    renderToolbar();
+    renderStatus();
+    renderBanner();
+    renderCanvas();
+    renderInspector();
+  }
+
+  // Moves one node and redraws only its cables (drag and arrow keys).
+  function moveNode(id, x, y) {
+    const node = nodeById(id);
+    if (!node) return;
+    node.x = Math.max(0, x);
+    node.y = Math.max(0, y);
+    const card = nodeEl(id);
+    if (card) {
+      card.style.left = node.x + 'px';
+      card.style.top = node.y + 'px';
+    }
+    for (const cable of workflow.cables) {
+      if (cable.from !== id && cable.to !== id) continue;
+      const old = cableEl(cable.id);
+      if (old) old.replaceWith(renderCable(cable));
+    }
+  }
+
+  // ---- loading and saving -------------------------------------------------------------------------------------
+  // Positions every node (new ones are auto-arranged); ids in `previous` that are missing count as new.
+  function adopt(next, previous) {
+    const prevNodes = previous ? new Map(previous.nodes.map((n) => [n.id, n])) : null;
+    const prevCables = previous ? new Set(previous.cables.map((c) => c.id)) : null;
+    // Keep positions this browser already shows for nodes the engine has no position for yet.
+    const nodes = next.nodes.map((n) => (Number.isFinite(n.x) && Number.isFinite(n.y)) || !prevNodes || !prevNodes.has(n.id) ? { ...n } : { ...n, x: prevNodes.get(n.id).x, y: prevNodes.get(n.id).y });
+    workflow = { ...next, nodes: autoLayout({ nodes, cables: next.cables }) };
+    if (previous && previous.workflow_id === next.workflow_id) {
+      const t = now();
+      for (const n of next.nodes) if (!prevNodes.has(n.id)) fresh.set(n.id, t);
+      for (const c of next.cables) if (!prevCables.has(c.id)) fresh.set(c.id, t);
+      if (fresh.size) setTimeout(() => {
+        for (const [id, at] of fresh) if (now() - at >= NEW_FLAG_MS - 50) fresh.delete(id);
+        for (const n of nodeLayer.querySelectorAll('.wfc-node[data-new="true"], .wfc-cable[data-new="true"]')) n.setAttribute('data-new', 'false');
+        for (const n of cableGroup.querySelectorAll('.wfc-cable[data-new="true"]')) n.setAttribute('data-new', 'false');
+      }, NEW_FLAG_MS);
+    }
+    if (selected && !(selected.type === 'node' ? nodeById(selected.id) : cableById(selected.id))) selected = null;
+    const listed = list.find((w) => w.workflow_id === next.workflow_id);
+    const item = { workflow_id: next.workflow_id, title: next.title, goal: next.goal, version: next.version, updated_at: next.updated_at, agents: next.nodes.filter((n) => n.kind === 'agent').length, run_status: next.run ? next.run.status : null };
+    list = listed ? list.map((w) => (w.workflow_id === next.workflow_id ? item : w)) : [item, ...list];
+  }
+
+  async function loadList() {
+    try {
+      const result = await api.listWorkflows();
+      list = result.workflows || [];
+      error = null;
+    } catch (err) {
+      error = describeError(err, 'Could not load workflows');
+    }
+    loaded = true;
+  }
+
+  async function open(id) {
+    if (!id) return;
+    stopPolling();
+    clearPulses();
+    try {
+      const next = await api.getWorkflow(id);
+      selected = null;
+      adopt(next, null);
+      run = next.run ? { ...next.run } : null;
+      lastSeq = 0;
+      error = null;
+      message = '';
+      mode = 'change';
+      if (run && run.status === 'RUNNING') startPolling(true);
+    } catch (err) {
+      error = describeError(err, 'Could not open the workflow');
+    }
+    renderAll();
+  }
+
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => save(), options.saveDelayMs ?? SAVE_DELAY_MS);
+    renderToolbar();
+  }
+
+  async function save() {
+    clearTimeout(saveTimer);
+    if (!workflow) return;
+    if (saving) {
+      saveAgain = true;
+      return saving;
+    }
+    const sent = workflow;
+    const graph = graphForSave(sent.nodes, sent.cables);
+    saving = (async () => {
+      try {
+        const saved = await api.saveWorkflowGraph(sent.workflow_id, sent.version, graph.nodes, graph.cables);
+        if (workflow && workflow.workflow_id === saved.workflow_id) {
+          // Keep what the operator sees (they may have moved on), take the engine's version and history.
+          workflow = { ...workflow, version: saved.version, history: saved.history, updated_at: saved.updated_at, cables: workflow.cables.map((c) => saved.cables.find((s) => s.id === c.id) || c) };
+          adopt(workflow, null);
+        }
+        error = null;
+        message = 'Saved v' + saved.version + ' to Aether_Engine.';
+      } catch (err) {
+        if (err && err.status === 409 && err.body && err.body.workflow) {
+          adopt(err.body.workflow, null);
+          message = 'This workflow changed on the engine (v' + err.body.workflow.version + '), so the latest version was loaded. Your last edit was not saved; make it again if you still need it.';
+          saveAgain = false;
+          renderAll();
+        } else {
+          error = describeError(err, 'Could not save your change');
+        }
+      } finally {
+        saving = null;
+        renderToolbar();
+        renderStatus();
+        renderInspector();
+      }
+      if (saveAgain) {
+        saveAgain = false;
+        await save();
+      }
+    })();
+    renderToolbar();
+    return saving;
+  }
+
+  // ---- operator edits -----------------------------------------------------------------------------------------
+  function updateNode(id, changes) {
+    const node = nodeById(id);
+    if (!node) return;
+    Object.assign(node, changes, { origin: 'operator' });
+    renderCanvas();
+    renderInspector();
+    scheduleSave();
+  }
+
+  function removeNode(id) {
+    const node = nodeById(id);
+    if (!node || node.kind === 'trigger') return;
+    workflow.nodes = workflow.nodes.filter((n) => n.id !== id);
+    workflow.cables = workflow.cables.filter((c) => c.from !== id && c.to !== id);
+    selected = null;
+    message = 'Removed ' + node.label + '.';
+    renderAll();
+    scheduleSave();
+  }
+
+  function removeCable(id) {
+    const cable = cableById(id);
+    if (!cable) return;
+    workflow.cables = workflow.cables.filter((c) => c.id !== id);
+    selected = null;
+    message = 'Removed the ' + CABLE_TEXT[cable.kind] + ' cable.';
+    renderAll();
+    scheduleSave();
+  }
+
+  // Wires an output port to an input port. Returns { kind } or { error } (shown as an inline tip).
+  function connect(fromId, fromPort, toId, toPort, anchor) {
+    if (!workflow || !editable) return { error: 'Turn on editing to wire nodes.' };
+    const result = checkConnect(workflow, fromId, fromPort, toId, toPort);
+    if (result.error) {
+      showTip(result.error, anchor);
+      return result;
+    }
+    const cable = { id: localId('c'), from: fromId, from_port: fromPort, to: toId, to_port: toPort, kind: result.kind, origin: 'operator' };
+    workflow.cables = workflow.cables.concat(cable);
+    fresh.set(cable.id, now());
+    selected = { type: 'cable', id: cable.id };
+    message = 'Connected ' + cableLabel(cable, workflow.nodes).replace(/^./, (c) => c.toLowerCase()) + '.';
+    showTip('');
+    renderAll();
+    scheduleSave();
+    return result;
+  }
+
+  function select(next) {
+    selected = next;
+    for (const n of nodeLayer.querySelectorAll('.wfc-node')) n.setAttribute('data-selected', String(Boolean(next && next.type === 'node' && n.getAttribute('data-node') === next.id)));
+    for (const c of cableGroup.querySelectorAll('.wfc-cable')) c.setAttribute('data-selected', String(Boolean(next && next.type === 'cable' && c.getAttribute('data-cable') === next.id)));
+    renderInspector();
+  }
+
+  // ---- command bar ----------------------------------------------------------------------------------------------
+  async function command(text) {
+    const value = String(text || '').trim();
+    if (!value || busy) return;
+    const changing = mode === 'change' && workflow;
+    setBusy(true);
+    message = changing ? 'Asking Aether_Engine to change the workflow…' : 'Aether_Engine is designing the workflow…';
+    error = null;
+    renderCommand();
+    renderStatus();
+    try {
+      if (changing) {
+        if (saving) await saving;
+        const previous = workflow;
+        const result = await api.mutateWorkflow(previous.workflow_id, value, previous.version);
+        adopt(result.workflow, previous);
+        message = result.summary + (result.skipped && result.skipped.length ? ' Skipped: ' + result.skipped.map((s) => s.reason).join(' ') : '') + ' (' + SOURCE_TEXT[result.source] + ')' + (result.note ? ' ' + result.note : '');
+      } else {
+        stopPolling();
+        clearPulses();
+        const result = await api.generateWorkflow(value);
+        run = null;
+        lastSeq = 0;
+        selected = null;
+        adopt(result.workflow, null);
+        mode = 'change';
+        const agents = result.workflow.nodes.filter((n) => n.kind === 'agent').length;
+        message = 'Generated "' + result.workflow.title + '" with ' + agents + ' agent' + (agents === 1 ? '' : 's') + ' (' + SOURCE_TEXT[result.source] + ').' + (result.note ? ' ' + result.note : '');
+      }
+      prompt.value = '';
+    } catch (err) {
+      if (err && err.status === 409 && err.body && err.body.workflow) {
+        adopt(err.body.workflow, null);
+        message = 'The workflow changed on the engine, so the latest version was loaded. Send the change again.';
+      } else if (err && err.status === 422) {
+        const reasons = err.body && Array.isArray(err.body.skipped) ? err.body.skipped.map((s) => s.reason).join(' ') : '';
+        error = { text: err.message + (reasons ? ' ' + reasons : ''), connect: false };
+        message = '';
+      } else {
+        error = describeError(err, changing ? 'Could not change the workflow' : 'Could not generate a workflow');
+        message = '';
+      }
+    } finally {
+      setBusy(false);
+      renderAll();
+    }
+  }
+
+  // ---- runs, events and pulses ----------------------------------------------------------------------------------
+  async function startRun() {
+    if (!workflow || busy) return;
+    if (saving || saveTimer) await save();
+    clearPulses();
+    frozen = false;
+    try {
+      const result = await api.runWorkflow(workflow.workflow_id);
+      run = { ...result.run };
+      lastSeq = 0;
+      error = null;
+      message = 'Running on Aether_Engine…';
+      renderAll();
+      startPolling(false);
+    } catch (err) {
+      error = err && err.status === 422 ? { text: err.message, connect: false } : describeError(err, 'Could not start the run');
+      renderStatus();
+    }
+  }
+
+  function stopPolling() {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+
+  function startPolling(catchUp) {
+    stopPolling();
+    const tick = async () => {
+      if (destroyed || !workflow) return;
+      const id = workflow.workflow_id;
+      try {
+        const result = await api.getWorkflowEvents(id, lastSeq);
+        if (!workflow || workflow.workflow_id !== id) return;
+        applyEvents(result.events || [], catchUp);
+        catchUp = false;
+        if (result.run) run = { ...run, ...result.run };
+        renderToolbar();
+        renderBanner();
+        if (run && run.status !== 'RUNNING') {
+          message = run.status === 'COMPLETED' ? 'Run finished.' + (lastRunSummary ? ' ' + lastRunSummary : '') : run.status === 'HALTED' ? 'Run halted by the circuit breaker.' : 'Run failed: ' + (run.error || 'see Run history') + '.';
+          renderStatus();
+          renderInspector();
+          return;
+        }
+      } catch (err) {
+        error = describeError(err, 'Lost the run events');
+        renderStatus();
+      }
+      if (active) pollTimer = setTimeout(tick, pollMs);
+    };
+    tick();
+  }
+
+  function applyEvents(events, catchUp) {
+    for (const event of events) {
+      lastSeq = Math.max(lastSeq, event.seq);
+      if (event.type === 'node_status' && event.node_id) {
+        if (!run.node_status) run.node_status = {};
+        run.node_status[event.node_id] = event.status;
+        const card = nodeEl(event.node_id);
+        if (card) {
+          const updated = renderNode(nodeById(event.node_id));
+          card.replaceWith(updated);
+          if (event.summary && !catchUp) badge(updated, event.summary);
+        }
+      } else if (event.type === 'flow' && event.cable_id) {
+        // Old events seen when reopening a running workflow are applied without animation.
+        if (!catchUp) pulse(event.cable_id, event.summary);
+      } else if (event.type === 'run_status') {
+        run.status = event.status;
+        lastRunSummary = event.summary || '';
+        if (event.status === 'HALTED') freeze();
+      }
+    }
+  }
+
+  function badge(card, text) {
+    const b = el(doc, 'span', { class: 'wfc-badge', text });
+    card.append(b);
+    setTimeout(() => b.remove(), BADGE_MS);
+  }
+
+  // One pulse along a cable (or a 300ms thickening under reduced motion). Extra events beyond the cap count on a badge.
+  function pulse(cableId, summary) {
+    const cable = cableById(cableId);
+    const group = cableEl(cableId);
+    if (!cable || !group) return false;
+    if (reducedMotion) {
+      group.setAttribute('data-flash', 'true');
+      setTimeout(() => group.setAttribute('data-flash', 'false'), 300);
+      if (summary) {
+        const card = nodeEl(cable.to);
+        if (card) badge(card, summary);
+      }
+      return true;
+    }
+    if (pulses.filter((p) => p.cableId === cableId).length >= MAX_PULSES_PER_CABLE) {
+      overflow.set(cableId, (overflow.get(cableId) || 0) + 1);
+      renderOverflow(cableId);
+      return false;
+    }
+    const halo = svg(doc, 'circle', { class: 'wfc-pulse-halo', r: '14', 'data-kind': cable.kind });
+    const dot = svg(doc, 'circle', { class: 'wfc-pulse', r: '3', 'data-kind': cable.kind });
+    pulseGroup.append(halo, dot);
+    pulses.push({ cableId, start: now(), dot, halo, summary, to: cable.to });
+    if (!animating) {
+      animating = true;
+      raf(frame);
+    }
+    return true;
+  }
+
+  function renderOverflow(cableId) {
+    const count = overflow.get(cableId) || 0;
+    const existing = pulseGroup.querySelector('.wfc-overflow[data-cable="' + cssEscape(cableId) + '"]');
+    if (existing) existing.remove();
+    const cable = cableById(cableId);
+    const pts = cable && ends(cable);
+    if (!count || !pts) return;
+    const mid = cablePoint(pts[0], pts[1], 0.5);
+    const text = svg(doc, 'text', { class: 'wfc-overflow', 'data-cable': cableId, x: mid.x, y: mid.y - 10, 'text-anchor': 'middle' });
+    text.textContent = '+' + count;
+    pulseGroup.append(text);
+  }
+
+  function frame() {
+    if (frozen || destroyed) {
+      animating = false;
+      return;
+    }
+    const t0 = now();
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const p = pulses[i];
+      const cable = cableById(p.cableId);
+      const pts = cable && ends(cable);
+      const t = (t0 - p.start) / PULSE_MS;
+      if (!pts || t >= 1) {
+        p.dot.remove();
+        p.halo.remove();
+        pulses.splice(i, 1);
+        if (pts && p.summary) {
+          const card = nodeEl(p.to);
+          if (card) badge(card, p.summary);
+        }
+        if (!pulses.some((q) => q.cableId === p.cableId) && overflow.has(p.cableId)) {
+          overflow.delete(p.cableId);
+          renderOverflow(p.cableId);
+        }
+        continue;
+      }
+      const pos = cablePoint(pts[0], pts[1], ease(t));
+      for (const c of [p.dot, p.halo]) {
+        c.setAttribute('cx', pos.x.toFixed(1));
+        c.setAttribute('cy', pos.y.toFixed(1));
+      }
+    }
+    if (pulses.length) raf(frame);
+    else animating = false;
+  }
+
+  function freeze() {
+    frozen = true;
+    for (const p of pulses) {
+      p.dot.setAttribute('data-frozen', 'true');
+      p.halo.setAttribute('data-frozen', 'true');
+    }
+  }
+
+  function clearPulses() {
+    for (const p of pulses) {
+      p.dot.remove();
+      p.halo.remove();
+    }
+    pulses.length = 0;
+    overflow.clear();
+    pulseGroup.replaceChildren();
+    frozen = false;
+  }
+
+  // ---- pointer: node drag and port wiring -------------------------------------------------------------------------
+  let drag = null;
+  let wiring = null;
+
+  const stagePoint = (event) => {
+    const rect = stage.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  function markCompatible(fromId, fromPort) {
+    const ok = new Set(compatibleTargets(workflow, fromId, fromPort).map((t) => t.node.id + '|' + t.port));
+    for (const port of nodeLayer.querySelectorAll('.wfc-port[data-dir="in"]')) {
+      const id = port.closest('.wfc-node').getAttribute('data-node');
+      port.setAttribute('data-compat', String(ok.has(id + '|' + port.getAttribute('data-port'))));
+    }
+    container.setAttribute('data-wiring', 'true');
+  }
+
+  function clearCompatible() {
+    for (const port of nodeLayer.querySelectorAll('.wfc-port[data-compat]')) port.removeAttribute('data-compat');
+    container.removeAttribute('data-wiring');
+    ghost.setAttribute('d', '');
+  }
+
+  nodeLayer.addEventListener('pointerdown', (event) => {
+    if (!workflow || event.button > 0) return;
+    const port = event.target.closest && event.target.closest('.wfc-port');
+    const card = event.target.closest && event.target.closest('.wfc-node');
+    if (!card) return;
+    const id = card.getAttribute('data-node');
+    if (port && port.getAttribute('data-dir') === 'out' && editable) {
+      event.preventDefault();
+      wiring = { from: id, port: port.getAttribute('data-port'), anchor: port };
+      markCompatible(id, wiring.port);
+      return;
+    }
+    if (event.target.closest('.wfc-node-head') && editable) {
+      const node = nodeById(id);
+      drag = { id, startX: event.clientX, startY: event.clientY, x: node.x, y: node.y, moved: false };
+      card.setAttribute('data-dragging', 'true');
+      if (card.setPointerCapture && event.pointerId !== undefined) {
+        try { card.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
+      }
+    }
+  });
+
+  const onPointerMove = (event) => {
+    if (drag) {
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+      drag.moved = true;
+      moveNode(drag.id, snap(drag.x + dx), snap(drag.y + dy));
+    } else if (wiring) {
+      const from = nodeById(wiring.from);
+      const a = from && portPoint(from, 'out', wiring.port);
+      if (a) ghost.setAttribute('d', cablePath(a, stagePoint(event)));
+    }
+  };
+
+  const onPointerUp = (event) => {
+    if (drag) {
+      const card = nodeEl(drag.id);
+      if (card) card.removeAttribute('data-dragging');
+      if (drag.moved) {
+        const node = nodeById(drag.id);
+        node.origin = 'operator';
+        message = 'Moved ' + node.label + '.';
+        renderStatus();
+        scheduleSave();
+      } else {
+        select({ type: 'node', id: drag.id });
+      }
+      drag = null;
+      return;
+    }
+    if (wiring) {
+      const hit = doc.elementFromPoint ? doc.elementFromPoint(event.clientX, event.clientY) : event.target;
+      const port = hit && hit.closest ? hit.closest('.wfc-port[data-dir="in"]') : null;
+      const w = wiring;
+      wiring = null;
+      clearCompatible();
+      if (port) connect(w.from, w.port, port.closest('.wfc-node').getAttribute('data-node'), port.getAttribute('data-port'), port);
+    }
+  };
+  win.addEventListener('pointermove', onPointerMove);
+  win.addEventListener('pointerup', onPointerUp);
+
+  // ---- keyboard ---------------------------------------------------------------------------------------------------
+  function openConnectMenu(fromId, fromPort, anchor) {
+    const from = nodeById(fromId);
+    const targets = compatibleTargets(workflow, fromId, fromPort);
+    menu.replaceChildren(el(doc, 'p', { class: 'wfc-menu-title', text: 'Connect ' + from.label + ' · ' + PORT_TEXT[fromPort] + ' to…' }));
+    if (!targets.length) menu.append(el(doc, 'p', { class: 'mini-label', text: 'Nothing can take this output yet.' }));
+    for (const t of targets) {
+      const btn = el(doc, 'button', { type: 'button', class: 'wfc-menu-item', text: t.node.label + ' · ' + PORT_TEXT[t.port] + ' (' + CABLE_TEXT[t.kind] + ')' });
+      btn.addEventListener('click', () => {
+        closeMenu();
+        connect(fromId, fromPort, t.node.id, t.port, null);
+      });
+      menu.append(btn);
+    }
+    const cancel = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: 'Cancel' });
+    cancel.addEventListener('click', () => closeMenu(anchor));
+    menu.append(cancel);
+    menu.hidden = false;
+    menu.anchor = anchor;
+    const first = menu.querySelector('button');
+    if (first && options.focusMenu !== false) first.focus();
+  }
+
+  function closeMenu(returnFocus) {
+    menu.hidden = true;
+    menu.replaceChildren();
+    if (returnFocus && returnFocus.focus) returnFocus.focus();
+  }
+
+  container.addEventListener('keydown', (event) => {
+    const t = event.target;
+    if (event.key === 'Escape') {
+      if (!menu.hidden) closeMenu(menu.anchor);
+      else if (selected) select(null);
+      return;
+    }
+    if (t === prompt && event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      command(prompt.value);
+      return;
+    }
+    if (!workflow || t.closest('.wfc-inspector') || t === prompt) return;
+    if (t.classList.contains('wfc-port') && t.getAttribute('data-dir') === 'out' && (event.key === 'Enter' || event.key === ' ') && editable) {
+      event.preventDefault();
+      openConnectMenu(t.closest('.wfc-node').getAttribute('data-node'), t.getAttribute('data-port'), t);
+      return;
+    }
+    if (t.classList.contains('wfc-node-head')) {
+      const id = t.closest('.wfc-node').getAttribute('data-node');
+      const node = nodeById(id);
+      const step = { ArrowLeft: [-8, 0], ArrowRight: [8, 0], ArrowUp: [0, -8], ArrowDown: [0, 8] }[event.key];
+      if (step && editable) {
+        event.preventDefault();
+        moveNode(id, node.x + step[0], node.y + step[1]);
+        node.origin = 'operator';
+        scheduleSave();
+        nodeEl(id).querySelector('.wfc-node-head').focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        select({ type: 'node', id });
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && editable) {
+        event.preventDefault();
+        removeNode(id);
+      }
+      return;
+    }
+    if (t.classList.contains('wfc-hit')) {
+      const id = t.closest('.wfc-cable').getAttribute('data-cable');
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        select({ type: 'cable', id });
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && editable) {
+        event.preventDefault();
+        removeCable(id);
+      }
+      return;
+    }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selected && editable && !t.closest('input, textarea, select')) {
+      event.preventDefault();
+      if (selected.type === 'node') removeNode(selected.id);
+      else removeCable(selected.id);
+    }
+  });
+
+  cableGroup.addEventListener('click', (event) => {
+    const g = event.target.closest && event.target.closest('.wfc-cable');
+    if (g) select({ type: 'cable', id: g.getAttribute('data-cable') });
+  });
+
+  // ---- toolbar and form ---------------------------------------------------------------------------------------------
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    command(prompt.value);
+  });
+  newBtn.addEventListener('click', () => {
+    mode = mode === 'change' ? 'generate' : 'change';
+    renderCommand();
+    prompt.focus();
+  });
+  picker.addEventListener('change', () => open(picker.value));
+  arrangeBtn.addEventListener('click', () => {
+    if (!workflow || !editable) return;
+    workflow = { ...workflow, nodes: autoLayout(workflow, { force: true }) };
+    message = 'Auto-arranged. Positions saved.';
+    renderAll();
+    scheduleSave();
+  });
+  editBtn.addEventListener('click', () => {
+    editable = !editable;
+    renderAll();
+  });
+  runBtn.addEventListener('click', () => startRun());
+
+  renderAll();
+
+  return {
+    // The Studio view calls this when it is shown or hidden; event polling only runs while it is visible.
+    async setActive(next) {
+      active = Boolean(next);
+      if (!active) {
+        stopPolling();
+        return;
+      }
+      if (!loaded) {
+        await loadList();
+        if (list.length) await open(list[0].workflow_id);
+        else renderAll();
+      } else if (run && run.status === 'RUNNING') startPolling(true);
+    },
+    command,
+    connect,
+    open,
+    save,
+    run: startRun,
+    pulse,
+    select,
+    removeNode,
+    removeCable,
+    setEditable(next) {
+      editable = Boolean(next);
+      renderAll();
+    },
+    getState: () => ({ workflow, selected, mode, run, lastSeq, error, message, editable, pulses: pulses.length, overflow: Object.fromEntries(overflow), frozen }),
+    destroy() {
+      destroyed = true;
+      win.removeEventListener('pointermove', onPointerMove);
+      win.removeEventListener('pointerup', onPointerUp);
+      stopPolling();
+      clearTimeout(saveTimer);
+      clearPulses();
+    },
+  };
+}

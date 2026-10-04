@@ -4,7 +4,7 @@
 // (0–1 confidence) from the step's text and Elarion's reply. The Abstract ↔ Logic slider sets the minimum confidence
 // a bridge needs to stay visible (0% shows every faint association, 100% only near-certain ones), and clicking a
 // bridge opens the Edge Inspector with the engine's rationale, Elarion's reply excerpt, the scoring signals and the
-// bridge metadata. Read-only: the drag-to-wire Workflow Canvas (specs/ui/01-node-canvas.md) is a later step.
+// bridge metadata. Read-only; shown as Studio's Engine activity tab. The editable Workflow console is workflow-console.js.
 import { getEngineApi } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 

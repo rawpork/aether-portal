@@ -170,6 +170,100 @@ export interface TaskList {
 }
 
 // GET /api/artifacts: compiled blueprints stored by the engine.
+// Studio workflows (Aether_Engine src/workflows.ts, blueprint_schema.json#/definitions/workflow_*).
+export type WorkflowNodeKind = 'trigger' | 'agent' | 'mcp' | 'action' | 'human';
+export type WorkflowCableKind = 'start' | 'mcp_read' | 'a2a' | 'action';
+export type WorkflowOrigin = 'generated' | 'prompt' | 'operator';
+
+export interface WorkflowNode {
+	id: string;
+	kind: WorkflowNodeKind;
+	label: string;
+	role?: string;
+	instructions?: string;
+	server?: string;
+	x?: number | null;
+	y?: number | null;
+	origin?: WorkflowOrigin;
+}
+
+export interface WorkflowCable {
+	id: string;
+	from: string;
+	from_port: string;
+	to: string;
+	to_port: string;
+	kind?: WorkflowCableKind;
+	origin?: WorkflowOrigin;
+}
+
+export type WorkflowRunStatus = 'RUNNING' | 'COMPLETED' | 'HALTED' | 'FAILED';
+export type WorkflowNodeRunStatus = 'running' | 'done' | 'failed' | 'halted' | 'proposed' | 'waiting';
+
+export interface WorkflowRunSummary {
+	run_id: string;
+	task_id: string;
+	agent_id: string;
+	status: WorkflowRunStatus;
+	started_at: string;
+	finished_at: string | null;
+	node_status: Record<string, WorkflowNodeRunStatus>;
+	error?: string;
+}
+
+export interface WorkflowEvent {
+	seq: number;
+	ts: number;
+	type: 'flow' | 'node_status' | 'run_status';
+	cable_id?: string;
+	kind?: WorkflowCableKind;
+	from?: string;
+	to?: string;
+	node_id?: string;
+	status?: WorkflowNodeRunStatus | WorkflowRunStatus;
+	summary?: string;
+	tokens?: number;
+}
+
+export interface Workflow {
+	workflow_id: string;
+	requested_by: string;
+	title: string;
+	goal: string;
+	version: number;
+	created_at: string;
+	updated_at: string;
+	nodes: WorkflowNode[];
+	cables: WorkflowCable[];
+	history: { at: string; version: number; source: 'model' | 'planner' | 'operator'; summary: string }[];
+	run: (WorkflowRunSummary & { events?: WorkflowEvent[] }) | null;
+}
+
+export interface WorkflowListItem {
+	workflow_id: string;
+	title: string;
+	goal: string;
+	version: number;
+	updated_at: string;
+	agents: number;
+	run_status: WorkflowRunStatus | null;
+}
+
+export interface WorkflowCreateResult {
+	workflow: Workflow;
+	source: 'model' | 'planner';
+	note: string;
+}
+
+export interface WorkflowMutateResult {
+	workflow: Workflow;
+	applied: Record<string, unknown>[];
+	skipped: { op: Record<string, unknown>; reason: string }[];
+	summary: string;
+	source: 'model' | 'planner';
+	note: string | null;
+}
+
 // GET /api/canvas/graph (Aether_Engine src/canvasGraph.ts): task trees, MCP server nodes and scored bridges.
 export interface CanvasTaskNode {
 	id: string;
@@ -593,6 +687,50 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		// GET /api/canvas/graph: the Studio canvas (task trees, MCP servers, scored step -> server bridges).
 		getCanvasGraph(opts: { limit?: number } = {}): Promise<CanvasGraph> {
 			return request<CanvasGraph>('GET', '/api/canvas/graph' + (opts.limit ? '?limit=' + encodeURIComponent(String(opts.limit)) : ''));
+		},
+
+		// Studio workflows. A stale base_version throws EngineApiError 409 whose body.workflow is the current version.
+		listWorkflows(): Promise<{ workflows: WorkflowListItem[] }> {
+			return request<{ workflows: WorkflowListItem[] }>('GET', '/api/workflows');
+		},
+
+		getWorkflow(workflowId: string): Promise<Workflow> {
+			requireText('workflowId', workflowId);
+			return request<Workflow>('GET', '/api/workflows/' + encodeURIComponent(workflowId));
+		},
+
+		// POST /api/workflows: the engine designs agents, A2A hand-offs and tool bindings for the goal (model, or the
+		// built-in planner in sandbox mode). Can take a while with a real model.
+		generateWorkflow(goal: string): Promise<WorkflowCreateResult> {
+			requireText('goal', goal);
+			return request<WorkflowCreateResult>('POST', '/api/workflows', { body: { goal }, timeoutMs: 180_000 });
+		},
+
+		// POST /api/workflows/:id/mutate: change the graph from a prompt ("add a reviewer before Deploy").
+		mutateWorkflow(workflowId: string, prompt: string, baseVersion?: number): Promise<WorkflowMutateResult> {
+			requireText('workflowId', workflowId);
+			requireText('prompt', prompt);
+			return request<WorkflowMutateResult>('POST', '/api/workflows/' + encodeURIComponent(workflowId) + '/mutate', {
+				body: baseVersion === undefined ? { prompt } : { prompt, base_version: baseVersion },
+				timeoutMs: 180_000,
+			});
+		},
+
+		// POST /api/workflows/:id/graph: operator edits (positions, wires, node fields) saved over base_version.
+		saveWorkflowGraph(workflowId: string, baseVersion: number, nodes: WorkflowNode[], cables: WorkflowCable[]): Promise<Workflow> {
+			requireText('workflowId', workflowId);
+			return request<Workflow>('POST', '/api/workflows/' + encodeURIComponent(workflowId) + '/graph', { body: { base_version: baseVersion, nodes, cables } });
+		},
+
+		// POST /api/workflows/:id/run: starts a run (202); poll getWorkflowEvents for node statuses and pulses.
+		runWorkflow(workflowId: string): Promise<{ run: WorkflowRunSummary }> {
+			requireText('workflowId', workflowId);
+			return request<{ run: WorkflowRunSummary }>('POST', '/api/workflows/' + encodeURIComponent(workflowId) + '/run', { body: {} });
+		},
+
+		getWorkflowEvents(workflowId: string, after = 0): Promise<{ run: WorkflowRunSummary | null; events: WorkflowEvent[] }> {
+			requireText('workflowId', workflowId);
+			return request<{ run: WorkflowRunSummary | null; events: WorkflowEvent[] }>('GET', '/api/workflows/' + encodeURIComponent(workflowId) + '/events?after=' + encodeURIComponent(String(after)), { timeoutMs: 10_000 });
 		},
 
 		// GET /api/public-url: the engine's public address, for pairing another device.

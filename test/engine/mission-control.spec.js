@@ -22,6 +22,8 @@ afterEach(() => {
     mc.tabs.destroy();
     mc.theme.destroy();
     mc.quickSetup.destroy();
+    if (mc.workflowConsole) mc.workflowConsole.destroy();
+    if (mc.studio) mc.studio.destroy();
     mc = null;
   }
   document.body.replaceChildren();
@@ -55,6 +57,8 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   const html = renderMissionControlPage({ assetVersion: 'test', tier: 'pro', userName: 'alex' });
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
+  // Phones hide the rail's Portal link, so the header carries a way back to the 3D space.
+  expect(html).toMatch(/<header class="mc-top">\s*<a class="mobile-return-btn" href="\/" aria-label="Return to the Portal \(3D space\)"/);
   document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
   document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
 
@@ -95,7 +99,7 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(card.querySelector('.switch[role="switch"]').getAttribute('aria-checked')).toBe('true');
   expect(card.querySelector('.btn-small').textContent).toContain('Pause');
   expect(document.querySelector('.wf-detail h2').textContent).toBe('Elarion');
-  expect([...document.querySelectorAll('.subtabs [role="tab"]')].map((t) => t.textContent)).toEqual(['Activity', 'Tasks0', 'Output', 'Skills', 'API Bridge']);
+  expect([...document.querySelectorAll('.wf-detail .subtabs [role="tab"]')].map((t) => t.textContent)).toEqual(['Activity', 'Tasks0', 'Output', 'Skills', 'API Bridge']);
   expect(document.getElementById('mc-agent-count').textContent).toBe('1');
 
   // The other modules are mounted in their views.
@@ -166,4 +170,46 @@ it('loads an outcome blueprint from the portal into the Blueprints editor (?outc
   } finally {
     window.history.replaceState(null, '', '/');
   }
+});
+
+it('Studio opens on the Workflow console and switches to Engine activity, each polling only while shown', async () => {
+  const html = renderMissionControlPage({ assetVersion: 'test' });
+  document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  const calls = [];
+  const reply = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+  const engineFetch = async (url) => {
+    const { pathname } = new URL(url);
+    calls.push(pathname);
+    if (pathname === '/api/agents/master-brain/state') return reply({ agent_id: 'master-brain', state: 'ACTIVE' });
+    if (pathname === '/api/tasks') return reply({ tasks: [], counts: { running: 0, completed: 0, halted: 0, failed: 0 } });
+    if (pathname === '/api/artifacts') return reply({ success: true, count: 0, artifacts: [] });
+    if (pathname === '/api/workflows') return reply({ workflows: [] });
+    if (pathname === '/api/canvas/graph') return reply({ generated_at: '', nodes: [], edges: [], counts: { tasks: 0, steps: 0, mcp_servers: 0, bridges: 0 }, mcp_error: null });
+    return new Response('{}', { status: 404 });
+  };
+  const store = { getToken: () => null, setToken() {} };
+  mc = await mountMissionControl(document, {
+    api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engineFetch, getToken: store.getToken }),
+    connection: { fetch: async () => new Response('{}', { status: 404 }), ...store },
+    dock: { storage: { get: () => null, set() {} }, Recognition: null, synth: null },
+    studio: { pollMs: 60_000 },
+  });
+  expect(calls).not.toContain('/api/workflows');
+  document.getElementById('mc-nav-studio').click();
+  await new Promise((r) => setTimeout(r, 10));
+  const workflowTab = document.getElementById('mc-studio-tab-workflow');
+  const activityTab = document.getElementById('mc-studio-tab-activity');
+  expect(workflowTab.getAttribute('aria-selected')).toBe('true');
+  expect(document.getElementById('mc-workflow').hidden).toBe(false);
+  expect(document.getElementById('mc-studio-activity').hidden).toBe(true);
+  expect(document.querySelector('#mc-workflow .wfc-command-label').textContent).toBe('Studio Command Bar');
+  expect(calls).toContain('/api/workflows');
+  expect(calls).not.toContain('/api/canvas/graph');
+  workflowTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  await new Promise((r) => setTimeout(r, 10));
+  expect(activityTab.getAttribute('aria-selected')).toBe('true');
+  expect(workflowTab.getAttribute('tabindex')).toBe('-1');
+  expect(document.getElementById('mc-studio-activity').hidden).toBe(false);
+  expect(calls).toContain('/api/canvas/graph');
+  expect(mc.workflowConsole.getState().workflow).toBe(null);
 });

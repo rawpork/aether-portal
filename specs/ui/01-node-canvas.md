@@ -1,6 +1,6 @@
 # 01 · Visual Node Canvas (agent workflows)
 
-Status: **spec, not built** · Surface: Mission Control → **Studio** (new rail item) · Roadmap: Phase 4, Step 4.1
+Status: **built in part** (Step 4.1b: Workflow console with trigger, agent, MCP, action and human nodes and polled run events; ROADMAP.md lists what is not built yet) · Surface: Mission Control → **Studio** (new rail item) · Roadmap: Phase 4, Step 4.1
 
 A 2D canvas where a user builds an agent workflow by placing nodes and dragging cables between their ports.
 While a workflow runs, each piece of traffic along a cable shows as a coloured pulse travelling from source to

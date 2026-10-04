@@ -9,6 +9,7 @@ import { mountBrainDock } from './brain-dock.js';
 import { mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { mountStudioCanvas } from './studio-canvas.js';
+import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
 import { mountQuickSetup } from './quick-setup.js';
 import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
@@ -16,6 +17,34 @@ import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 // view -> sidebar button id (its aria-controls names the view's panel). #studio / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
 const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', blueprints: 'mc-nav-blueprints', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
 const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', blueprints: 'Projects', monitor: 'Run history', connect: 'Settings' };
+
+// Studio sub-tabs (Workflow console, Engine activity): roving tabindex, arrow keys move between them.
+export function setupStudioTabs(doc, onChange = () => {}) {
+  const tabs = ['workflow', 'activity'].map((name) => ({ name, tab: doc.getElementById('mc-studio-tab-' + name) })).filter((t) => t.tab);
+  if (!tabs.length) return null;
+  let current = 'workflow';
+  function select(name, focus = false) {
+    current = name;
+    for (const t of tabs) {
+      const on = t.name === name;
+      t.tab.setAttribute('aria-selected', String(on));
+      t.tab.setAttribute('tabindex', on ? '0' : '-1');
+      doc.getElementById(t.tab.getAttribute('aria-controls')).hidden = !on;
+      if (on && focus) t.tab.focus();
+    }
+    onChange(name);
+  }
+  tabs.forEach((t, i) => {
+    t.tab.addEventListener('click', () => select(t.name));
+    t.tab.addEventListener('keydown', (event) => {
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      event.preventDefault();
+      select(tabs[(i + step + tabs.length) % tabs.length].name, true);
+    });
+  });
+  return { select, getTab: () => current };
+}
 
 // Sidebar views: each rail button shows its view and is marked aria-current="page" while it is open.
 export function setupTabs(doc, onSelect = () => {}) {
@@ -165,12 +194,22 @@ export async function mountMissionControl(doc = document, options = {}) {
       if (computeBar) computeBar.style.width = (runs ? Math.round((counts.completed / runs) * 100) : 0) + '%';
     },
   });
-  // Studio canvas: only polls the engine while its view is open.
+  // Studio: the Workflow console and the Engine activity canvas, each polling the engine only while it is on screen.
   const studio = byId('mc-studio') ? mountStudioCanvas(byId('mc-studio'), { api, onConnect: () => tabs.select('connect', true), ...options.studio }) : null;
+  const workflowConsole = byId('mc-workflow') ? mountWorkflowConsole(byId('mc-workflow'), { api, onConnect: () => tabs.select('connect', true), ...options.workflow }) : null;
+  const studioTabs = setupStudioTabs(doc, () => syncStudio());
+  let studioShown = false;
+  function syncStudio() {
+    const shown = studioShown;
+    const pane = studioTabs ? studioTabs.getTab() : 'workflow';
+    if (workflowConsole) workflowConsole.setActive(shown && pane === 'workflow');
+    if (studio) studio.setActive(shown && pane === 'activity');
+  }
   tabs = setupTabs(doc, (view) => {
     if (view === 'blueprints') blueprints.refresh();
     if (view === 'overview') workforce.refresh();
-    if (studio) studio.setActive(view === 'studio');
+    studioShown = view === 'studio';
+    syncStudio();
   });
   // "+ New agent": agents are started by deploying a blueprint, so open Projects at the editor.
   const newAgent = byId('mc-new-agent');
@@ -185,7 +224,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   offerPairingFromLink(doc, wizard, tabs);
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, blueprints, dock, wizard, quickSetup, workforce, studio, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();
