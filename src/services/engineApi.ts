@@ -666,7 +666,8 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			try {
 				body = JSON.parse(text);
 			} catch {
-				body = { error: text };
+				// An HTML error page (a proxy or Cloudflare answering for the engine) is not a message to show.
+				body = { error: /^\s*</.test(text) ? 'The engine’s address answered with an error page (HTTP ' + response.status + ') instead of the engine. Is the engine and its tunnel running?' : text.slice(0, 500) };
 			}
 		}
 

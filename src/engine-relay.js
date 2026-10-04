@@ -38,6 +38,23 @@ export function relayTarget(pathname) {
   return null;
 }
 
+// What an HTML (or plain text) error page from the engine's public address means, as the relay's JSON error body.
+export function describeUpstreamPage(status, text) {
+  const page = String(text || '');
+  const cfCode = /error code:?\s*(\d{3,4})/i.exec(page) || /errorCode:\s*(\d{3,4})/.exec(page);
+  const code = cfCode ? Number(cfCode[1]) : null;
+  const tunnel = /Cloudflare Tunnel error|trycloudflare/i.test(page) || code === 1033 || status === 530;
+  if (tunnel) {
+    return {
+      error: 'The engine’s tunnel is offline' + (code ? ' (Cloudflare error ' + code + ')' : '') + '. Start the engine and its tunnel on your computer (say “Start Engine”), then try again.',
+      tunnel_offline: true,
+      upstream_status: status,
+      ...(code ? { cloudflare_error: code } : {})
+    };
+  }
+  return { error: 'The engine’s public address answered with an error page (HTTP ' + status + ') instead of the engine.', upstream_status: status };
+}
+
 // `user` is the authenticated portal user ({ id }), checked by the caller (session + same-origin writes).
 export async function relayToEngine(request, env, url, user, { fetchImpl = fetch, profile = {} } = {}) {
   const json = (body, status) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -70,6 +87,12 @@ export async function relayToEngine(request, env, url, user, { fetchImpl = fetch
   }
   const out = new Headers({ 'Cache-Control': 'no-store' });
   const type = upstream.headers.get('content-type');
+  // An error page instead of the engine's JSON: Cloudflare answering for a tunnel that is down (error 1033 / 530)
+  // or a proxy in between. Say so plainly rather than passing the page's HTML on to Mission Control.
+  if (upstream.status >= 400 && !/json/i.test(type || '')) {
+    const text = await upstream.text().catch(() => '');
+    return json(describeUpstreamPage(upstream.status, text), 502);
+  }
   if (type) out.set('Content-Type', type);
   // Redirects would send the browser to the engine's own address; report them instead of following.
   if (upstream.status >= 300 && upstream.status < 400) return json({ error: 'The engine answered with a redirect (' + upstream.status + ').' }, 502);

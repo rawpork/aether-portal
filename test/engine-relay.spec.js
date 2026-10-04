@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayTarget, relayToEngine } from "../src/engine-relay.js";
+import { describeUpstreamPage, ENGINE_RELAY_PREFIX, enginePublicUrl, relayTarget, relayToEngine } from "../src/engine-relay.js";
 
 const claims = (token) => JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(token.split(".")[1].length / 4) * 4, "=")));
 
@@ -33,6 +33,28 @@ describe("engine relay", () => {
     for (const path of [ENGINE_RELAY_PREFIX, ENGINE_RELAY_PREFIX + "/", ENGINE_RELAY_PREFIX + "/api/voice/stream", ENGINE_RELAY_PREFIX + "/admin", "/api/engine/token", "/api/engine/relayx/api/a"]) {
       expect(relayTarget(path), path).toBeNull();
     }
+  });
+
+  it("turns Cloudflare's tunnel error page into a plain message instead of passing the HTML on", async () => {
+    const page = '<!DOCTYPE html><html><head><title>Cloudflare Tunnel error | specially-vegetarian.trycloudflare.com | Cloudflare</title></head><body><script>{errorCode:1033,helpful:a}</script></body></html>';
+    const { fetchImpl } = upstream(530, page, { "content-type": "text/html; charset=UTF-8" });
+    const request = req(ENGINE_RELAY_PREFIX + "/api/blueprint/compile", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const res = await relayToEngine(request, env, new URL(request.url), user, { fetchImpl });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body).toMatchObject({ tunnel_offline: true, upstream_status: 530, cloudflare_error: 1033 });
+    expect(body.error).toMatch(/tunnel is offline \(Cloudflare error 1033\)/);
+    expect(body.error).not.toMatch(/<html/i);
+  });
+
+  it("keeps the engine's own JSON errors as they are, and names other error pages plainly", async () => {
+    const { fetchImpl } = upstream(422, { error: "Invalid blueprint" });
+    const request = req(ENGINE_RELAY_PREFIX + "/api/blueprint/compile", { method: "POST", body: "{}" });
+    const res = await relayToEngine(request, env, new URL(request.url), user, { fetchImpl });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: "Invalid blueprint" });
+    expect(describeUpstreamPage(504, "<html>Gateway Timeout</html>")).toEqual({ error: expect.stringMatching(/error page \(HTTP 504\)/), upstream_status: 504 });
+    expect(describeUpstreamPage(502, "error code: 1033").cloudflare_error).toBe(1033);
   });
 
   it("forwards method, path, query and body with an engine token minted for the portal user", async () => {
