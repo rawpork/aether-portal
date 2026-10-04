@@ -10,7 +10,7 @@
 //   2. stored  - a still-valid token already in localStorage (aether.engine.jwt), e.g. pasted earlier.
 //   3. none    - no Authorization header; works only against an engine started with REQUIRE_AUTH=false.
 // The paste-a-token fallback appears only when the portal didn't mint a token.
-import { DEFAULT_ENGINE_BASE_URL, ENGINE_BASE_URL_STORAGE_KEY, getStoredEngineToken, setStoredEngineToken } from '../engine-api.bundle.js';
+import { DEFAULT_ENGINE_BASE_URL, ENGINE_BASE_URL_STORAGE_KEY, engineUnreachableFromHere, getStoredEngineToken, setStoredEngineToken } from '../engine-api.bundle.js';
 
 export const ENGINE_TOKEN_ENDPOINT = '/api/engine/token';
 // Refresh a portal token this long before it expires.
@@ -79,6 +79,13 @@ export function checkEngineUrl(value, pageProtocol = 'https:') {
 }
 
 // A 401 from the engine, in words: its own reason (src/auth.ts) plus what to do about it.
+// On a phone or the hosted site, an engine address on localhost points at this device, where no engine runs.
+// Returns the explanation, or '' when the address can be reached from here.
+export function describeUnreachableEngine(baseUrl, pageUrl) {
+  if (!engineUnreachableFromHere(baseUrl, pageUrl)) return '';
+  return 'The engine runs on your computer (' + String(baseUrl).replace(/^https?:\/\//, '') + '), which this device can’t reach. Pair this device in Settings with the engine’s public address (for example a Cloudflare Tunnel), or ask the operator to set ENGINE_PUBLIC_URL on the portal.';
+}
+
 export function describeAuthError(error) {
   const detail = String((error && error.body && error.body.error) || (error && error.message) || '').trim().replace(/\.$/, '');
   let hint = 'check Engine connection';

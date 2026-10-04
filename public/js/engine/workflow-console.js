@@ -11,7 +11,7 @@
 //
 // Port rules and layout live in workflow-model.js (mirrors Aether_Engine src/workflows.ts).
 import { getEngineApi } from '../engine-api.bundle.js';
-import { describeAuthError } from './connection.js';
+import { describeAuthError, describeUnreachableEngine } from './connection.js';
 import {
   CABLE_TEXT, KIND_TEXT, NODE_H, NODE_W, PORT_TEXT, PORTS, autoLayout, cableLabel, cablePath, cablePoint, checkConnect,
   compatibleTargets, ease, graphForSave, localId, portOffset, portPoint, snap, stageSize,
@@ -139,6 +139,8 @@ export function mountWorkflowConsole(container, options = {}) {
   };
 
   function describeError(err, what) {
+    const away = err && !err.status ? describeUnreachableEngine(api.baseUrl) : '';
+    if (away) return { text: away, connect: true };
     if (err && err.isUnauthorized) return { text: describeAuthError(err), connect: true };
     if (err && err.status === 404 && /\/api\/workflows$/.test(err.path || '')) return { text: 'This engine has no workflow endpoints (/api/workflows). Update Aether_Engine and restart it.', connect: false };
     const problems = err && err.body && Array.isArray(err.body.problems) ? ' ' + err.body.problems.join(' ') : '';

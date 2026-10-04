@@ -57,6 +57,11 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   const html = renderMissionControlPage({ assetVersion: 'test', tier: 'pro', userName: 'alex' });
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
+  // Phones shrink only the header's New agent to an icon, never the Command Bar's Generate button.
+  expect(html).toContain('.mc-actions .btn-primary { width: 42px;');
+  expect(html).not.toMatch(/\n\s*\.btn-primary \{ width: 42px;/);
+  expect(html).toMatch(/\.wfc-prompt \{[^}]*width: 100%;[^}]*min-width: 0;/);
+  expect(html).toMatch(/\.wfc-prompt \{ flex: none; font-size: 16px;/);
   // Phones hide the rail's Portal link, so the header carries a way back to the 3D space.
   expect(html).toMatch(/<header class="mc-top">\s*<a class="mobile-return-btn" href="\/" aria-label="Return to the Portal \(3D space\)"/);
   document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');

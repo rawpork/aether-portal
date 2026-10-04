@@ -15,6 +15,53 @@ import type { VoiceStream, VoiceStreamHandlers, VoiceStreamOptions } from './voi
 export const DEFAULT_ENGINE_BASE_URL = 'http://localhost:3333';
 export const ENGINE_JWT_STORAGE_KEY = 'aether.engine.jwt';
 export const ENGINE_BASE_URL_STORAGE_KEY = 'aether.engine.baseUrl';
+// The portal Worker's relay to the engine's public address (ENGINE_PUBLIC_URL secret, src/index.js). Mission Control
+// says it is available with <meta name="aether-engine-relay" content="1">.
+export const ENGINE_RELAY_PATH = '/api/engine/relay';
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+export function isLoopbackUrl(url: string): boolean {
+	try {
+		return LOOPBACK_HOSTS.has(new URL(url).hostname);
+	} catch {
+		return false;
+	}
+}
+
+// True when the engine address points at "this computer" but the page is open on another device or the hosted
+// site, so the engine can't be reached from here (a phone has no engine on localhost).
+export function engineUnreachableFromHere(baseUrl: string, pageUrl: string | undefined = globalThis.location?.href): boolean {
+	if (!pageUrl || !isLoopbackUrl(baseUrl)) return false;
+	return !isLoopbackUrl(pageUrl);
+}
+
+function relayAvailable(): boolean {
+	try {
+		const meta = globalThis.document?.querySelector('meta[name="aether-engine-relay"]');
+		return meta?.getAttribute('content') === '1';
+	} catch {
+		return false;
+	}
+}
+
+// Engine address for this browser: a saved address (Settings / pairing) wins; away from the engine's computer the
+// portal relay is used when the Worker has one; otherwise localhost.
+export function resolveEngineBaseUrl(): string {
+	const stored = readStorage(ENGINE_BASE_URL_STORAGE_KEY);
+	if (stored) return stored;
+	const here = globalThis.location;
+	if (here && relayAvailable() && !isLoopbackUrl(here.href)) return here.origin + ENGINE_RELAY_PATH;
+	return DEFAULT_ENGINE_BASE_URL;
+}
+
+export const isRelayUrl = (baseUrl: string): boolean => {
+	try {
+		return new URL(baseUrl).pathname.replace(/\/+$/, '') === ENGINE_RELAY_PATH;
+	} catch {
+		return false;
+	}
+};
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 // Master Brain turns go through Miserly.io; the engine allows the model up to 300s.
@@ -554,7 +601,7 @@ function requireText(name: string, value: string): void {
 }
 
 export function createEngineApi(options: EngineApiOptions = {}) {
-	const baseUrl = (options.baseUrl ?? readStorage(ENGINE_BASE_URL_STORAGE_KEY) ?? DEFAULT_ENGINE_BASE_URL).replace(/\/+$/, '');
+	const baseUrl = (options.baseUrl ?? resolveEngineBaseUrl()).replace(/\/+$/, '');
 	const getToken = options.getToken ?? getStoredEngineToken;
 	const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
 	const defaultTimeout = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;

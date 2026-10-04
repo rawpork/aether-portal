@@ -68,3 +68,45 @@ describe('theme', () => {
     expect(link.getAttribute('href')).toBe('https://engine.example/?theme=light#token=jwt');
   });
 });
+
+describe('Engine State link away from the engine computer', () => {
+  const original = window.location.href;
+  afterEach(() => window.happyDOM.setURL(original));
+
+  it('never opens a localhost engine from a phone or the hosted site: it calls onEngineUnreachable instead', () => {
+    window.happyDOM.setURL('https://aether.example.workers.dev/mission-control');
+    mountRail();
+    let opened = 0;
+    theme = setupTheme(document, { getEngineBase: () => 'http://localhost:3333', getToken: () => 'a.b.c', onEngineUnreachable: () => opened++ });
+    const link = document.getElementById('mc-nav-engine');
+    expect(link.getAttribute('href')).toBe('#connect');
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(opened).toBe(1);
+    expect(link.getAttribute('href')).not.toContain('localhost');
+  });
+
+  it('through the portal relay, links to the engine public address with the token', () => {
+    window.happyDOM.setURL('https://aether.example.workers.dev/mission-control');
+    const html = renderMissionControlPage({ assetVersion: 'test', enginePublicUrl: 'https://abc.trycloudflare.com' });
+    document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
+    document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+    let opened = 0;
+    theme = setupTheme(document, { getEngineBase: () => 'https://aether.example.workers.dev/api/engine/relay', getToken: () => 'a.b.c', onEngineUnreachable: () => opened++ });
+    const link = document.getElementById('mc-nav-engine');
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+    expect(opened).toBe(0);
+    expect(link.getAttribute('href')).toMatch(/^https:\/\/abc\.trycloudflare\.com\/\?theme=(light|dark)#token=a\.b\.c$/);
+    document.head.innerHTML = '';
+  });
+
+  it('still opens localhost on the engine computer itself', () => {
+    window.happyDOM.setURL('http://127.0.0.1:8787/mission-control');
+    mountRail();
+    theme = setupTheme(document, { getEngineBase: () => 'http://localhost:3333', getToken: () => null });
+    expect(document.getElementById('mc-nav-engine').getAttribute('href')).toMatch(/^http:\/\/localhost:3333\/\?theme=/);
+  });
+});

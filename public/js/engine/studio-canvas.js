@@ -6,7 +6,7 @@
 // bridge opens the Edge Inspector with the engine's rationale, Elarion's reply excerpt, the scoring signals and the
 // bridge metadata. Read-only; shown as Studio's Engine activity tab. The editable Workflow console is workflow-console.js.
 import { getEngineApi } from '../engine-api.bundle.js';
-import { describeAuthError } from './connection.js';
+import { describeAuthError, describeUnreachableEngine } from './connection.js';
 
 export const POLL_MS = 10000;
 export const DEFAULT_THRESHOLD = 30;
@@ -347,7 +347,9 @@ export function mountStudioCanvas(container, options = {}) {
       if (selectedId && !graph.edges.some((e) => e.id === selectedId)) selectedId = null;
       renderCanvas();
     } catch (err) {
-      if (err && err.isUnauthorized) error = { text: describeAuthError(err), connect: true };
+      const away = err && !err.status ? describeUnreachableEngine(api.baseUrl) : '';
+      if (away) error = { text: away, connect: true };
+      else if (err && err.isUnauthorized) error = { text: describeAuthError(err), connect: true };
       else if (err && err.status === 404) error = { text: 'This engine has no canvas endpoint (GET /api/canvas/graph). Update Aether_Engine and restart it.', connect: false };
       else error = { text: 'Could not load the canvas from the engine (' + (err && err.message ? err.message : 'unreachable') + ').', connect: !err || !err.status };
     } finally {

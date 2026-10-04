@@ -43,7 +43,7 @@ export function initialsOf(name) {
 // 'light' / 'dark' from ?theme= or the aether_theme cookie (UNIFIED_BRAND.md); anything else follows the system.
 export const parseTheme = (value) => (value === 'light' || value === 'dark' ? value : '');
 
-export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '', userName = '', role = '', theme = '' } = {}) {
+export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '', userName = '', role = '', theme = '', enginePublicUrl = '' } = {}) {
 	const v = encodeURIComponent(assetVersion);
 	const safeUpgradeUrl = /^https:[/][/]/i.test(upgradeUrl) ? upgradeUrl : '';
 	const displayName = userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : '';
@@ -64,6 +64,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <meta name="aether-tier" content="${escapeAttr(tier)}">
   <meta name="aether-upgrade-url" content="${escapeAttr(safeUpgradeUrl)}">
   <meta name="aether-user" content="${escapeAttr(displayName)}">
+  <meta name="aether-engine-relay" content="${enginePublicUrl ? '1' : ''}">
+  <meta name="aether-engine-public" content="${escapeAttr(enginePublicUrl)}">
   <style>
     /* DESIGN_SYSTEM.md (Figma Operations edition): charcoal rail, cool-gray canvas, white 16px cards with zinc
        hairlines, soft status pills. Red stays reserved for breakers. */
@@ -497,6 +499,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     /* Quick Setup (public/js/engine/quick-setup.js) and the header's Elarion Ready badge. */
     #mc-view-connect { display: flex; flex-direction: column; gap: 20px; }
     #mc-view-connect[hidden] { display: none; }
+    .mc-engine-note { margin: 0; padding: 12px 16px; border: 1px solid var(--alert-line); border-radius: var(--radius-m); background: var(--alert-soft); color: var(--text); font-size: 13.5px; line-height: 1.45; }
     .qs-form { display: flex; flex-direction: column; gap: 16px; padding: 8px 24px 22px; }
     .qs-field { display: flex; flex-direction: column; gap: 6px; }
     .qs-field label { font-weight: 600; font-size: 13px; }
@@ -718,11 +721,14 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     }
     /* Studio Workflow console (public/js/engine/workflow-console.js, specs/ui/01-node-canvas.md). Cable colours are
        data colours (--flow-*), --accent marks only selection, and only the pulse halo glows. */
-    .wfc-console { padding: 16px 24px 24px; }
-    .wfc-command { padding: 14px 16px 10px; }
+    .wfc-console { padding: 16px 24px 24px; min-width: 0; }
+    .wfc-command { width: 100%; min-width: 0; padding: 14px 16px 10px; }
     .wfc-command-label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; }
-    .wfc-command-row { display: flex; gap: 10px; align-items: stretch; }
-    .wfc-prompt { flex: 1; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; resize: vertical; }
+    .wfc-command-row { display: flex; gap: 10px; align-items: stretch; width: 100%; min-width: 0; }
+    /* The goal box fills its row at every width (explicit width, not just flex), and touch screens get 16px text so
+       iOS Safari doesn't zoom the page when it is focused. */
+    .wfc-prompt { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; line-height: 1.4; resize: vertical; -webkit-appearance: none; appearance: none; }
+    @media (pointer: coarse) { .wfc-prompt { font-size: 16px; } }
     .wfc-prompt:focus { outline: 2px solid var(--accent-line); outline-offset: 1px; border-color: var(--accent); }
     .wfc-prompt[aria-busy="true"] { opacity: 0.7; }
     .wfc-submit { align-self: flex-start; height: 44px; }
@@ -826,6 +832,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .wfc-body { flex-direction: column; }
       .wfc-inspector { width: 100%; position: static; max-height: none; box-sizing: border-box; }
       .wfc-command-row { flex-direction: column; }
+      /* In a column a flex: 1 box starts from zero height; keep the textarea's own two rows instead. */
+      .wfc-prompt { flex: none; font-size: 16px; min-height: 96px; }
       .wfc-submit { align-self: stretch; justify-content: center; }
       .wfc-viewport { max-height: 70vh; }
     }
@@ -882,8 +890,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       /* Wraps to a second line rather than clipping the name on the narrowest phones. */
       .mc-greeting { font-size: 19px; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
       .mc-crumbs { font-size: 10.5px; }
-      .live-pill, .btn-primary .btn-label { display: none; }
-      .btn-primary { width: 42px; padding: 0; justify-content: center; }
+      /* Only the header's New agent shrinks to an icon; other primary buttons (the Command Bar's Generate) keep their label. */
+      .live-pill, .mc-actions .btn-primary .btn-label { display: none; }
+      .mc-actions .btn-primary { width: 42px; padding: 0; justify-content: center; }
       .engine-badge:not([data-state="HALTED"]) .engine-badge-label { display: none; }
       .mc-breaker:has(.engine-reset:not([hidden])) .engine-trip { display: none; }
       .mc-main { padding: 14px 12px 20px; }
@@ -983,6 +992,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         </section>
       </div>
       <div class="mc-view" id="mc-view-connect" hidden>
+        <p class="mc-engine-note" id="mc-engine-note" role="status" hidden></p>
         <div id="mc-quick-setup"></div>
         <section class="surface mc-panel" aria-labelledby="mc-connect-title">
           <div class="mc-panel-head"><h2 id="mc-connect-title">Engine connection</h2></div>

@@ -400,6 +400,23 @@ describe('workflow console', () => {
     expect(NODE_W).toBe(208);
   });
 
+  it('on a phone with a localhost engine address, explains and offers Settings instead of "unreachable"', async () => {
+    const original = window.location.href;
+    window.happyDOM.setURL('https://aether.example.workers.dev/mission-control');
+    try {
+      const api = createEngineApi({ baseUrl: 'http://localhost:3333', fetch: async () => { throw new TypeError('Load failed'); }, getToken: () => null });
+      let opened = 0;
+      const { root } = mount(api, { onConnect: () => opened++ });
+      await ui.setActive(true);
+      const status = root.querySelector('.wfc-status');
+      expect(status.textContent).toMatch(/^The engine runs on your computer \(localhost:3333\), which this device can’t reach\./);
+      status.querySelector('button').click();
+      expect(opened).toBe(1);
+    } finally {
+      window.happyDOM.setURL(original);
+    }
+  });
+
   it('explains a missing engine endpoint', async () => {
     const api = createEngineApi({ baseUrl: 'http://localhost:3333', fetch: async () => new Response('{"error":"Not found"}', { status: 404 }), getToken: () => null });
     const { root } = mount(api);

@@ -10,6 +10,7 @@ import { renderMissionControlPage } from "./mission-control-page.js";
 import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
+import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
 import { OAUTH_COOKIE, OAUTH_COOKIE_TTL_SECONDS, buildGoogleAuthUrl, createOAuthState, createPkcePair, exchangeGoogleCode, isAllowedGoogleEmail, readOAuthCookie, safeNextPath, signOAuthCookie, usernameFromEmail, verifyGoogleIdToken } from "./google-auth.js";
@@ -136,6 +137,14 @@ export default {
         console.error("Settings update failed:", err);
         return jsonResponse({ error: "Saving the setting failed." }, 500);
       }
+    }
+
+    // Endpoint 0c-2: Engine relay (src/engine-relay.js): the engine API through the portal's own domain, for devices
+    // that can't reach the operator's localhost. Needs ENGINE_PUBLIC_URL (a tunnel to the engine); 404 without it.
+    if (url.pathname === ENGINE_RELAY_PREFIX || url.pathname.startsWith(ENGINE_RELAY_PREFIX + "/")) {
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      return relayToEngine(request, env, url, auth.user, { profile: { preferred_name: await loadPreferredName(env, auth.user.id) } });
     }
 
     // Endpoint 0c: Engine token for Mission Control. A short-lived HS256 JWT the local Aether_Engine accepts, signed with
@@ -943,6 +952,8 @@ export default {
         tier: account?.tier || "free",
         userName: displayNameFor(account),
         role: devRoleFor(env, url, session.id) || "",
+        // The engine relay and the engine's public address (for the Engine State link) when ENGINE_PUBLIC_URL is set.
+        enginePublicUrl: enginePublicUrl(env) || "",
         upgradeUrl: env.PRO_UPGRADE_URL || "",
         // ?theme= (from the Engine status page) wins over the saved cookie, so the first paint already matches.
         theme: url.searchParams.get("theme") || readCookie(request, "aether_theme") || ""

@@ -6,7 +6,7 @@ import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
 import { ENGINE_PARAM, mountConnectionWizard } from './connection-wizard.js';
 import { mountBrainDock } from './brain-dock.js';
-import { mountConnection } from './connection.js';
+import { describeUnreachableEngine, mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { mountStudioCanvas } from './studio-canvas.js';
 import { mountWorkflowConsole } from './workflow-console.js';
@@ -134,7 +134,20 @@ export async function mountMissionControl(doc = document, options = {}) {
   const api = options.api || getEngineApi();
   const byId = (id) => doc.getElementById(id);
   // Theme toggle and the Engine State link work before (and without) an engine connection.
-  const theme = setupTheme(doc, { getEngineBase: () => api.baseUrl, getToken: options.getToken || getStoredEngineToken });
+  let tabs;
+  const theme = setupTheme(doc, {
+    getEngineBase: () => api.baseUrl,
+    getToken: options.getToken || getStoredEngineToken,
+    // On a phone with no reachable engine address, Engine State explains and opens Settings instead of localhost.
+    onEngineUnreachable: () => {
+      const note = byId('mc-engine-note');
+      if (note) {
+        note.textContent = describeUnreachableEngine(api.baseUrl) || 'The Engine State page needs an engine address this device can open. Pair this device below.';
+        note.hidden = false;
+      }
+      if (tabs) tabs.select('connect', true);
+    },
+  });
 
   const connection = await mountConnection(byId('mc-connection'), { baseUrl: api.baseUrl, ...options.connection });
 
@@ -148,7 +161,6 @@ export async function mountMissionControl(doc = document, options = {}) {
     },
   });
 
-  let tabs = null;
   let blueprints = null;
   const monitor = mountTaskMonitor(byId('mc-monitor'), {
     api,

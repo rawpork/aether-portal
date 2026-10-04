@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createEngineApi, EngineApiError } from '../../src/services/engineApi.ts';
 
 interface Call {
@@ -106,5 +106,41 @@ describe('engineApi', () => {
 		const { calls, fetchImpl } = mockFetch();
 		await expect(createEngineApi({ fetch: fetchImpl }).getAgentState(' ')).rejects.toThrow(TypeError);
 		expect(calls).toHaveLength(0);
+	});
+});
+
+describe('engine address on other devices', () => {
+	it('knows when a localhost engine is out of reach from the page', async () => {
+		const { engineUnreachableFromHere, isRelayUrl, isLoopbackUrl } = await import('../../src/services/engineApi.ts');
+		expect(engineUnreachableFromHere('http://localhost:3333', 'https://aether.example.workers.dev/mission-control')).toBe(true);
+		expect(engineUnreachableFromHere('http://localhost:3333', 'http://127.0.0.1:8787/mission-control')).toBe(false);
+		expect(engineUnreachableFromHere('https://abc.trycloudflare.com', 'https://aether.example.workers.dev/')).toBe(false);
+		expect(engineUnreachableFromHere('https://aether.example.workers.dev/api/engine/relay', 'https://aether.example.workers.dev/')).toBe(false);
+		expect(isRelayUrl('https://aether.example.workers.dev/api/engine/relay')).toBe(true);
+		expect(isRelayUrl('http://localhost:3333')).toBe(false);
+		expect(isLoopbackUrl('http://[::1]:3333')).toBe(true);
+	});
+
+	it('uses the portal relay away from the engine computer when the page offers one; a saved address wins', async () => {
+		const { resolveEngineBaseUrl, DEFAULT_ENGINE_BASE_URL } = await import('../../src/services/engineApi.ts');
+		const store = new Map<string, string>();
+		const page = (href: string, relay: string) => {
+			vi.stubGlobal('location', new URL(href));
+			vi.stubGlobal('document', { querySelector: () => ({ getAttribute: () => relay }) });
+			vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) });
+		};
+		try {
+			page('https://aether.example.workers.dev/mission-control', '1');
+			expect(resolveEngineBaseUrl()).toBe('https://aether.example.workers.dev/api/engine/relay');
+			page('https://aether.example.workers.dev/mission-control', '');
+			expect(resolveEngineBaseUrl()).toBe(DEFAULT_ENGINE_BASE_URL);
+			page('http://127.0.0.1:8787/mission-control', '1');
+			expect(resolveEngineBaseUrl()).toBe(DEFAULT_ENGINE_BASE_URL);
+			store.set('aether.engine.baseUrl', 'https://abc.trycloudflare.com');
+			page('https://aether.example.workers.dev/mission-control', '1');
+			expect(resolveEngineBaseUrl()).toBe('https://abc.trycloudflare.com');
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

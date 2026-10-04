@@ -2,6 +2,8 @@
 // server renders data-theme on <html> from ?theme= or the aether_theme cookie; this module adopts and saves a
 // ?theme= that arrived from the Engine, drives the rail's Theme toggle, and builds the rail's Engine State link,
 // which carries the current theme (?theme=) and the engine token (#token=, a fragment, so it never reaches a server).
+import { engineUnreachableFromHere, isRelayUrl } from '../engine-api.bundle.js';
+
 export const THEME_COOKIE = 'aether_theme';
 export const THEME_STORAGE_KEY = 'aether.theme';
 const THEME_COLORS = { light: '#18181B', dark: '#09090B' };
@@ -28,6 +30,12 @@ export function setupTheme(doc, options = {}) {
   const label = doc.getElementById('mc-theme-label');
   const engineLink = doc.getElementById('mc-nav-engine');
   const getEngineBase = options.getEngineBase || (() => '');
+  // Engine State opens the engine's own page, so it needs an address the browser can open: the public address when
+  // API calls go through the portal relay, and nothing at all when the only address is another computer's localhost.
+  const onUnreachable = options.onEngineUnreachable || (() => {});
+  const publicUrl = () => ((doc.querySelector('meta[name="aether-engine-public"]') || {}).content || '');
+  const linkBase = () => (isRelayUrl(getEngineBase()) ? publicUrl() : getEngineBase());
+  const unreachable = () => !linkBase() || engineUnreachableFromHere(linkBase(), win.location ? win.location.href : undefined);
   const getToken = options.getToken || (() => null);
 
   function save(theme) {
@@ -49,7 +57,7 @@ export function setupTheme(doc, options = {}) {
     if (toggle) toggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
     const meta = doc.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', THEME_COLORS[theme]);
-    if (engineLink) engineLink.href = engineStateUrl(getEngineBase(), theme, null);
+    if (engineLink) engineLink.href = unreachable() ? '#connect' : engineStateUrl(linkBase(), theme, null);
   }
 
   function set(theme) {
@@ -73,8 +81,14 @@ export function setupTheme(doc, options = {}) {
   const onToggle = () => set(effectiveTheme(doc) === 'dark' ? 'light' : 'dark');
   if (toggle) toggle.addEventListener('click', onToggle);
   // The token is attached only at click time, so it is fresh and never sits in the DOM.
-  const onEngine = () => {
-    engineLink.href = engineStateUrl(getEngineBase(), effectiveTheme(doc), getToken());
+  const onEngine = (event) => {
+    if (unreachable()) {
+      event.preventDefault();
+      engineLink.href = '#connect';
+      onUnreachable();
+      return;
+    }
+    engineLink.href = engineStateUrl(linkBase(), effectiveTheme(doc), getToken());
   };
   if (engineLink) engineLink.addEventListener('click', onEngine);
   const media = win.matchMedia ? win.matchMedia('(prefers-color-scheme: dark)') : null;
