@@ -1,4 +1,4 @@
-# Aether Portal � Pipeline & Memory Update (MU)
+# Aether Portal — Pipeline & Memory Update (MU)
 
 ## Phase 3: Aether_Engine Integration (COMPLETED 2026-10-01)
 Wires the portal to the local Aether_Engine IPC server (`http://localhost:3333`, Phase 2 complete 2026-10-01).
@@ -60,6 +60,24 @@ Turns Mission Control from watching agents into building and steering them. The 
 - [ ] BYOK through Miserly: add a passthrough-key mode to Miserly.io (keeps budgets, telemetry and `x-miserly-savings`), or accept direct-to-provider BYOK.
 - [ ] Engine contracts (runs WebSocket, teams, approvals, browser sessions): agree them with Aether_Engine before UI work starts on Steps 4.1, 4.3 and 4.5.
 
+
+## Phase 5: Autonomous Delivery & Operator Console (COMPLETED 2026-10-05)
+Elarion turns a blueprint into finished deliverables, and Mission Control shows the work and asks for every decision.
+- [x] Step 5.1: Elarion project runs (COMPLETED 2026-10-05) - Deploy & Execute hands the blueprint to the engine (`POST /api/projects/run`): Elarion analyzes the scope, inspects linked GitHub repos (read-only) and matching repo skills, plans a DAG of 3-10 steps (validated: unique ids, known dependencies, no cycles; falls back to the blueprint phases) and runs it on the task loop with the breaker before every step. Engine `1b2f081`, portal `7a3c918`
+- [x] Step 5.2: Deliverables back to Mission Control and Space (COMPLETED 2026-10-05) - every final file is written as a ````file:<path> block, saved under `outputs/projects/<task>/`, listed (downloadable) in Outcomes & Deliverables with Elarion's plan, and carried in the Outcome card's report in Space. Portal `7a3c918`
+- [x] Step 5.3: Sandboxed /s/ previews with approval (COMPLETED 2026-10-05) - "Deliver a live website" on the Ready to run? card (pre-ticked when the blueprint talks about a website) adds a self-contained, responsive `preview/index.html`; it is drafted at `/s/<slug>` (D1 `sites`, migration 0018) and goes public only on Approve & publish. Pages are served under a CSP sandbox without same-origin, so they cannot use the portal session. Portal `7a3c918`, `6f7f730`; engine `67c6e0d`
+- [x] Step 5.4: Self-healing goal checks (COMPLETED 2026-10-05) - every run ends with a goal check that compares each goal with the files and rewrites, in full, anything missing, broken or short of a goal. Provider failures carry the real reason (HTTP status and message); a failed Gemini turn is retried once, then Claude stands in. Engine `67c6e0d`, `61685de`
+- [x] Step 5.5: Dual-Agent Console (COMPLETED 2026-10-05) - Operator → Claude ⇄ Gemini: side-by-side feeds (stacked on phones) that chat per purpose (Claude plans, Gemini runs fast steps), show the model that answered and why another stood in, collect background steps per provider, and move code between them with Paste to Gemini / Paste to Claude. Portal `aa7f01d`, `40b7e07`; engine `38917ba`
+- [x] Step 5.6: Numbered choice chips and decision popups (COMPLETED 2026-10-05) - numbered options in an agent's question become one-tap chips in the Elarion dock and both agent panes; the decision center opens numbered popups (1-9 keys, Esc for ones that can wait) when Elarion waits on a choice, and when a run finishes, fails or is halted; a "Do this next" banner on every view names the one next action. Portal `aa7f01d`, `071450f`, `16de512`
+- [x] Step 5.7: Universal skill ingestion (COMPLETED 2026-10-05) - "+ Skill", `add repo <link>`, `add skill <link or text>` or `learn <...>`: Elarion reads a GitHub repo, any public page (redirects checked hop by hop, no local or private addresses) or pasted text and drafts a structured SKILL.md (When to use, Core instructions, API rules, Examples, Pitfalls, plus a runnable apply step) for Save / Edit first / Discard; saved to `Aether_Engine/skills/<name>/`, and matching skills feed later project runs. First skill saved: `claude-skills-format-and-awesome-list`. Engine `aa0d1b9`, portal `16de512`, `40b7e07`
+- [x] Step 5.8: Finger on the pulse (COMPLETED 2026-10-05) - Live activity opens with what the running step was asked, how long it has been working and what the last step actually wrote; timeline entries expand to instructions or output; Studio → Engine activity nodes open a Node Inspector (instructions, full reply, model, tokens, timing, exact failure). Polls no longer scroll the page. Portal `071450f`, `8546ad9`
+- [x] Step 5.9: Roadmap dashboard (COMPLETED 2026-10-05) - Mission Control → Roadmap reads this file's phases and goals, recent Claude Code sessions (metadata only, key-like strings masked) and the memory index through the engine. Portal `aa7f01d`, engine `38917ba`
+- [x] Step 5.10: Engine stays up (COMPLETED 2026-10-05) - the "Aether Engine" scheduled task (at logon, no admin) runs `scripts/aether-up.ps1`, which keeps the engine, its quick tunnel and the portal's ENGINE_PUBLIC_URL secret current, outside any terminal session. Verified: paid Gemini key, 3 of 3 step calls answered by gemini-3.8-flash with no fallback
+
+### Phase 5 next steps
+- [ ] Named tunnel with a fixed address: move one GoDaddy domain's DNS to Cloudflare, create a named tunnel (engine.<domain>) and install cloudflared as a Windows service (needs an administrator prompt); the secret is then set once.
+- [ ] First real website project end to end: blueprint → run → goal check → /s/ preview → Approve & publish.
+- [ ] Provider keys only in Cloudflare (Miserly passthrough), so none live on the PC.
 
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev
