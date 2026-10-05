@@ -123,17 +123,43 @@ export interface ResetBreakerResult {
 	timestamp: string;
 }
 
+// What a turn is for, which picks the engine's provider (MODEL_ROUTES): by default Claude for chat, plan and agent,
+// Gemini for step.
+export type TurnPurpose = 'chat' | 'plan' | 'agent' | 'step';
+
 export interface ChatOptions {
 	agentId?: string;
 	context?: Record<string, unknown>;
 	signal?: AbortSignal;
+	purpose?: TurnPurpose;
 }
 
 export interface ChatResponse {
 	session_id: string;
 	response: string;
 	tokens: TokenUsage;
+	// Sent by engines with per-purpose routing.
+	model?: string;
+	tier?: string | null;
+	purpose?: TurnPurpose;
 	status: 'ACTIVE';
+}
+
+// GET /api/roadmap: ROADMAP.md's phases and goals, recent Claude Code sessions (metadata only) and the memory index.
+export interface RoadmapGoal {
+	text: string;
+	detail: string;
+	done: boolean;
+	completed_on: string | null;
+	depth: number;
+	children: { done: number; total: number };
+}
+
+export interface RoadmapReport {
+	roadmap: { file: string; updated_at: string | null; title: string; phases: { title: string; level: number; done: number; total: number; goals: RoadmapGoal[] }[] } | null;
+	roadmap_error: string | null;
+	sessions: { id: string; project: string; title: string; started_at: string | null; last_active_at: string; size_kb: number; active: boolean }[];
+	memory: { title: string; hook: string }[];
 }
 
 export type StepAction = 'prompt' | 'echo' | 'wait';
@@ -757,7 +783,7 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			requireText('message', message);
 			requireText('sessionId', sessionId);
 			return request<ChatResponse>('POST', '/api/master-brain/chat', {
-				body: { session_id: sessionId, message, agent_id: opts.agentId, context: opts.context },
+				body: { session_id: sessionId, message, agent_id: opts.agentId, context: opts.context, purpose: opts.purpose },
 				timeoutMs: CHAT_TIMEOUT_MS,
 				signal: opts.signal,
 			});
@@ -774,6 +800,11 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 				signal: opts.signal,
 				acceptStatuses: [423],
 			});
+		},
+
+		// GET /api/roadmap: the project's roadmap and recent sessions, read on the engine's computer.
+		getRoadmap(): Promise<RoadmapReport> {
+			return request<RoadmapReport>('GET', '/api/roadmap');
 		},
 
 		// POST /api/projects/run: Elarion analyzes the stored blueprint, plans a DAG and starts it as deploy-<id>.
@@ -915,6 +946,7 @@ export const resetBreaker: EngineApi['resetBreaker'] = (...args) => getEngineApi
 export const getAgentState: EngineApi['getAgentState'] = (...args) => getEngineApi().getAgentState(...args);
 export const sendMasterBrainChat: EngineApi['sendMasterBrainChat'] = (...args) => getEngineApi().sendMasterBrainChat(...args);
 export const executeSubAgentTask: EngineApi['executeSubAgentTask'] = (...args) => getEngineApi().executeSubAgentTask(...args);
+export const getRoadmap: EngineApi['getRoadmap'] = () => getEngineApi().getRoadmap();
 export const runProject: EngineApi['runProject'] = (...args) => getEngineApi().runProject(...args);
 export const getTaskStatus: EngineApi['getTaskStatus'] = (...args) => getEngineApi().getTaskStatus(...args);
 export const compileBlueprint: EngineApi['compileBlueprint'] = (...args) => getEngineApi().compileBlueprint(...args);

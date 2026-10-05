@@ -5,6 +5,7 @@
 // Voice input: when the engine reports STT (ready.stt), the mic streams webm-opus audio to it. Until an engine
 // STT provider exists (engine Step 2.4a), the browser's SpeechRecognition transcribes and the text is sent as a
 // client transcript. Voice replies play the engine's TTS audio when it has some, else the browser speaks them.
+import { choiceReply, parseNumberedOptions, renderChoiceChips } from './choice-chips.js';
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 
@@ -193,6 +194,14 @@ export function mountBrainDock(container, options = {}) {
     if (meta.via === 'voice') details.push('voice');
     if (meta.tokens) details.push(meta.tokens.input.toLocaleString() + ' in / ' + meta.tokens.output.toLocaleString() + ' out');
     if (details.length) item.append(el(doc, 'span', { class: 'brain-meta', text: details.join(' · ') }));
+    // Numbered options in a question become quick-reply chips that send the choice.
+    const options = kind === 'assistant' ? parseNumberedOptions(text) : [];
+    if (options.length) {
+      item.append(renderChoiceChips(doc, options, (option) => {
+        if (view.busy || view.halted) return;
+        sendTyped(choiceReply(option));
+      }));
+    }
     log.append(item);
     log.scrollTop = log.scrollHeight;
     return item;

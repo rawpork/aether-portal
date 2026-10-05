@@ -10,6 +10,8 @@ import { describeUnreachableEngine, mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { mountOperatorConsole } from './operator-console.js';
 import { mountAgentDialogue } from './agent-dialogue.js';
+import { mountDualAgents } from './dual-agents.js';
+import { mountRoadmap } from './roadmap.js';
 import { mountCommandBar } from './command-bar.js';
 import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
 import { mountStudioCanvas } from './studio-canvas.js';
@@ -19,8 +21,8 @@ import { mountQuickSetup } from './quick-setup.js';
 import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 
 // view -> sidebar button id (its aria-controls names the view's panel). #studio / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
-const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', blueprints: 'mc-nav-blueprints', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
-const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', blueprints: 'Projects', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
+const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', blueprints: 'mc-nav-blueprints', roadmap: 'mc-nav-roadmap', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
+const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', blueprints: 'Projects', roadmap: 'Roadmap', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
 
 // A set of tabs over panels (Operator: Live log / Agent dialogue): roving tabindex, arrow keys move between them.
 export function setupTabset(doc, pairs, onChange = () => {}) {
@@ -311,9 +313,19 @@ export async function mountMissionControl(doc = document, options = {}) {
     },
   }) : null;
   const dialogue = byId('mc-dialogue') ? mountAgentDialogue(byId('mc-dialogue'), { api }) : null;
-  const operatorTabs = setupTabset(doc, [['mc-operator-tab-log', 'mc-operator'], ['mc-operator-tab-dialogue', 'mc-dialogue']], (index) => {
+  // Claude ⇄ Gemini: starts its background polling the first time the tab opens.
+  const dual = byId('mc-dual') ? mountDualAgents(byId('mc-dual'), { api, ...options.dual }) : null;
+  let dualStarted = false;
+  const operatorTabs = setupTabset(doc, [['mc-operator-tab-log', 'mc-operator'], ['mc-operator-tab-dialogue', 'mc-dialogue'], ['mc-operator-tab-dual', 'mc-dual']], (index) => {
     if (index === 1 && dialogue) dialogue.refresh();
+    if (index === 2 && dual) {
+      if (!dualStarted) dual.start();
+      else dual.refresh();
+      dualStarted = true;
+    }
   });
+  const roadmap = byId('mc-roadmap') ? mountRoadmap(byId('mc-roadmap'), { api }) : null;
+  let roadmapStarted = false;
   const wizard = mountConnectionWizard(byId('mc-connect'), { api, ...options.wizard });
   // Opens Settings once tabs exist (the badge can be clicked before then only in theory).
   const quickSetup = mountQuickSetup(byId('mc-quick-setup'), {
@@ -355,6 +367,11 @@ export async function mountMissionControl(doc = document, options = {}) {
   tabs = setupTabs(doc, (view) => {
     if (view === 'blueprints') blueprints.refresh();
     if (view === 'overview') workforce.refresh();
+    if (view === 'roadmap' && roadmap) {
+      if (!roadmapStarted) roadmap.start();
+      else roadmap.refresh();
+      roadmapStarted = true;
+    }
     studioShown = view === 'studio';
     syncStudio();
   });
@@ -392,7 +409,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   }
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, outcomes, operator, dialogue, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, outcomes, operator, dialogue, dual, roadmap, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

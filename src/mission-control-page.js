@@ -19,6 +19,7 @@ const ICONS = {
 	grid: icon('<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>'),
 	pulse: icon('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
 	layers: icon('<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'),
+	flag: icon('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
 	clock: icon('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
 	mic: icon('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>'),
 	menu: icon('<path d="M4 7h16M4 12h16M4 17h16"/>'),
@@ -503,6 +504,68 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .oc-phase p { margin: 6px 0 0; white-space: pre-wrap; color: var(--text-2); }
     .oc-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
     .oc-open-space { text-decoration: none; }
+    /* Quick-choice chips (choice-chips.js): numbered options in an agent's question, one tap to answer. */
+    .qc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .qc-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; max-width: 100%; padding: 6px 12px; border: 1px solid var(--accent-line); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+    .qc-chip:hover:not(:disabled) { background: var(--accent-soft); }
+    .qc-chip:disabled { cursor: default; opacity: 0.55; }
+    .qc-chip.chosen { opacity: 1; border-color: var(--accent); background: var(--accent-soft); }
+    .qc-chip-num { color: var(--accent); font-weight: 700; }
+    /* Claude ⇄ Gemini (dual-agents.js). */
+    .da { padding: 4px 24px 24px; }
+    .da-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .da-pane { display: flex; flex-direction: column; min-width: 0; height: min(68vh, 680px); border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); transition: border-color 0.3s; }
+    .da-pane[data-agent="claude"] { --agent: var(--accent); }
+    .da-pane[data-agent="gemini"] { --agent: #ffb627; }
+    .da-pane.da-pasted { border-color: var(--agent); }
+    .da-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .da-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--agent); }
+    .da-role { font-size: 12px; }
+    .da-model { margin-left: auto; font-size: 11px; }
+    .da-model[data-mismatch="true"] { color: var(--danger-text); }
+    .da-feed { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+    .da-empty, .da-typing { color: var(--muted); font-size: 13px; }
+    .da-msg { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+    .da-msg p { margin: 0 0 6px; white-space: pre-wrap; }
+    .da-user { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: var(--radius-m); background: var(--accent-soft); }
+    .da-agent, .da-run { padding-left: 10px; border-left: 2px solid var(--agent); }
+    .da-run summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+    .da-error { color: var(--danger-text); }
+    .da-code { margin: 6px 0; padding: 10px; max-height: 320px; overflow: auto; border-radius: var(--radius-s); background: var(--surface); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
+    .da-meta { display: block; font-size: 11px; color: var(--muted); }
+    .da-actions { margin-top: 6px; }
+    .da-paste { min-height: 32px; font-size: 12px; }
+    .da-compose { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
+    .da-input { flex: 1; min-width: 0; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+    .da-send { align-self: flex-end; }
+    .da-status { min-height: 18px; margin: 10px 0 0; font-size: 12px; }
+    @media (max-width: 760px) { .da { padding: 4px 14px 18px; } .da-grid { grid-template-columns: 1fr; } .da-pane { height: 62vh; } }
+    /* Roadmap (roadmap.js). */
+    .rm-body { padding: 4px 24px 24px; }
+    .rm-head-actions { display: flex; align-items: center; gap: 10px; }
+    .rm-overall { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+    .rm-overall-text { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+    .rm-percent { font-size: 28px; }
+    .rm-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+    .rm-bar-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .rm-sub { margin: 22px 0 8px; font-size: 14px; }
+    .rm-goals, .rm-sessions, .rm-memory, .rm-phase-goals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .rm-goal, .rm-session { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .rm-goal-text, .rm-session-title { font-size: 14px; font-weight: 600; }
+    .rm-goal-phase, .rm-session-meta { font-size: 12px; }
+    .rm-session[data-active="true"] { border-color: var(--accent-line); }
+    .rm-phases { display: flex; flex-direction: column; gap: 6px; }
+    .rm-phase summary { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 0; cursor: pointer; list-style: none; }
+    .rm-phase summary .rm-bar { grid-column: 1 / -1; }
+    .rm-phase-title { font-size: 13px; font-weight: 600; }
+    .rm-phase-count { font-size: 12px; }
+    .rm-phase-goals { padding: 4px 0 10px; gap: 4px; font-size: 13px; }
+    .rm-phase-goals li { display: flex; gap: 8px; }
+    .rm-phase-goals li[data-done="true"] { color: var(--muted); }
+    .rm-check { flex: none; width: 14px; color: var(--accent); }
+    .rm-memory { font-size: 13px; gap: 4px; }
+    .rm-error { color: var(--danger-text); }
+    @media (max-width: 680px) { .rm-body { padding: 4px 14px 18px; } }
     .oc-plan ul, .oc-plan ol { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--text-2); }
     .oc-files { margin: 8px 0; }
     .oc-files-title { display: block; margin-bottom: 6px; font-size: 13px; }
@@ -1053,6 +1116,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
       <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
       <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
+      <button type="button" class="rail-item" id="mc-nav-roadmap" aria-controls="mc-view-roadmap" title="Roadmap: goals from ROADMAP.md and recent sessions">${ICONS.flag}<span class="rail-label">Roadmap</span></button>
       <button type="button" class="rail-item" id="mc-nav-operator" aria-controls="mc-view-operator" title="Operator Console: live agent activity, and the choices agents are waiting on">${ICONS.console}<span class="rail-label" data-short="Operator">Operator</span><span class="rail-count" id="mc-operator-count" aria-label="choices waiting" hidden>0</span></button>
       <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label" data-short="Runs">Run history</span></button>
       <span class="rail-spacer"></span>
@@ -1101,15 +1165,18 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       </div>
       <div class="mc-view surface" id="mc-view-elaron" hidden><section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section></div>
       <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div><div id="mc-outcomes"></div></div>
+      <div class="mc-view" id="mc-view-roadmap" hidden><div id="mc-roadmap"></div></div>
       <div class="mc-view" id="mc-view-operator" hidden>
         <section class="surface mc-panel" aria-labelledby="mc-operator-title">
           <div class="mc-panel-head"><h2 id="mc-operator-title">Operator Console</h2><span id="mc-operator-status" class="mc-muted" aria-live="polite"></span></div>
           <div class="subtabs oc-tabs" role="tablist" aria-label="Operator views">
             <button type="button" role="tab" id="mc-operator-tab-log" aria-controls="mc-operator" aria-selected="true">Live log</button>
             <button type="button" role="tab" id="mc-operator-tab-dialogue" aria-controls="mc-dialogue" aria-selected="false" tabindex="-1">Agent dialogue</button>
+            <button type="button" role="tab" id="mc-operator-tab-dual" aria-controls="mc-dual" aria-selected="false" tabindex="-1">Claude ⇄ Gemini</button>
           </div>
           <div id="mc-operator" role="tabpanel" aria-labelledby="mc-operator-tab-log"></div>
           <div id="mc-dialogue" role="tabpanel" aria-labelledby="mc-operator-tab-dialogue" hidden></div>
+          <div id="mc-dual" role="tabpanel" aria-labelledby="mc-operator-tab-dual" hidden></div>
         </section>
       </div>
       <div class="mc-view" id="mc-view-monitor" hidden>
