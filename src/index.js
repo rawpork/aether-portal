@@ -3628,8 +3628,11 @@ export default {
     // Link ends are ids until the graph has processed the link, then node objects.
     const isNodeObject = end => Boolean(end && typeof end === 'object');
 
+    const FOCUS_LINK_COLOR = '#00ffcc';
     const getLinkColor = link => {
       const base = link.type === 'synthesis' ? OUTCOME_COLOR : link.type === 'ai' ? MINED_LINK_COLOR : DEFAULT_LINK_COLOR;
+      // The selected card's connections light up in teal (the selection colour); hover keeps their own colour.
+      if (isFocusLink(link)) return FOCUS_LINK_COLOR;
       if (isActiveLink(link)) return withAlpha(base, 1);
       // Hover and focus lift the global link opacity to 1, so the quiet fade lives in each link's alpha.
       if (hover.id || focus.node) return withAlpha(base, QUIET_LINK_OPACITY);
@@ -5368,7 +5371,8 @@ export default {
       const dt = cardLastTime ? Math.min(0.1, (time - cardLastTime) / 1000) : 1 / 60;
       cardLastTime = time;
       if (filterState.view === 'graph') {
-        cardField.frame(dt, Graph.camera());
+        const canvasEl = Graph.renderer().domElement;
+        cardField.frame(dt, Graph.camera(), { width: canvasEl.clientWidth, height: canvasEl.clientHeight });
         updateWires();
         const showLabels = !focus.node && !gallery;
         territories.entries.forEach((entry, key) => {

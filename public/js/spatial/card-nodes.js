@@ -7,6 +7,7 @@ import { galleryLayout, slotToWorld } from './layout-gallery.js';
 import { smoothDamp } from './camera-rig.js';
 import { HUB_MAX_SCALE, OUTCOME_CATEGORY, OUTCOME_GOLD, glowOpacity, hubScale } from './hub-weights.js';
 import { lodGoal } from './lod.js';
+import { drawChip, placeChips, wantsChip } from './chip-labels.js';
 
 export const CARD_WIDTH = 12;
 export const CARD_HEIGHT = 7.5;
@@ -293,7 +294,9 @@ export function createCardField({ THREE, reducedMotion = false }) {
       heat: 0, heatGoal: 0, dim: 0, dimGoal: 0, weight: 0, weightGoal: 0, lod: 0, hidden: false,
       lean: { x: ((seed % 100) / 100 - 0.5) * 0.25, y: (((seed >> 7) % 100) / 100 - 0.5) * 0.35 },
       gallery: { goal: 0, weight: 0, velocity: 0, delay: 0, position: null, rotationY: 0 },
-      oriented: false
+      oriented: false,
+      // Far-zoom label chip (chip-labels.js): wanted when the card is too small to read, shown when it has room.
+      chip: { sprite: null, size: null, key: '', wanted: false, shown: false, weight: 0, pixelWidth: Infinity }
     };
     cards.set(id, card);
     return root;
@@ -302,6 +305,10 @@ export function createCardField({ THREE, reducedMotion = false }) {
   function dispose(card) {
     if (heroFront === card) heroFront = null;
     if (card.glow) card.glow.material.dispose();
+    if (card.chip.sprite) {
+      card.chip.sprite.material.map.dispose();
+      card.chip.sprite.material.dispose();
+    }
     if (card.texture) card.texture.dispose();
     card.faceMaterial.dispose();
     card.bodyMaterial.dispose();
@@ -580,10 +587,64 @@ export function createCardField({ THREE, reducedMotion = false }) {
     viewer: new THREE.Vector3(),
     at: new THREE.Vector3(),
     color: new THREE.Color(),
-    flat: new THREE.Quaternion()
+    flat: new THREE.Quaternion(),
+    project: new THREE.Vector3(),
+    offset: new THREE.Vector3()
   };
 
-  function frame(dt, camera) {
+  // ---- Far-zoom chips ----
+  const CHIP_PLACE_EVERY = 12;
+  const chipScale = () => Math.min(2, Math.max(1, (typeof window !== 'undefined' && window.devicePixelRatio) || 1));
+  // The chip sprite (made the first time it is needed, redrawn when the title or colour changes). Constant size on
+  // screen: scaled each frame from the projection, so it reads the same at any distance.
+  const ensureChip = card => {
+    const key = card.face.title + '|' + card.face.color;
+    if (card.chip.sprite && card.chip.key === key) return card.chip.sprite;
+    const canvas = document.createElement('canvas');
+    card.chip.size = drawChip(canvas, { title: card.face.title, color: card.face.color }, chipScale());
+    card.chip.key = key;
+    if (card.chip.sprite) {
+      card.chip.sprite.material.map.dispose();
+      card.chip.sprite.material.map = makeTexture(canvas);
+      card.chip.sprite.material.needsUpdate = true;
+      return card.chip.sprite;
+    }
+    const material = new THREE.SpriteMaterial({ map: makeTexture(canvas), transparent: true, opacity: 0, depthTest: false, depthWrite: false, sizeAttenuation: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.renderOrder = 20;
+    sprite.visible = false;
+    card.root.add(sprite);
+    card.chip.sprite = sprite;
+    return sprite;
+  };
+  // Which wanted chips have room, most important first: the hot card, then hubs, then cards not receded.
+  const placeAllChips = (camera, viewport) => {
+    const candidates = [];
+    cards.forEach(card => {
+      if (!card.chip.wanted) {
+        card.chip.shown = false;
+        return;
+      }
+      temp.project.copy(card.root.position).project(camera);
+      if (temp.project.z > 1 || Math.abs(temp.project.x) > 1.1 || Math.abs(temp.project.y) > 1.1) {
+        card.chip.shown = false;
+        return;
+      }
+      ensureChip(card);
+      candidates.push({
+        id: card.id,
+        x: (temp.project.x + 1) * 0.5 * viewport.width,
+        y: (1 - temp.project.y) * 0.5 * viewport.height,
+        width: card.chip.size.width,
+        height: card.chip.size.height,
+        priority: card.heat * 10 + card.weight * 3 + (1 - Math.min(1, card.dim)) * 2
+      });
+    });
+    const kept = placeChips(candidates);
+    cards.forEach(card => { if (card.chip.wanted) card.chip.shown = kept.has(card.id); });
+  };
+
+  function frame(dt, camera, viewport = null) {
     const step = Math.min(Math.max(dt, 0), 0.05);
     clock += step;
     camera.getWorldPosition(temp.viewer);
@@ -604,6 +665,10 @@ export function createCardField({ THREE, reducedMotion = false }) {
     const turnRate = reducedMotion ? 30 : 2.2;
 
     updateLod(viewer, step);
+    // Chips need the canvas size; there are none in a headset (cards are sized for arm's length there), on the gallery
+    // wall or on the board.
+    const chipsOn = Boolean(viewport && viewport.width > 0 && viewport.height > 0 && !unitsPerMetre && camera.projectionMatrix);
+    if (chipsOn && frameCount % CHIP_PLACE_EVERY === 0) placeAllChips(camera, viewport);
 
     cards.forEach(card => {
       const node = card.node;
@@ -686,6 +751,33 @@ export function createCardField({ THREE, reducedMotion = false }) {
       card.faceMaterial.opacity = Math.max(0.12, 1 - card.dim * 0.55) * present;
       card.bodyMaterial.opacity = Math.max(0.12, 1 - card.dim * 0.55) * present;
       card.bodyMaterial.emissiveIntensity = card.heat * 0.3;
+
+      // Far-zoom chip: wanted while the card is too narrow on screen to read (and not on the wall or the board, not
+      // receded); faded in once placement gives it room. The card behind it fades back a little.
+      const chip = card.chip;
+      if (chipsOn) {
+        const distance = Math.max(0.001, temp.offset.copy(at).sub(viewer).length());
+        chip.pixelWidth = (CARD_WIDTH * card.root.scale.x * camera.projectionMatrix.elements[0] * viewport.width) / (2 * distance);
+        chip.wanted = w < 0.5 && boardBlend < 0.5 && card.dim < 0.5 && present > 0.5 && wantsChip(chip.pixelWidth, chip.wanted);
+      } else {
+        chip.wanted = false;
+        chip.shown = false;
+      }
+      chip.weight = damp(chip.weight, chip.wanted && chip.shown ? 1 : 0, reducedMotion ? 40 : 8, step);
+      if (chip.sprite) {
+        chip.sprite.visible = chip.weight > 0.02;
+        if (chip.sprite.visible && chip.size) {
+          // sizeAttenuation off: the sprite's scale is a share of the view, so this gives the chip its CSS pixel size.
+          const rootScale = card.root.scale.x || 1;
+          const p = camera.projectionMatrix.elements;
+          chip.sprite.scale.set((2 * chip.size.width) / (viewport.width * p[0] * rootScale), (2 * chip.size.height) / (viewport.height * p[5] * rootScale), 1);
+          chip.sprite.material.opacity = chip.weight;
+        }
+      }
+      if (chip.weight > 0.02) {
+        card.faceMaterial.opacity *= 1 - chip.weight * 0.65;
+        card.bodyMaterial.opacity *= 1 - chip.weight * 0.65;
+      }
       // Outcome Nodes keep a gold outline at rest; focus still turns it teal.
       const isOutcome = card.face.type === 'outcome';
       card.edgeMaterial.color.copy(temp.color.set(isOutcome ? OUTCOME_GOLD : WHITE).lerp(teal, Math.min(1, card.heat * 1.5)));

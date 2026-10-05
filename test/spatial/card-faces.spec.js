@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { faceFromNode, faceKey, wrapText } from "../../public/js/spatial/card-faces.js";
+import { faceFromNode, faceKey, wrapText, youtubeThumb } from "../../public/js/spatial/card-faces.js";
 
 describe("faceFromNode", () => {
 	it("maps a YouTube node to a video face with its thumbnail", () => {
@@ -20,6 +20,25 @@ describe("faceFromNode", () => {
 		const face = faceFromNode({ id: "a", category: "article", title: "Spaced repetition", url: "https://en.wikipedia.org/wiki/x", site_name: "Wikipedia", image_url: "javascript:alert(1)" });
 		expect(face).toMatchObject({ type: "link", site: "Wikipedia", thumbUrl: null });
 		expect(faceFromNode({ id: "i", category: "image", url: "", image_url: "/api/node-image/i" }).thumbUrl).toBe("/api/node-image/i");
+	});
+
+	it("shows a portal note's text from its description, without repeats", () => {
+		expect(faceFromNode({ id: "p", category: "note", title: "Welcome", url: "", description: "This is your knowledge graph." }).text).toBe("This is your knowledge graph.");
+		expect(faceFromNode({ id: "q", category: "note", title: "T", url: "Same", description: "Same", user_note: "Mine" }).text).toBe("Same · Mine");
+	});
+
+	it("falls back to a video's synopsis, and to its YouTube thumbnail when it has no preview image", () => {
+		const face = faceFromNode({ id: "v", category: "video", title: "Talk", url: "https://youtu.be/dQw4w9WgXcQ", synopsis: "A talk about XR." });
+		expect(face.text).toBe("A talk about XR.");
+		expect(face.thumbUrl).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+		expect(youtubeThumb("https://example.com/a")).toBeNull();
+	});
+
+	it("carries up to three tags, the user's own first, and redraws when they change", () => {
+		const tags = [{ tag: "ai", source: "ai", weight: 0.9 }, { tag: "mine", source: "user", weight: 0.1 }, { tag: "seo", source: "ai", weight: 0.5 }, { tag: "low", source: "ai", weight: 0.2 }];
+		const face = faceFromNode({ id: "t", category: "note", title: "T", url: "", tags });
+		expect(face.tags).toEqual(["mine", "ai", "seo"]);
+		expect(faceKey(face, false)).not.toBe(faceKey({ ...face, tags: ["mine"] }, false));
 	});
 
 	it("changes its key only when something visible changes", () => {

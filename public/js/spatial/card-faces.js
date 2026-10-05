@@ -2,7 +2,7 @@
 // text stays crisp. The layout follows mockups/mockup-cards-3d.html. faceFromNode() is pure; drawFace() needs a 2D
 // canvas context.
 
-import { isPlayable } from './media.js';
+import { isPlayable, parseMedia } from './media.js';
 
 export const FACE_WIDTH = 512;
 export const FACE_HEIGHT = 320;
@@ -29,6 +29,12 @@ const hostOf = url => {
 // Everything a face shows, from a portal node. categoryColor and categoryLabel come from the portal (legend colours);
 // group is { name, color, source } or null.
 // sources (outcomes only) are readable names of the topics the outcome's inputs come from.
+// A YouTube link's own thumbnail, for video cards saved without a preview image (null for anything else).
+export function youtubeThumb(url) {
+  const media = parseMedia(url);
+  return media && media.kind === 'youtube' ? 'https://i.ytimg.com/vi/' + media.id + '/hqdefault.jpg' : null;
+}
+
 export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', group = null, sources = [] } = {}) {
   const category = String(node.category || 'note').toLowerCase();
   const url = String(node.url || '');
@@ -36,12 +42,14 @@ export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', 
   const type = category === 'outcome' ? 'outcome' : category === 'video' ? 'video' : category === 'image' ? 'image' : isLink ? 'link' : 'note';
   const plan = type === 'outcome' && node.outcome_plan && typeof node.outcome_plan === 'object' ? node.outcome_plan : null;
   const title = String(node.title || node.name || (isLink ? hostOf(url) : url) || 'Saved entry').replace(/\s+/g, ' ').trim();
-  // Notes keep their text in url; links show the description, then the user's note.
-  const text = type === 'outcome'
-    ? String((plan && plan.goal) || node.description || '')
+  // Telegram notes keep their text in url, notes made in the portal in description; links and videos show the
+  // description (a video's synopsis when it has none), then the user's note. Repeats are dropped.
+  const parts = type === 'outcome'
+    ? [(plan && plan.goal) || node.description]
     : type === 'note'
-      ? [url !== title ? url : '', node.user_note].filter(Boolean).join(' · ')
-      : [node.description, node.user_note].filter(Boolean).join(' · ');
+      ? [url !== title ? url : '', node.description, node.user_note]
+      : [node.description || node.synopsis, node.user_note];
+  const text = [...new Set(parts.map(part => String(part || '').trim()).filter(Boolean))].join(' · ');
   const created = node.created_at ? new Date(node.created_at) : null;
   return {
     id: String(node.id),
@@ -50,12 +58,21 @@ export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', 
     text: String(text || '').replace(/\s+/g, ' ').trim(),
     site: isLink ? (node.site_name || hostOf(url)) : '',
     date: created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '',
-    thumbUrl: typeof node.image_url === 'string' && (/^https?:/i.test(node.image_url) || node.image_url.startsWith('/api/node-image/')) ? node.image_url : null,
+    thumbUrl: typeof node.image_url === 'string' && (/^https?:/i.test(node.image_url) || node.image_url.startsWith('/api/node-image/'))
+      ? node.image_url
+      : youtubeThumb(url),
     // Plays inside Aether (YouTube, Vimeo, a video file): the face shows a play badge.
     playable: type === 'video' && isPlayable(url),
     color: categoryColor,
     label: String(categoryLabel || category).replace(/_/g, ' ').toUpperCase(),
     group: group ? { name: group.name, color: group.color, source: group.source } : null,
+    // Up to three tags, the user's own first, then the strongest.
+    tags: (Array.isArray(node.tags) ? node.tags : [])
+      .filter(entry => entry && entry.tag)
+      .slice()
+      .sort((a, b) => (a.source === 'user' ? 0 : 1) - (b.source === 'user' ? 0 : 1) || (Number(b.weight) || 0) - (Number(a.weight) || 0))
+      .slice(0, 3)
+      .map(entry => String(entry.tag)),
     outcome: type === 'outcome' ? {
       steps: plan && Array.isArray(plan.steps) ? plan.steps.length : 0,
       effort: String((plan && plan.effort) || ''),
@@ -69,7 +86,7 @@ export function faceFromNode(node, { categoryColor = MUTED, categoryLabel = '', 
 // A cheap fingerprint of what the face shows, so textures are only redrawn when something visible changed.
 export function faceKey(face, imageReady) {
   const outcome = face.outcome ? [face.outcome.steps, face.outcome.effort, face.outcome.template, face.outcome.status, face.outcome.sources.join(',')].join('/') : '';
-  return [face.type, face.title, face.text, face.site, face.date, face.color, face.label, face.group ? face.group.name + face.group.color : '', outcome, face.playable ? 1 : 0, imageReady ? 1 : 0].join('|');
+  return [face.type, face.title, face.text, face.site, face.date, face.color, face.label, face.group ? face.group.name + face.group.color : '', outcome, face.playable ? 1 : 0, imageReady ? 1 : 0, (face.tags || []).join(',')].join('|');
 }
 
 // Word-wraps into at most maxLines, ending with an ellipsis when text is cut.
@@ -242,6 +259,23 @@ function drawMedia(ctx, face, image) {
   drawTitle(ctx, face, top + 50, 2, 21);
 }
 
+// The card's tags, bottom right ("#tag"), in a quiet teal; as many as fit beside whatever sits bottom left.
+function drawTags(ctx, face, leftReserved = 0) {
+  const tags = face.tags || [];
+  if (!tags.length) return;
+  ctx.font = '600 12px ' + FONT;
+  ctx.fillStyle = 'rgba(0,255,204,0.72)';
+  ctx.textBaseline = 'alphabetic';
+  let x = FACE_WIDTH - PAD;
+  for (const tag of tags) {
+    const label = '#' + (tag.length > 18 ? tag.slice(0, 17) + '…' : tag);
+    const width = ctx.measureText(label).width;
+    if (x - width < PAD + leftReserved) break;
+    ctx.fillText(label, x - width, FACE_HEIGHT - PAD + 4);
+    x -= width + 12;
+  }
+}
+
 function drawLink(ctx, face) {
   // Muted inset border, then source row, headline and excerpt.
   roundRect(ctx, 6, 6, FACE_WIDTH - 12, FACE_HEIGHT - 12, 22);
@@ -264,11 +298,14 @@ function drawLink(ctx, face) {
     ctx.fillText(line, PAD, y);
     y += 21;
   });
+  let dateWidth = 0;
   if (face.date) {
     ctx.font = '400 12px ' + FONT;
     ctx.fillStyle = MUTED;
     ctx.fillText(face.date, PAD, FACE_HEIGHT - PAD + 4);
+    dateWidth = ctx.measureText(face.date).width + 16;
   }
+  drawTags(ctx, face, dateWidth);
 }
 
 function drawNote(ctx, face) {
@@ -294,7 +331,8 @@ function drawNote(ctx, face) {
   }
   drawTitle(ctx, face, PAD + 58, 1, 23);
   ctx.font = '400 16px ' + FONT;
-  const lines = wrapText(value => ctx.measureText(value).width, face.text, FACE_WIDTH - PAD * 2, 6);
+  // The last ruled line gives way to the tags when there are any.
+  const lines = wrapText(value => ctx.measureText(value).width, face.text, FACE_WIDTH - PAD * 2, (face.tags || []).length ? 5 : 6);
   for (let i = 0, y = PAD + 100; y < FACE_HEIGHT - PAD + 6; i++, y += 31) {
     ctx.fillStyle = 'rgba(255,255,255,0.07)';
     ctx.fillRect(PAD, y + 8, FACE_WIDTH - PAD * 2, 1);
@@ -303,6 +341,7 @@ function drawNote(ctx, face) {
       ctx.fillText(lines[i], PAD, y);
     }
   }
+  drawTags(ctx, face);
 }
 
 function drawOutcome(ctx, face) {
