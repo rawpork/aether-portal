@@ -14,6 +14,21 @@ export const SITE_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,46})[a-z0-9]$/;
 export const RESERVED_SLUGS = ["admin", "aether", "api", "app", "login", "mission-control", "new", "preview", "s", "settings", "www"];
 export const SITE_CSP = "sandbox allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals; frame-ancestors 'self'";
 
+// The sandbox gives a page an opaque origin, where reading localStorage or sessionStorage throws. Pages often read
+// a saved setting first thing (a theme), and the error stops the rest of their script (tabs, menus). This runs
+// before the page's own scripts and swaps in an in-memory store for any storage that throws, so such pages work;
+// values last for the visit only. It changes nothing else.
+export const STORAGE_SHIM = "<script>(function(){function m(){var d={};return{getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[String(k)]=String(v)},removeItem:function(k){delete d[String(k)]},clear:function(){d={}},key:function(i){var a=Object.keys(d);return i<a.length?a[i]:null},get length(){return Object.keys(d).length}}}['localStorage','sessionStorage'].forEach(function(n){try{window[n].getItem('aether')}catch(e){try{Object.defineProperty(window,n,{value:m(),configurable:true})}catch(_){}}})})();</script>";
+
+// The page with the storage shim placed first in <head> (or before everything when there is no <head>).
+export function withStorageShim(html) {
+  const text = String(html || "");
+  const head = /<head(\s[^>]*)?>/i.exec(text);
+  if (head) return text.slice(0, head.index + head[0].length) + STORAGE_SHIM + text.slice(head.index + head[0].length);
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(text);
+  return doctype ? doctype[0] + STORAGE_SHIM + text.slice(doctype[0].length) : STORAGE_SHIM + text;
+}
+
 function json(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
@@ -286,7 +301,7 @@ export async function serveSite(request, env, url, viewerId) {
   const preview = url.searchParams.get("preview") === "1" && viewerId && viewerId === row.user_id;
   const html = preview ? row.draft_html : row.live_html;
   if (!html) return notFoundPage();
-  return new Response(request.method === "HEAD" ? null : html, {
+  return new Response(request.method === "HEAD" ? null : withStorageShim(html), {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",

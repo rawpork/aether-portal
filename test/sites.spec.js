@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { extractHtmlDocument, isValidSlug, markdownToHtml, publishSite, saveSiteDraft, serveSite, SITE_CSP, slugify, unpublishSite } from "../src/sites.js";
+import { extractHtmlDocument, isValidSlug, markdownToHtml, publishSite, saveSiteDraft, serveSite, SITE_CSP, slugify, STORAGE_SHIM, unpublishSite, withStorageShim } from "../src/sites.js";
 
 // A stand-in D1 holding the sites table in memory, for the statements src/sites.js runs.
 const fakeEnv = (rows = []) => {
@@ -66,6 +66,29 @@ describe("site helpers", () => {
 	});
 });
 
+describe("storage shim", () => {
+	it("goes first in <head>, or first after the doctype when there is no head", () => {
+		expect(withStorageShim('<!doctype html><html><head lang="en"><title>x</title></head></html>')).toBe('<!doctype html><html><head lang="en">' + STORAGE_SHIM + "<title>x</title></head></html>");
+		expect(withStorageShim("<!DOCTYPE html><p>hi</p>")).toBe("<!DOCTYPE html>" + STORAGE_SHIM + "<p>hi</p>");
+		expect(withStorageShim("<p>hi</p>")).toBe(STORAGE_SHIM + "<p>hi</p>");
+	});
+
+	it("swaps in a working store only where storage throws", () => {
+		const store = (() => {
+			const window = {};
+			Object.defineProperty(window, "localStorage", { configurable: true, get() { throw new Error("SecurityError"); } });
+			window.sessionStorage = { getItem: () => "real" };
+			new Function("window", STORAGE_SHIM.replace(/^<script>|<\/script>$/g, ""))(window);
+			return window;
+		})();
+		store.localStorage.setItem("theme", "light");
+		expect(store.localStorage.getItem("theme")).toBe("light");
+		expect(store.localStorage.getItem("missing")).toBeNull();
+		expect(store.localStorage.length).toBe(1);
+		expect(store.sessionStorage.getItem()).toBe("real");
+	});
+});
+
 describe("drafts and publishing", () => {
 	it("saves a draft from HTML, and the public page stays empty until it is published", async () => {
 		const { env } = fakeEnv();
@@ -90,7 +113,9 @@ describe("drafts and publishing", () => {
 		expect(live.status).toBe(200);
 		expect(live.headers.get("Content-Security-Policy")).toBe(SITE_CSP);
 		expect(SITE_CSP).not.toContain("allow-same-origin");
-		expect(await live.text()).toContain("<p>Hello</p>");
+		const body = await live.text();
+		expect(body).toContain("<p>Hello</p>");
+		expect(body).toContain(STORAGE_SHIM);
 	});
 
 	it("keeps the published copy while a new draft waits for approval", async () => {
