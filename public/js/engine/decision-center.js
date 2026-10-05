@@ -167,6 +167,16 @@ export function mountDecisionCenter(doc, options = {}) {
     return reviewDraft(result.draft, result.exists);
   }
 
+  // The + Skill button: asks for a link or text, then learns from it.
+  async function askSource() {
+    const field = el(doc, 'textarea', { class: 'dc-editor dc-source', rows: '3', placeholder: 'https://github.com/owner/repo, a docs page, or paste text', 'aria-label': 'Link or text to learn from' });
+    const body = el(doc, 'div', {}, [el(doc, 'p', { class: 'dc-body', text: 'Give Elarion a GitHub repo, a documentation page or blog post, or paste text. It writes a SKILL.md for you to review before anything is saved.' }), field]);
+    const pick = await choose({ title: 'Learn a skill', body, options: [{ label: 'Learn it', hint: 'Takes up to a minute' }, { label: 'Cancel' }] });
+    const source = field.value.trim();
+    if (pick !== 0 || !source) return null;
+    return learn(source);
+  }
+
   async function reviewDraft(draft, exists) {
     let markdown = draft.markdown;
     for (;;) {
@@ -306,6 +316,7 @@ export function mountDecisionCenter(doc, options = {}) {
   return {
     choose,
     learn,
+    askSource,
     poll,
     isOpen: () => Boolean(open),
     destroy() {

@@ -54,12 +54,27 @@ export function backgroundItems(records) {
     for (const result of record.results || []) {
       const output = result.output || {};
       if (typeof output.response !== 'string' || !output.response.trim()) continue;
-      const agent = providerOf(output.model, output.tier);
+      // A Gemini step Claude stood in for stays in Gemini's feed, with the reason shown.
+      const agent = /fallback:[\s\S]*gemini/i.test(String(output.tier || '')) ? 'gemini' : providerOf(output.model, output.tier);
       if (!agent) continue;
-      items.push({ key: record.run_id + ':' + result.step_index, agent, title: record.task_id + ' · ' + result.step_id, text: output.response, at: result.started_at || record.started_at || '', model: output.model || '' });
+      items.push({ key: record.run_id + ':' + result.step_index, agent, title: record.task_id + ' · ' + result.step_id, text: output.response, at: result.started_at || record.started_at || '', model: output.model || '', tier: output.tier || '' });
     }
   }
   return items.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+}
+
+// Why another model answered, from the engine's tier ("direct-anthropic (fallback: <provider error>)"), in plain
+// words: { reason, text } or null when the intended provider answered.
+export function fallbackNote(tier, agentName) {
+  const match = /fallback:\s*([\s\S]*?)\)?$/.exec(String(tier || ''));
+  if (!match) return null;
+  const error = match[1];
+  const status = /HTTP (\d{3})/.exec(error);
+  const reason = /quota|exceeded/i.test(error) ? 'its usage quota is used up (check the plan and billing for the key)'
+    : /high demand|overloaded|unavailable/i.test(error) || (status && status[1] === '503') ? 'it is overloaded right now'
+      : /timed out/i.test(error) ? 'it timed out'
+        : status ? 'it answered HTTP ' + status[1] : 'it could not be reached';
+  return { reason, text: agentName + ' was unavailable (' + reason + '), so Claude answered this one instead.' };
 }
 
 // A reply as paragraphs and <pre> code blocks (text only, nothing parsed as HTML).
@@ -150,6 +165,8 @@ export function mountDualAgents(container, options = {}) {
     } else {
       item.append(el(doc, 'p', { text }));
     }
+    const fallback = fallbackNote(meta.tier, state.agent.name);
+    if (fallback) item.append(el(doc, 'p', { class: 'da-fallback', text: fallback.text }));
     const notes = [meta.model, meta.tokens ? meta.tokens.input.toLocaleString() + ' in / ' + meta.tokens.output.toLocaleString() + ' out' : ''].filter(Boolean);
     if (notes.length) item.append(el(doc, 'span', { class: 'da-meta', text: notes.join(' · ') }));
     if (kind === 'agent' || kind === 'run') {
@@ -176,13 +193,15 @@ export function mountDualAgents(container, options = {}) {
     try {
       const reply = await api.sendMasterBrainChat(text, state.sessionId, { purpose: state.agent.purpose });
       typing.remove();
-      addMessage(state, 'agent', reply.response, { model: reply.model, tokens: reply.tokens });
+      addMessage(state, 'agent', reply.response, { model: reply.model, tier: reply.tier, tokens: reply.tokens });
       if (reply.model) {
         state.model.textContent = reply.model;
         // The route may fall back to another provider (no key for this one): say so instead of hiding it.
         const actual = providerOf(reply.model, reply.tier);
         state.model.dataset.mismatch = actual && actual !== state.agent.id ? 'true' : 'false';
-        state.model.title = actual && actual !== state.agent.id ? 'The engine routed this to ' + reply.model + ' (no ' + state.agent.name + ' key?).' : 'Answered by ' + reply.model;
+        const fallback = fallbackNote(reply.tier, state.agent.name);
+        state.model.textContent = actual && actual !== state.agent.id ? reply.model + (fallback ? ' (standing in)' : '') : reply.model;
+        state.model.title = fallback ? fallback.text : actual && actual !== state.agent.id ? 'The engine routed this to ' + reply.model + ' (is a ' + state.agent.name + ' key set on the engine?).' : 'Answered by ' + reply.model;
       }
     } catch (error) {
       typing.remove();
@@ -210,7 +229,7 @@ export function mountDualAgents(container, options = {}) {
       }
       for (const item of items) {
         seen.add(item.key);
-        addMessage(panes.get(item.agent), 'run', item.text, { title: item.title, model: item.model });
+        addMessage(panes.get(item.agent), 'run', item.text, { title: item.title, model: item.model, tier: item.tier });
       }
       if (status.textContent.startsWith('Background')) status.textContent = '';
     } catch (error) {

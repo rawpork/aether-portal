@@ -576,6 +576,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .da-agent, .da-run { padding-left: 10px; border-left: 2px solid var(--agent); }
     .da-run summary { cursor: pointer; font-size: 12px; color: var(--muted); }
     .da-error { color: var(--danger-text); }
+    .da-fallback { margin: 4px 0 6px; padding: 6px 10px; border-left: 2px solid #ffb627; border-radius: 0 var(--radius-s) var(--radius-s) 0; background: var(--surface); color: var(--text-2); font-size: 12px; white-space: normal; }
     .da-code { margin: 6px 0; padding: 10px; max-height: 320px; overflow: auto; border-radius: var(--radius-s); background: var(--surface); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; }
     .da-meta { display: block; font-size: 11px; color: var(--muted); }
     .da-actions { margin-top: 6px; }
@@ -652,6 +653,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     body[data-view="elaron"] .mc-command { display: none; }
     .mc-command input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--canvas); color: var(--text); font: inherit; font-size: 16px; }
     .mc-command input:focus { outline: none; border-color: var(--accent-line); }
+    .mc-command .mc-command-skill { color: var(--accent); border-color: var(--accent-line); white-space: nowrap; }
     .mc-command button { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
     .mc-command button[type="submit"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
     .mc-command button:active { transform: scale(0.98); }
@@ -1257,6 +1259,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       </div>
     </main>
     <form class="mc-command" id="mc-command" autocomplete="off" aria-label="Command bar">
+      <button type="button" class="mc-command-skill" id="mc-command-skill" title="Learn a skill from a repo, a page or text">+ Skill</button>
       <label class="mc-visually-hidden" for="mc-command-input">Ask Elarion</label>
       <input id="mc-command-input" type="text" enterkeyhint="send" placeholder="Ask Elarion, or add repo <link> to learn a skill…" maxlength="4000">
       <button type="button" class="mic" id="mc-command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone">${ICONS.mic}</button>

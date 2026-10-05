@@ -152,6 +152,27 @@ describe('mountDecisionCenter', () => {
 		expect(await done).toMatchObject({ saved: true });
 	});
 
+	it('+ Skill asks for a link or text, then learns from it', async () => {
+		const { calls } = setup({ '/api/skills/ingest': () => json({ error: 'Only public http(s) addresses can be learned from.' }, 400) });
+		await settle();
+		const done = center.askSource();
+		await settle();
+		expect(modal().querySelector('.dc-title').textContent).toBe('Learn a skill');
+		const field = modal().querySelector('textarea');
+		expect(document.activeElement).toBe(field);
+		// Typing a digit in the box types it; it does not pick an option.
+		field.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+		expect(modal().querySelector('.dc-title').textContent).toBe('Learn a skill');
+		field.value = 'http://localhost:3333';
+		document.querySelector('.dc-option[data-option="1"]').click();
+		await settle();
+		expect(calls.find((c) => c.pathname === '/api/skills/ingest').body).toEqual({ source: 'http://localhost:3333' });
+		expect(modal().querySelector('.dc-title').textContent).toBe('Could not learn from that');
+		expect(modal().querySelector('.dc-body').textContent).toMatch(/Only public/);
+		key('1');
+		expect(await done).toBeNull();
+	});
+
 	it('learn: an existing skill is offered as a replacement, and errors are explained', async () => {
 		const { calls } = setup({
 			'/api/skills/ingest': () => json({ draft: { slug: 'docs', name: 'docs', description: 'd', markdown: 'm', source: { kind: 'text', url: null, title: 't' } }, exists: true }),

@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
 import { choiceReply, parseNumberedOptions, renderChoiceChips } from '../../public/js/engine/choice-chips.js';
-import { backgroundItems, codeBlocks, mountDualAgents, pastePayload, providerOf } from '../../public/js/engine/dual-agents.js';
+import { backgroundItems, codeBlocks, fallbackNote, mountDualAgents, pastePayload, providerOf } from '../../public/js/engine/dual-agents.js';
 import { ago, mountRoadmap, summarize } from '../../public/js/engine/roadmap.js';
 
 const settle = async () => {
@@ -78,6 +78,16 @@ describe('dual-agent helpers', () => {
 	});
 });
 
+describe('fallback notes', () => {
+	it('explains in plain words why Claude stood in', () => {
+		expect(fallbackNote('direct-anthropic (fallback: Google Gemini API (direct) returned an error (HTTP 503): This model is currently experiencing high demand.)', 'Gemini').text).toBe('Gemini was unavailable (it is overloaded right now), so Claude answered this one instead.');
+		expect(fallbackNote('direct-anthropic (fallback: Google Gemini API (direct) returned an error (HTTP 429): You exceeded your current quota)', 'Gemini').reason).toMatch(/quota is used up/);
+		expect(fallbackNote('direct-gemini', 'Gemini')).toBeNull();
+		const [item] = backgroundItems([{ task_id: 't', run_id: 'r', results: [{ step_index: 0, step_id: 's', output: { response: 'x', model: 'claude-sonnet-5-5', tier: 'direct-anthropic (fallback: Google Gemini API (direct) returned an error (HTTP 503))' } }] }]);
+		expect(item.agent).toBe('gemini');
+	});
+});
+
 describe('Claude ⇄ Gemini console', () => {
 	const mount = (overrides = {}) => {
 		const calls = [];
@@ -131,6 +141,13 @@ describe('Claude ⇄ Gemini console', () => {
 		chips[1].click();
 		await settle();
 		expect(calls.filter((c) => c.pathname === '/api/master-brain/chat').at(-1).body).toMatchObject({ purpose: 'plan', message: '2. Review it' });
+	});
+
+	it('says when Claude stood in for an overloaded Gemini', async () => {
+		const { container, view } = mount({ chat: () => json({ session_id: 's', response: 'Done.', tokens: { input: 1, output: 1 }, model: 'claude-sonnet-5-5', tier: 'direct-anthropic (fallback: Google Gemini API (direct) returned an error (HTTP 503): high demand)', status: 'ACTIVE' }) });
+		await view.send('gemini', 'Summarise this');
+		expect(pane(container, 'gemini').querySelector('.da-fallback').textContent).toBe('Gemini was unavailable (it is overloaded right now), so Claude answered this one instead.');
+		expect(pane(container, 'gemini').querySelector('.da-model').textContent).toBe('claude-sonnet-5-5 (standing in)');
 	});
 
 	it('flags a reply routed to the other provider, and shows errors in the pane', async () => {

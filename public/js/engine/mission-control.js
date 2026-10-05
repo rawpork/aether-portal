@@ -411,6 +411,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     },
   }) : null;
   const stopHeader = startHeader(doc);
+  const skillButton = byId('mc-command-skill');
   // The "Do this next" banner on every view, and numbered choice popups for decisions, finished runs and skills.
   const decisions = options.decisions === false ? null : mountDecisionCenter(doc, {
     api,
@@ -432,6 +433,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   }
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
+  if (skillButton && decisions) skillButton.addEventListener('click', () => decisions.askSource());
   return { connection, breaker, monitor, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
