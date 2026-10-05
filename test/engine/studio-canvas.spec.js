@@ -205,6 +205,57 @@ describe('mounted canvas', () => {
     expect(root.querySelectorAll('.bridge[data-selected="true"]')).toHaveLength(0);
   });
 
+  it('clicking a step or task node shows its instructions, reply, model and the exact failure', async () => {
+    const record = {
+      task_id: 'launch-brief', agent_id: 'atlas', run_id: 'r1', status: 'FAILED', total_steps: 2, completed_steps: 1, interrupted_step_index: null,
+      plan: [{ step_id: 'collect-notes', action: 'prompt', summary: 'Gather the launch notes.' }, { step_id: 'announce', action: 'prompt', summary: 'Draft the announcement.' }],
+      results: [{ step_index: 0, step_id: 'collect-notes', action: 'prompt', status: 'COMPLETED', output: { response: 'Notes:\n- ship Monday', model: 'gemini-3.8-flash', tier: 'direct-gemini' }, tokens: { input: 1200, output: 340 }, cost_usd: null, started_at: '2026-10-04T22:57:50.000Z', duration_ms: 4200 }],
+      total_tokens: { input: 1200, output: 340 }, history: [], started_at: '2026-10-04T22:57:49.938Z', finished_at: '2026-10-04T22:58:02.103Z',
+      failure: { step_index: 1, status: 502, error: 'Google Gemini API (direct) returned an error (HTTP 503): The model is overloaded.' },
+    };
+    const { api, calls } = engine((pathname) => (pathname === '/api/canvas/graph' ? GRAPH : record));
+    const root = mount(api);
+    await canvas.refresh();
+    const inspector = root.querySelector('.studio-inspector');
+    const step0 = root.querySelector('.node[data-node="task:atlas:launch-brief:0"]');
+    expect(step0.getAttribute('role')).toBe('button');
+    expect(step0.getAttribute('aria-label')).toBe('Step collect-notes, Done. Show details.');
+
+    step0.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.at(-1).pathname).toBe('/api/agents/atlas/tasks/launch-brief');
+    expect(inspector.hidden).toBe(false);
+    expect(inspector.querySelector('h3').textContent).toBe('Step details');
+    expect(step0.getAttribute('data-selected')).toBe('true');
+    expect(inspector.querySelector('.inspector-reply').textContent).toBe('Notes:\n- ship Monday');
+    expect(inspector.querySelector('.inspector-text').textContent).toBe('Gather the launch notes.');
+    const meta = Object.fromEntries([...inspector.querySelectorAll('.inspector-meta dt')].map((dt) => [dt.textContent, dt.nextElementSibling.textContent]));
+    expect(meta).toMatchObject({ Model: 'gemini-3.8-flash · direct-gemini', Tokens: '1,200 in / 340 out', Time: '4.2 s · started 2026-10-04 22:57:50' });
+
+    root.querySelector('.node[data-node="task:atlas:launch-brief:1"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(inspector.querySelector('.pill').textContent).toBe('Failed');
+    expect(inspector.querySelector('.inspector-error').textContent).toContain('HTTP 503): The model is overloaded. (HTTP 502)');
+    expect(inspector.querySelector('.inspector-error').textContent).toContain('came from the model provider');
+
+    root.querySelector('.node[data-node="task:atlas:launch-brief"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(inspector.querySelector('h3').textContent).toBe('Task details');
+    expect(inspector.querySelector('.inspector-error strong').textContent).toBe('Failed at announce');
+    expect([...inspector.querySelectorAll('.inspector-step-link')].map((b) => b.textContent)).toEqual(['✓ collect-notes', '✕ announce']);
+    expect(calls.filter((c) => c.pathname.startsWith('/api/agents/'))).toHaveLength(1);
+    inspector.querySelectorAll('.inspector-step-link')[1].click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(inspector.querySelector('h3').textContent).toBe('Step details');
+
+    // A bridge click replaces the node details; Escape closes.
+    root.querySelector('.bridge[data-edge="' + GRAPH.edges[2].id + '"] .bridge-hit').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(inspector.querySelector('h3').textContent).toBe('Edge Inspector');
+    expect(root.querySelectorAll('.node[data-selected="true"]')).toHaveLength(0);
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(inspector.hidden).toBe(true);
+  });
+
   it('opens the inspector from the keyboard and closes it with Escape', async () => {
     const { api } = engine();
     const root = mount(api);

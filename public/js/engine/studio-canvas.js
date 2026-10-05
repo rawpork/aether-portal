@@ -3,6 +3,8 @@
 // engine's mcp-config.json. Bridge edges join a step to the servers it relates to; the engine scores each one
 // (0–1 confidence) from the step's text and Elarion's reply. The Abstract ↔ Logic slider sets the minimum confidence
 // a bridge needs to stay visible (0% shows every faint association, 100% only near-certain ones), and clicking a
+// task or step node opens the Node Inspector (the step's instructions, full reply, model, tokens, timing and the
+// exact error when it failed; for a task, its outcome and every step), and clicking a
 // bridge opens the Edge Inspector with the engine's rationale, Elarion's reply excerpt, the scoring signals and the
 // bridge metadata. Read-only; shown as Studio's Engine activity tab. The editable Workflow console is workflow-console.js.
 import { getEngineApi } from '../engine-api.bundle.js';
@@ -19,7 +21,7 @@ export const LAYOUT = { pad: 24, colTask: 24, colStep: 300, colMcp: 620, width: 
 const DEPTH_TEXT = { logic: 'Logic', associative: 'Associative', abstract: 'Abstract' };
 const SIGNAL_TEXT = { name: 'Names the server', category: 'Category terms', description: 'Description terms', keys_missing: 'Keys missing' };
 const STATUS_KIND = { COMPLETED: 'running', RUNNING: 'running', PENDING: 'queued', FAILED: 'off', HALTED: 'off', ready: 'running', missing_keys: 'alert' };
-const STATUS_TEXT = { COMPLETED: 'Done', RUNNING: 'Running', PENDING: 'Pending', FAILED: 'Failed', HALTED: 'Halted', ready: 'Ready', missing_keys: 'Keys missing' };
+const STATUS_TEXT = { COMPLETED: 'Done', RUNNING: 'Running', PENDING: 'Pending', QUEUED: 'Not run yet', FAILED: 'Failed', HALTED: 'Halted', ready: 'Ready', missing_keys: 'Keys missing' };
 
 export const clampThreshold = (value) => {
   const n = Math.round(Number(value));
@@ -127,6 +129,10 @@ export function mountStudioCanvas(container, options = {}) {
   let timer = null;
   let destroyed = false;
   let selectedId = null;
+  // The task or step node whose details the inspector shows (cleared when a bridge is selected).
+  let selectedNode = null;
+  // Full task records for the Node Inspector, by run id + status + completed steps (refetched as a run moves on).
+  const records = new Map();
   let threshold = options.threshold !== undefined ? clampThreshold(options.threshold) : readThreshold(win);
 
   // Static frame: toolbar (slider, counts, refresh), canvas viewport, inspector.
@@ -213,7 +219,12 @@ export function mountStudioCanvas(container, options = {}) {
           : node.kind === 'step'
             ? node.action
             : (node.category || 'mcp') + ' · ' + node.transport;
-      const g = svg(doc, 'g', { class: 'node node-' + node.kind, 'data-node': node.id, 'data-status': statusKey, transform: 'translate(' + p.x + ' ' + p.y + ')' });
+      const g = svg(doc, 'g', { class: 'node node-' + node.kind, 'data-node': node.id, 'data-status': statusKey, 'data-selected': String(node.id === selectedNode), transform: 'translate(' + p.x + ' ' + p.y + ')' });
+      if (node.kind === 'task' || node.kind === 'step') {
+        g.setAttribute('tabindex', '0');
+        g.setAttribute('role', 'button');
+        g.setAttribute('aria-label', (node.kind === 'task' ? 'Task ' : 'Step ') + node.label + ', ' + (STATUS_TEXT[statusKey] || statusKey) + '. Show details.');
+      }
       const title = svg(doc, 'title');
       title.textContent = node.label + (node.kind === 'mcp' && node.description ? ' — ' + node.description : '');
       g.append(
@@ -241,6 +252,8 @@ export function mountStudioCanvas(container, options = {}) {
 
   function select(edgeId) {
     selectedId = edgeId;
+    if (edgeId) selectedNode = null;
+    for (const g of viewport.querySelectorAll('.node')) g.setAttribute('data-selected', String(g.getAttribute('data-node') === selectedNode));
     for (const group of viewport.querySelectorAll('.bridge')) group.setAttribute('data-selected', String(group.getAttribute('data-edge') === edgeId));
     renderInspector();
     if (edgeId) {
@@ -249,8 +262,135 @@ export function mountStudioCanvas(container, options = {}) {
     }
   }
 
+  function selectNode(nodeId) {
+    selectedNode = nodeId;
+    if (nodeId) selectedId = null;
+    for (const group of viewport.querySelectorAll('.bridge')) group.setAttribute('data-selected', 'false');
+    for (const g of viewport.querySelectorAll('.node')) g.setAttribute('data-selected', String(g.getAttribute('data-node') === nodeId));
+    renderInspector();
+    if (nodeId) {
+      const close = inspector.querySelector('.inspector-close');
+      if (close && options.focusInspector !== false) close.focus();
+    }
+  }
+
+  function closeButton(label, onClose) {
+    const close = el(doc, 'button', { type: 'button', class: 'btn btn-small inspector-close', 'aria-label': label, text: 'Close' });
+    close.addEventListener('click', onClose);
+    return close;
+  }
+
+  // The full record behind a task node, fetched once per run state.
+  async function recordFor(task) {
+    const key = task.run_id + ':' + task.status + ':' + task.completed_steps;
+    if (!records.has(key)) records.set(key, api.getTaskStatus(task.agent_id, task.label));
+    return records.get(key);
+  }
+
+  function renderNodeInspector(node) {
+    const task = node.kind === 'task' ? node : graph.nodes.find((n) => n.id === node.task);
+    const close = closeButton('Close the details', () => {
+      const target = viewport.querySelector('.node[data-node="' + CSS_escape(node.id) + '"]');
+      selectNode(null);
+      if (target) target.focus();
+    });
+    const body = el(doc, 'div', { class: 'inspector-node-body' }, [el(doc, 'p', { class: 'mini-label', text: 'Loading details…' })]);
+    inspector.hidden = false;
+    inspector.setAttribute('aria-label', node.kind === 'task' ? 'Task details' : 'Step details');
+    inspector.replaceChildren(el(doc, 'div', { class: 'inspector-head' }, [el(doc, 'h3', { text: node.kind === 'task' ? 'Task details' : 'Step details' }), close]), body);
+    if (!task) {
+      body.replaceChildren(el(doc, 'p', { class: 'mini-label', text: 'This step’s task is no longer listed.' }));
+      return;
+    }
+    recordFor(task).then((record) => {
+      if (selectedNode !== node.id) return;
+      body.replaceChildren(...(node.kind === 'task' ? taskDetails(record) : stepDetails(record, node.index)));
+    }).catch((err) => {
+      if (selectedNode !== node.id) return;
+      body.replaceChildren(el(doc, 'p', { class: 'inspector-error', text: 'Could not load the details: ' + (err && err.message ? err.message : 'unknown error') }));
+    });
+  }
+
+  const tokenText = (t) => (t ? (t.input || 0).toLocaleString() + ' in / ' + (t.output || 0).toLocaleString() + ' out' : '');
+  const when = (iso) => (iso ? String(iso).replace('T', ' ').slice(0, 19) : '');
+
+  function stepDetails(record, index) {
+    const step = (record.plan || [])[index] || {};
+    const result = (record.results || []).find((r) => r.step_index === index);
+    const failed = record.failure && record.failure.step_index === index ? record.failure : null;
+    const halted = record.status === 'HALTED' && record.interrupted_step_index === index;
+    const output = result ? result.output || {} : null;
+    const status = result ? 'COMPLETED' : failed ? 'FAILED' : halted ? 'HALTED' : record.status === 'RUNNING' && index === record.completed_steps ? 'RUNNING' : 'QUEUED';
+    const parts = [
+      el(doc, 'p', { class: 'inspector-route' }, [el(doc, 'strong', { text: step.step_id || 'step ' + (index + 1) }), ' · step ' + (index + 1) + ' of ' + (record.total_steps || '?') + ' · ' + (step.action || '')]),
+      el(doc, 'span', { class: 'pill', 'data-kind': STATUS_KIND[status] || 'queued' }, [el(doc, 'span', { class: 'pill-dot' }), STATUS_TEXT[status] || status]),
+    ];
+    if (failed) {
+      parts.push(el(doc, 'div', { class: 'inspector-error' }, [
+        el(doc, 'strong', { text: 'Why it failed' }),
+        el(doc, 'p', { text: failed.error + (failed.status ? ' (HTTP ' + failed.status + ')' : '') }),
+        el(doc, 'p', { class: 'mini-label', text: /gemini|google|upstream|returned an error|timed out|429|50\d/i.test(failed.error) ? 'This came from the model provider, not your blueprint. Run it again; the engine now retries a failed Gemini step once and then lets Claude take over.' : 'Steps after this one did not run.' }),
+      ]));
+    }
+    if (halted) parts.push(el(doc, 'div', { class: 'inspector-error' }, [el(doc, 'strong', { text: 'Halted by the circuit breaker' }), el(doc, 'p', { text: (record.halt && record.halt.reason) || 'No reason given.' })]));
+    const meta = [
+      ['Model', output && output.model ? output.model + (output.tier ? ' · ' + output.tier : '') : ''],
+      ['Tokens', result ? tokenText(result.tokens) : ''],
+      ['Time', result ? (result.duration_ms / 1000).toFixed(1) + ' s · started ' + when(result.started_at) : ''],
+      ['Run', record.task_id + ' · ' + record.agent_id],
+    ].filter(([, v]) => v);
+    parts.push(el(doc, 'dl', { class: 'inspector-meta' }, meta.flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })])));
+    if (step.summary) parts.push(el(doc, 'h4', { text: 'Instructions' }), el(doc, 'p', { class: 'inspector-text', text: step.summary + (step.summary.length >= 500 ? '…' : '') }));
+    if (output) {
+      const reply = typeof output.response === 'string' ? output.response : JSON.stringify(output, null, 2);
+      parts.push(el(doc, 'h4', { text: typeof output.response === 'string' ? 'Reply' : 'Output' }), el(doc, 'pre', { class: 'inspector-reply' }, [el(doc, 'code', { text: reply || '(empty)' })]));
+      if (reply && win.navigator && win.navigator.clipboard) {
+        const copy = el(doc, 'button', { type: 'button', class: 'btn btn-small inspector-copy', text: 'Copy reply' });
+        copy.addEventListener('click', () => win.navigator.clipboard.writeText(reply).then(() => { copy.textContent = 'Copied'; }, () => { copy.textContent = 'Copy failed'; }));
+        parts.push(copy);
+      }
+    } else if (!failed && !halted) {
+      parts.push(el(doc, 'p', { class: 'mini-label', text: status === 'RUNNING' ? 'Running now.' : 'Not run yet.' }));
+    }
+    return parts;
+  }
+
+  function taskDetails(record) {
+    const parts = [
+      el(doc, 'p', { class: 'inspector-route' }, [el(doc, 'strong', { text: record.task_id }), ' · ' + record.agent_id]),
+      el(doc, 'span', { class: 'pill', 'data-kind': STATUS_KIND[record.status] || 'queued' }, [el(doc, 'span', { class: 'pill-dot' }), STATUS_TEXT[record.status] || record.status]),
+    ];
+    if (record.failure) {
+      const step = (record.plan || [])[record.failure.step_index] || {};
+      parts.push(el(doc, 'div', { class: 'inspector-error' }, [el(doc, 'strong', { text: 'Failed at ' + (step.step_id || 'step ' + (record.failure.step_index + 1)) }), el(doc, 'p', { text: record.failure.error })]));
+    }
+    if (record.status === 'HALTED' && record.halt) parts.push(el(doc, 'div', { class: 'inspector-error' }, [el(doc, 'strong', { text: 'Halted by the circuit breaker' }), el(doc, 'p', { text: record.halt.reason || 'No reason given.' })]));
+    parts.push(el(doc, 'dl', { class: 'inspector-meta' }, [
+      ['Steps', record.completed_steps + ' of ' + record.total_steps + ' done'],
+      ['Tokens', tokenText(record.total_tokens)],
+      ['Started', when(record.started_at)],
+      ['Finished', when(record.finished_at) || 'still running'],
+      ['Run id', record.run_id],
+    ].flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })])));
+    parts.push(el(doc, 'h4', { text: 'Steps' }));
+    parts.push(el(doc, 'ol', { class: 'inspector-steps' }, (record.plan || []).map((step, index) => {
+      const done = (record.results || []).some((r) => r.step_index === index);
+      const failed = record.failure && record.failure.step_index === index;
+      const button = el(doc, 'button', { type: 'button', class: 'inspector-step-link', 'data-state': failed ? 'failed' : done ? 'done' : 'queued', text: (failed ? '✕ ' : done ? '✓ ' : '○ ') + step.step_id });
+      button.addEventListener('click', () => selectNode('task:' + record.agent_id + ':' + record.task_id + ':' + index));
+      return el(doc, 'li', {}, [button]);
+    })));
+    return parts;
+  }
+
   function renderInspector() {
     const edge = graph && selectedId ? graph.edges.find((e) => e.id === selectedId && e.kind === 'bridge') : null;
+    const node = !edge && graph && selectedNode ? graph.nodes.find((n) => n.id === selectedNode) : null;
+    if (node) {
+      renderNodeInspector(node);
+      return;
+    }
+    inspector.setAttribute('aria-label', 'Edge Inspector');
     if (!edge) {
       inspector.hidden = true;
       inspector.replaceChildren();
@@ -374,18 +514,24 @@ export function mountStudioCanvas(container, options = {}) {
   });
   refreshBtn.addEventListener('click', () => refresh());
   const pick = (target) => {
+    const node = target && target.closest ? target.closest('.node-task, .node-step') : null;
+    if (node) {
+      selectNode(node.getAttribute('data-node'));
+      return;
+    }
     const group = target && target.closest ? target.closest('.bridge') : null;
     if (group && group.getAttribute('data-hidden') !== 'true') select(group.getAttribute('data-edge'));
   };
   viewport.addEventListener('click', (event) => pick(event.target));
   viewport.addEventListener('keydown', (event) => {
-    if ((event.key === 'Enter' || event.key === ' ') && event.target.classList && event.target.classList.contains('bridge-hit')) {
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.classList && (event.target.classList.contains('bridge-hit') || event.target.classList.contains('node-task') || event.target.classList.contains('node-step'))) {
       event.preventDefault();
       pick(event.target);
     }
   });
   container.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && selectedId) select(null);
+    else if (event.key === 'Escape' && selectedNode) selectNode(null);
   });
   renderNote();
 
@@ -398,12 +544,13 @@ export function mountStudioCanvas(container, options = {}) {
       else clearTimeout(timer);
     },
     select,
+    selectNode,
     setThreshold(value) {
       threshold = clampThreshold(value);
       slider.value = String(threshold);
       applyThreshold();
     },
-    getState: () => ({ graph, error, threshold, selectedId, active }),
+    getState: () => ({ graph, error, threshold, selectedId, selectedNode, active }),
     destroy() {
       destroyed = true;
       clearTimeout(timer);

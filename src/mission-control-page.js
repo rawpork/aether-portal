@@ -879,6 +879,21 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .studio-inspector h4 { margin: 18px 0 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .inspector-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .inspector-route { margin: 10px 0; font-size: 13px; overflow-wrap: anywhere; }
+    .studio-svg .node-task, .studio-svg .node-step { cursor: pointer; }
+    .studio-svg .node[data-selected="true"] .node-box { stroke: var(--accent); stroke-width: 2; }
+    .studio-svg .node:focus-visible { outline: none; }
+    .studio-svg .node:focus-visible .node-box { stroke: var(--accent); stroke-width: 2; }
+    .inspector-error { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid var(--danger-text); border-radius: 0 var(--radius-s) var(--radius-s) 0; background: var(--surface-soft); font-size: 13px; }
+    .inspector-error p { margin: 4px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+    .inspector-error strong { color: var(--danger-text); }
+    .inspector-text { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .inspector-reply { margin: 0; padding: 10px 12px; max-height: 420px; overflow: auto; border-radius: var(--radius-s); background: var(--surface-soft); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .inspector-copy { margin-top: 8px; }
+    .inspector-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .inspector-step-link { appearance: none; border: none; background: none; padding: 2px 0; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+    .inspector-step-link:hover { color: var(--accent); }
+    .inspector-step-link[data-state="failed"] { color: var(--danger-text); }
+    .inspector-step-link[data-state="queued"] { color: var(--muted); }
     .inspector-confidence { display: flex; align-items: center; gap: 10px; }
     .inspector-pct { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
     .studio-inspector .meter { height: 6px; margin: 8px 0 4px; border-radius: 3px; background: var(--queued-bg); overflow: hidden; }
