@@ -1,7 +1,7 @@
 // Project flow: Space handoff, the "Ready to run?" preflight, and Outcomes & Deliverables.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { deliverableFiles, extractLinks, finishCheckOf, mountOutcomesList, PROJECT_PAYLOAD_KEY, PROJECT_RUNS_KEY, PROJECT_SOURCES_KEY, preflightChecks, runReport, safeRelativePath, takeProjectPayload } from '../../public/js/engine/outcomes.js';
+import { buildOf, deliverableFiles, extractLinks, finishCheckOf, mountOutcomesList, PROJECT_PAYLOAD_KEY, PROJECT_RUNS_KEY, PROJECT_SOURCES_KEY, preflightChecks, runReport, safeRelativePath, takeProjectPayload } from '../../public/js/engine/outcomes.js';
 
 const memoryStorage = () => {
 	const data = new Map();
@@ -230,6 +230,32 @@ describe('missing pieces and the finish line', () => {
 		for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
 		expect(container.querySelector('.oc-finish').textContent).toBe('✓ Finish line: no TODOs or placeholders left (Elarion fixed 2)');
 		expect(container.querySelector('.oc-gaps li').textContent).toBe('auth: Wire the API key.');
+		view.destroy();
+		container.remove();
+	});
+});
+
+describe('sandbox build on a run', () => {
+	const record = {
+		task_id: 'deploy-bp_9b', agent_id: 'master-brain', run_id: 'r9b', status: 'COMPLETED', total_steps: 2, completed_steps: 2, started_at: 't', finished_at: 't2', total_tokens: { input: 1, output: 1 }, history: [], plan: [],
+		results: [{ step_index: 1, step_id: 'build', action: 'build', output: {
+			response: '', build: { status: 'passed', kind: 'node', rounds: [{ ok: false }, { ok: true }] },
+			staging: { url: 'https://abc.aether-x.pages.dev', alias: 'https://staging.aether-x.pages.dev', project: 'aether-x', routes: [] },
+			viability: { score: 88, viable: true, verdict: 'Ready to launch', checks: [{ name: 'Build', ok: true, detail: 'npm install and build passed.' }], settings_needed: ['API_KEY'] },
+		} }],
+	};
+	it('shows the build, viability and staging link, and the report lists them', async () => {
+		expect(buildOf(record).viability.score).toBe(88);
+		const md = runReport(record, { project: 'X' });
+		expect(md).toMatch(/## Sandbox build\n\n- Build: passed, 2 rounds\n- Staging: https:\/\/abc\.aether-x\.pages\.dev\n- Viability: 88\/100 \(Ready to launch\)\n  - Build: npm install and build passed\./);
+		const container = document.createElement('div');
+		document.body.append(container);
+		const json = (d) => new Response(JSON.stringify(d), { status: 200, headers: { 'content-type': 'application/json' } });
+		const view = mountOutcomesList(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: async (url) => (new URL(url).pathname === '/api/tasks' ? json({ tasks: [record], counts: {} }) : json(record)) }), storage: memoryStorage(), portalFetch: async () => json({}) });
+		for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+		expect(container.querySelector('.oc-build-line').textContent).toBe('✓ Sandbox build passed · Viability 88/100 · Ready to launch');
+		expect(container.querySelector('.oc-build a').getAttribute('href')).toBe('https://abc.aether-x.pages.dev');
+		expect(container.querySelector('.oc-build p.mc-muted').textContent).toBe('Set before going live: API_KEY');
 		view.destroy();
 		container.remove();
 	});

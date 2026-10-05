@@ -322,6 +322,13 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .dc-preview { margin: 0 0 12px; padding: 10px 12px; max-height: 40vh; overflow: auto; border-radius: var(--radius-s); background: var(--surface-soft); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
     .dc-editor { width: 100%; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-soft); color: var(--text); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
     .dc-warn { margin: 0 0 12px; color: var(--off); font-size: 13px; }
+    .dc-steps { margin: 0 0 14px; padding-left: 20px; color: var(--text-2); font-size: 14px; line-height: 1.5; }
+    .dc-steps li { margin-bottom: 6px; }
+    .oc-build { margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }
+    .oc-build-line { margin: 0; font-size: 13px; font-weight: 600; color: var(--ok); }
+    .oc-build[data-status="failed"] .oc-build-line { color: var(--danger-text); }
+    .oc-build[data-status="skipped"] .oc-build-line { color: var(--muted); font-weight: 500; }
+    .oc-build p.mc-muted { margin: 0; font-size: 12px; }
     /* "Do this next" (workforce.js nextAction) and the live pulse card. */
     .wf-next { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; padding: 16px 20px; border: 1px solid var(--accent-line); border-left: 4px solid var(--accent); border-radius: var(--radius-m); background: var(--surface); }
     .wf-next[data-kind="warn"] { border-color: var(--alert-line); border-left-color: var(--alert); }

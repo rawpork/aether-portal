@@ -191,3 +191,93 @@ describe('mountDecisionCenter', () => {
 		expect(await done).toBeNull();
 	});
 });
+
+describe('launch choice after a viable build', () => {
+	const viableRecord = {
+		results: [{ step_id: 'build', output: {
+			build: { status: 'passed' },
+			staging: { url: 'https://abc.aether-demo-019.pages.dev', alias: 'https://staging.aether-demo-019.pages.dev', project: 'aether-demo-019' },
+			viability: { score: 91, viable: true, verdict: 'Ready to launch', checks: [], settings_needed: ['WEATHER_KEY'] },
+		} }],
+	};
+	const mountWith = (record) => {
+		const opened = [];
+		const saved = new Map();
+		const store = { getItem: (k) => (saved.has(k) ? saved.get(k) : null), setItem: (k, v) => saved.set(k, v) };
+		let tasks = [task()];
+		const engine = async (url) => {
+			const { pathname } = new URL(url);
+			if (pathname === '/api/tasks') return json({ tasks, counts: {} });
+			if (pathname === '/api/engine/config') return json({ launch_links: [{ id: 'vercel', label: 'Vercel', url: 'https://vercel.com/new?ref=k', affiliate: true, what: 'Front ends' }, { id: 'netlify', label: 'Netlify', url: 'https://app.netlify.com/start', affiliate: false, what: 'Static' }] });
+			if (pathname.startsWith('/api/agents/')) return json(record);
+			return json({});
+		};
+		slot = document.createElement('section');
+		document.body.append(slot);
+		const realOpen = window.open;
+		window.open = (url) => { opened.push(url); return null; };
+		center = mountDecisionCenter(document, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), slot, pollMs: 100000, onNavigate: () => {}, storage: store });
+		return {
+			opened,
+			saved,
+			finish: async () => { tasks = [task({ status: 'COMPLETED', completed_steps: 4 })]; await center.poll(); await settle(); },
+			restore: () => { window.open = realOpen; },
+		};
+	};
+
+	it('asks where to launch, with the score, staging link and settings to set', async () => {
+		const m = mountWith(viableRecord);
+		await settle();
+		await m.finish();
+		expect(modal().querySelector('.dc-title').textContent).toBe('Where would you like to launch this live?');
+		expect(modal().textContent).toContain('scored 91/100 (Ready to launch)');
+		expect(modal().querySelector('a').getAttribute('href')).toBe('https://abc.aether-demo-019.pages.dev');
+		expect(modal().querySelector('.dc-warn').textContent).toMatch(/set WEATHER_KEY/);
+		expect(optionLabels()).toEqual(['Keep on Free Staging', 'Attach Custom Domain on Cloudflare (Free)', 'Deploy to Recommended Host', 'Decide later']);
+		key('1');
+		await settle();
+		expect(modal().querySelector('.dc-title').textContent).toBe('Staying on free staging');
+		key('1');
+		await settle();
+		expect(m.opened).toEqual(['https://abc.aether-demo-019.pages.dev']);
+		expect(JSON.parse(m.saved.get('aether.projectRuns'))['deploy-bp_1'].launch).toBe('staging');
+		m.restore();
+	});
+
+	it('custom domain explains the GoDaddy step and opens the Pages project in the dashboard', async () => {
+		const m = mountWith(viableRecord);
+		await settle();
+		await m.finish();
+		key('2');
+		await settle();
+		expect(modal().querySelector('.dc-title').textContent).toBe('Attach your own domain (free)');
+		expect(modal().querySelector('.dc-steps').textContent).toMatch(/nameservers at GoDaddy/);
+		key('1');
+		await settle();
+		expect(m.opened).toEqual(['https://dash.cloudflare.com/?to=/:account/pages/view/aether-demo-019/domains']);
+		m.restore();
+	});
+
+	it('recommended hosts come from the engine, and affiliate links say so', async () => {
+		const m = mountWith(viableRecord);
+		await settle();
+		await m.finish();
+		key('3');
+		await settle();
+		expect(optionLabels()).toEqual(['Vercel (affiliate link)', 'Netlify', 'Back']);
+		expect(modal().querySelector('.dc-body').textContent).toMatch(/referral fee at no cost to you/);
+		key('1');
+		await settle();
+		expect(m.opened).toEqual(['https://vercel.com/new?ref=k']);
+		expect(JSON.parse(m.saved.get('aether.projectRuns'))['deploy-bp_1'].launch).toBe('vercel');
+		m.restore();
+	});
+
+	it('a run that did not score as viable gets the plain finished popup', async () => {
+		const m = mountWith({ results: [{ step_id: 'build', output: { build: { status: 'failed' }, viability: { score: 20, viable: false, verdict: 'Not ready', checks: [], settings_needed: [] } } }] });
+		await settle();
+		await m.finish();
+		expect(modal().querySelector('.dc-title').textContent).toBe('Project finished');
+		m.restore();
+	});
+});

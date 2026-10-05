@@ -517,7 +517,19 @@ export interface PublicUrl {
 export type MiserlyKeyStatus = 'missing' | 'verified' | 'sandbox' | 'invalid' | 'unreachable';
 export type ExecutionMode = 'miserly' | 'miserly-free' | 'unconfigured';
 
+export interface LaunchLink {
+	id: string;
+	label: string;
+	url: string;
+	// True when the operator set a referral link (AFFILIATE_<HOST>_URL); Mission Control says so.
+	affiliate: boolean;
+	what: string;
+}
+
 export interface EngineConfigSummary {
+	// Sandboxed builds and staging (engines with project-run builds).
+	build_sandbox?: { ready: boolean; detail: string; staging: 'cloudflare-pages' | 'off' };
+	launch_links?: LaunchLink[];
 	miserly_key_configured: boolean;
 	miserly_key_hint: string | null;
 	miserly_key_status: MiserlyKeyStatus;

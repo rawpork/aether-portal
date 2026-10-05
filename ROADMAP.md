@@ -74,10 +74,25 @@ Elarion turns a blueprint into finished deliverables, and Mission Control shows 
 - [x] Step 5.9: Roadmap dashboard (COMPLETED 2026-10-05) - Mission Control → Roadmap reads this file's phases and goals, recent Claude Code sessions (metadata only, key-like strings masked) and the memory index through the engine. Portal `aa7f01d`, engine `38917ba`
 - [x] Step 5.10: Engine stays up (COMPLETED 2026-10-05) - the "Aether Engine" scheduled task (at logon, no admin) runs `scripts/aether-up.ps1`, which keeps the engine, its quick tunnel and the portal's ENGINE_PUBLIC_URL secret current, outside any terminal session. Verified: paid Gemini key, 3 of 3 step calls answered by gemini-3.8-flash with no fallback
 
+- [x] Step 5.11: Missing secret sauce and the finish-line guarantee (COMPLETED 2026-10-05) - project runs read up to 3 linked tutorial pages and detect what they leave out (hand-waving, unstated auth, database schema and hooks, environment setup and secrets, state wiring, error handling, deployment); a gap-fill step runs first and writes that glue, never inventing secrets (named in .env.example, read from the environment, clear error when missing). The finish-line step polishes for production, and its guard rewrites any file that still holds a TODO or placeholder (up to 2 passes). Test: `test/secret-sauce-gapfill.test.ts` runs an incomplete tutorial through the real task loop and executes the result. Engine `3060a2c`, portal `f690ae7`
+- [x] Step 5.12: Deep route and real repo code (COMPLETED 2026-10-05) - gap fill, the finish line and build repairs run on Claude (a step can pick its own model route); linked repos are read beyond the README (package.json, wrangler config, .env.example, schema, entry file; optional GITHUB_TOKEN). Engine `bcca733`; the watchdog task also fires every 5 minutes so it cannot quietly stop (`52f2a0e`)
+
 ### Phase 5 next steps
 - [ ] Named tunnel with a fixed address: move one GoDaddy domain's DNS to Cloudflare, create a named tunnel (engine.<domain>) and install cloudflared as a Windows service (needs an administrator prompt); the secret is then set once.
 - [ ] First real website project end to end: blueprint → run → goal check → /s/ preview → Approve & publish.
 - [ ] Provider keys only in Cloudflare (Miserly passthrough), so none live on the PC.
+
+## Phase 6: Sandboxed Build, Staging & Launch (BUILT 2026-10-05, sandbox install pending)
+Deliverables are proven to build before anyone sees them, staged on a free URL, scored, and launched where the operator chooses.
+- [x] Step 6.1: Sandboxed build and test pass (BUILT 2026-10-05) - a `build` step at the end of every project run sends the deliverables to a WSL Ubuntu sandbox (`scripts/sandbox-setup.ps1`: "sandbox" user without sudo, Windows drives not mounted, Windows interop off, no keys inside, WSL capped at 2 GB / 2 CPUs) where `sandbox/runner.js` runs `npm install`, `npm run build` and `npm test` (time-limited) in a throwaway folder. Failures go back to Elarion on the Claude route, which rewrites the files; up to 3 rounds. Command execution exists only here: the public task API's schema does not accept build steps, and guest agents cannot run them
+- [x] Step 6.2: Automatic staging (BUILT 2026-10-05) - a passing build's output is deployed to Cloudflare Pages (`aether-<project>-<id>.pages.dev`, branch `staging`) with the operator's wrangler login; only files are uploaded, nothing generated runs on the PC. The staged root and up to 8 of its links are checked. `SANDBOX_STAGING=off` turns staging off
+- [x] Step 6.3: Viability gate and launch choice (BUILT 2026-10-05) - a 0-100 score from the build, tests, leftover placeholders, settings still to set and whether the staged pages answer (viable at 70+ with a passing build). Viable runs open Mission Control's numbered popup "Where would you like to launch this live?": [1. Keep on Free Staging] [2. Attach Custom Domain on Cloudflare (Free)] [3. Deploy to Recommended Host] (Vercel, Netlify, Supabase; `AFFILIATE_<HOST>_URL` in the engine .env swaps in a referral link, and the popup says when a link is an affiliate link). Outcomes shows the build, score and staging link
+- [x] Step 6.4: Tests (BUILT 2026-10-05) - engine `test/sandbox.test.ts` (build planning, the real runner: pass, failure, path escape, timeout kill; repair loop; Pages deploy; route checks; viability; task-loop wiring); portal launch-popup and build-badge tests
+
+### Phase 6 next steps
+- [ ] Install the sandbox: `wsl --install -d Ubuntu` in an administrator PowerShell (restart if asked, create the Ubuntu user), then `Aether_Engine/scripts/sandbox-setup.ps1`. Until then build steps are skipped with these instructions.
+- [ ] First live run through the sandbox: blueprint, build, repair, staging on pages.dev, launch choice.
+- [ ] Paste referral links as AFFILIATE_VERCEL_URL / AFFILIATE_NETLIFY_URL / AFFILIATE_SUPABASE_URL in the engine .env when the affiliate accounts exist.
 
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev

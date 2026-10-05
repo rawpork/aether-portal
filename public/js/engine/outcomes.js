@@ -160,6 +160,12 @@ export function finishCheckOf(record) {
   return (step && step.output && step.output.finish_check) || null;
 }
 
+// The sandbox build step's result: { build, staging, viability } or null for runs without one.
+export function buildOf(record) {
+  const step = (record.results || []).find((r) => r.step_id === 'build');
+  return step && step.output && step.output.build ? step.output : null;
+}
+
 // Elarion's plan from a project run (its "plan" step), or null for plain phase runs.
 export function projectPlanOf(record) {
   const step = (record.results || []).find((r) => r.step_id === 'plan');
@@ -173,6 +179,7 @@ export function stepName(record, run, stepId) {
   if (stepId === 'review') return 'Goal check & fixes';
   if (stepId === 'gap-fill') return 'Missing pieces filled';
   if (stepId === 'finish-line') return 'Finish line & polish';
+  if (stepId === 'build') return 'Sandbox build & staging';
   const plan = projectPlanOf(record);
   const node = plan && Array.isArray(plan.dag) ? plan.dag.find((d) => 'step-' + d.id === stepId) : null;
   return node ? node.title : stepId;
@@ -192,6 +199,14 @@ export function runReport(record, run = {}) {
     if (plan.gaps && plan.gaps.length) lines.push('## Missing pieces found', '', ...plan.gaps.map((g) => '- ' + g.kind + ': ' + g.need + (g.evidence ? ' ("' + g.evidence + '")' : '')), '');
   }
   const finish = finishCheckOf(record);
+  const built = buildOf(record);
+  if (built) {
+    lines.push('## Sandbox build', '', '- Build: ' + built.build.status + (built.build.reason ? ' (' + built.build.reason + ')' : '') + (built.build.rounds && built.build.rounds.length ? ', ' + built.build.rounds.length + (built.build.rounds.length === 1 ? ' round' : ' rounds') : ''));
+    if (built.staging && built.staging.url) lines.push('- Staging: ' + built.staging.url);
+    if (built.staging && built.staging.error) lines.push('- Staging failed: ' + built.staging.error);
+    if (built.viability) lines.push('- Viability: ' + built.viability.score + '/100 (' + built.viability.verdict + ')', ...built.viability.checks.map((c) => '  - ' + c.name + ': ' + c.detail));
+    lines.push('');
+  }
   if (finish) lines.push('## Finish line', '', '- Placeholders left: ' + finish.placeholders_after + (finish.repairs ? ' (fixed ' + finish.placeholders_before + ' in ' + finish.repairs + (finish.repairs === 1 ? ' pass' : ' passes') + ')' : ''), '');
   for (const result of record.results || []) {
     if (result.step_id === 'plan') continue;
@@ -361,6 +376,17 @@ export function mountOutcomesList(container, options = {}) {
         plan.gaps && plan.gaps.length ? el(doc, 'ul', { class: 'oc-gaps' }, plan.gaps.map((g) => el(doc, 'li', { text: g.kind + ': ' + g.need }))) : doc.createTextNode(''),
       ])
       : doc.createTextNode('');
+    const built = buildOf(record);
+    let buildBadge = doc.createTextNode('');
+    if (built) {
+      const v = built.viability;
+      const parts = [built.build.status === 'passed' ? '✓ Sandbox build passed' : built.build.status === 'failed' ? '✕ Sandbox build failed' : 'Sandbox build skipped: ' + (built.build.reason || '')];
+      if (v) parts.push('Viability ' + v.score + '/100 · ' + v.verdict);
+      buildBadge = el(doc, 'div', { class: 'oc-build', 'data-status': built.build.status }, [el(doc, 'p', { class: 'oc-build-line', text: parts.join(' · ') })]);
+      if (built.staging && built.staging.url) buildBadge.append(el(doc, 'a', { class: 'oc-link', href: built.staging.url, target: '_blank', rel: 'noopener', text: '↗ Staging: ' + built.staging.url.replace(/^https:\/\//, '') }));
+      if (built.staging && built.staging.error) buildBadge.append(el(doc, 'p', { class: 'mc-muted', text: 'Staging failed: ' + built.staging.error }));
+      if (v && v.settings_needed && v.settings_needed.length) buildBadge.append(el(doc, 'p', { class: 'mc-muted', text: 'Set before going live: ' + v.settings_needed.join(', ') }));
+    }
     const finish = finishCheckOf(record);
     const finishBadge = finish
       ? el(doc, 'p', { class: 'oc-finish', 'data-ok': String(finish.placeholders_after === 0), text: finish.placeholders_after === 0
@@ -396,6 +422,7 @@ export function mountOutcomesList(container, options = {}) {
       el(doc, 'p', { class: 'mc-muted oc-run-meta', text: record.completed_steps + '/' + record.total_steps + ' steps · ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString() + ' tokens · ' + String(record.finished_at || record.started_at).slice(0, 16).replace('T', ' ') }),
       linkRow,
       run.siteSlug ? previewRow(record, run) : doc.createTextNode(''),
+      buildBadge,
       finishBadge,
       fileBlock,
       planBlock,

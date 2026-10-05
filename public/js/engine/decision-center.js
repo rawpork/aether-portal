@@ -4,6 +4,8 @@
 // - A project run finishes, fails or is halted: what to do about it.
 // - Skill ingestion ("add repo <url>", "add skill <url or text>", "learn <...>"): Elarion reads the source and drafts
 //   a SKILL.md; Save / Edit first / Discard. Saved skills land in Aether_Engine/skills/<name>/SKILL.md.
+// - A finished run whose sandbox build passed and scored as viable: "Where would you like to launch this live?"
+//   (keep it on free staging, attach your own domain on Cloudflare, or a recommended host).
 // Popups open only for things that happen while the page is open (runs that finished earlier don't pop up), one at
 // a time. Number keys pick, arrow keys move, Esc closes the ones that can wait.
 import { getEngineApi } from '../engine-api.bundle.js';
@@ -236,6 +238,16 @@ export function mountDecisionCenter(doc, options = {}) {
       return;
     }
     if (type === 'completed') {
+      let record = null;
+      try {
+        record = await api.getTaskStatus(task.agent_id, task.task_id);
+      } catch { /* the plain finished popup still works */ }
+      const built = record ? (record.results || []).find((r) => r.step_id === 'build') : null;
+      const output = built && built.output ? built.output : null;
+      if (output && output.viability && output.viability.viable) {
+        await launchChoice(task, output);
+        return;
+      }
       const pick = await choose({
         title: 'Project finished',
         body: task.task_id + ' · ' + task.completed_steps + ' of ' + task.total_steps + ' steps. Its files, any website draft and the Space card are under Projects.',
@@ -269,6 +281,76 @@ export function mountDecisionCenter(doc, options = {}) {
       kind: 'warn',
     });
     if (pick === 0) api.resetBreaker(task.agent_id).catch(() => {});
+  }
+
+  // ---- launch
+
+  const runsStore = () => {
+    try { return JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {}; } catch { return {}; }
+  };
+  function rememberLaunch(taskId, launch) {
+    const runs = runsStore();
+    runs[taskId] = { ...(runs[taskId] || {}), launch };
+    try { storage && storage.setItem('aether.projectRuns', JSON.stringify(runs)); } catch { /* storage blocked */ }
+  }
+  const openTab = (url) => { try { win.open(url, '_blank', 'noopener'); } catch { /* popup blocked: the link is in the popup text */ } };
+
+  // The viability gate's question, with the staging link and the score.
+  async function launchChoice(task, output) {
+    const staging = output.staging && output.staging.url ? output.staging : null;
+    const v = output.viability;
+    const body = el(doc, 'div', {}, [
+      el(doc, 'p', { class: 'dc-body', text: task.task_id + ' built cleanly in the sandbox and scored ' + v.score + '/100 (' + v.verdict + ').' + (staging ? ' It is live on free staging now.' : '') }),
+      staging ? el(doc, 'p', { class: 'dc-body' }, [el(doc, 'a', { href: staging.url, target: '_blank', rel: 'noopener', text: '↗ ' + staging.url })]) : null,
+      v.settings_needed && v.settings_needed.length ? el(doc, 'p', { class: 'dc-warn', text: 'Before real users: set ' + v.settings_needed.join(', ') + ' on the host you choose.' }) : null,
+    ]);
+    const pick = await choose({
+      title: 'Where would you like to launch this live?',
+      body,
+      options: [
+        { label: 'Keep on Free Staging', hint: staging ? staging.alias || staging.url : 'Cloudflare Pages, free' },
+        { label: 'Attach Custom Domain on Cloudflare (Free)', hint: 'Your own domain on this Pages project' },
+        { label: 'Deploy to Recommended Host', hint: 'Vercel, Netlify or Supabase' },
+        { label: 'Decide later', hint: 'It stays on staging' },
+      ],
+      kind: 'go',
+    });
+    if (pick === 0) {
+      rememberLaunch(task.task_id, 'staging');
+      const open = await choose({ title: 'Staying on free staging', body: 'It stays at ' + (staging ? staging.alias || staging.url : 'its staging address') + '. You can attach a domain or move hosts any time from Projects.', options: [{ label: 'Open the site' }, { label: 'Done' }] });
+      if (open === 0 && staging) openTab(staging.url);
+    } else if (pick === 1) {
+      rememberLaunch(task.task_id, 'custom-domain');
+      const project = staging ? staging.project : '';
+      const steps = el(doc, 'ol', { class: 'dc-steps' }, [
+        el(doc, 'li', { text: 'Your domain\u2019s DNS must be on Cloudflare (free plan). Domains at GoDaddy: add the site in Cloudflare, then switch the nameservers at GoDaddy to the two Cloudflare gives you.' }),
+        el(doc, 'li', { text: 'Open the Pages project' + (project ? ' ' + project : '') + ' → Custom domains → Set up a domain, and enter www.yourdomain.com or a subdomain.' }),
+        el(doc, 'li', { text: 'Cloudflare adds the DNS record and the HTTPS certificate itself; it is usually live within minutes.' }),
+      ]);
+      const go = await choose({ title: 'Attach your own domain (free)', body: steps, options: [{ label: 'Open the Cloudflare dashboard', hint: 'Pages → ' + (project || 'your project') + ' → Custom domains' }, { label: 'Done' }] });
+      if (go === 0) openTab('https://dash.cloudflare.com/?to=/:account/pages/view/' + encodeURIComponent(project) + '/domains');
+    } else if (pick === 2) {
+      let links = [];
+      try {
+        links = (await api.getEngineConfig()).launch_links || [];
+      } catch { /* the defaults below */ }
+      if (!links.length) {
+        links = [
+          { id: 'vercel', label: 'Vercel', url: 'https://vercel.com/new', affiliate: false, what: 'Front ends and Next.js; free hobby tier.' },
+          { id: 'netlify', label: 'Netlify', url: 'https://app.netlify.com/start', affiliate: false, what: 'Static sites and forms; free starter tier.' },
+          { id: 'supabase', label: 'Supabase', url: 'https://supabase.com/dashboard/new', affiliate: false, what: 'Postgres database, auth and storage for a SaaS back end; free tier.' },
+        ];
+      }
+      const host = await choose({
+        title: 'Pick a host',
+        body: 'Each opens the host\u2019s own setup in a new tab; bring the deliverable files from Projects (each downloads with one tap).' + (links.some((l) => l.affiliate) ? ' Links marked affiliate earn Aether a referral fee at no cost to you.' : ''),
+        options: [...links.map((l) => ({ label: l.label + (l.affiliate ? ' (affiliate link)' : ''), hint: l.what })), { label: 'Back' }],
+      });
+      if (host >= 0 && host < links.length) {
+        rememberLaunch(task.task_id, links[host].id);
+        openTab(links[host].url);
+      }
+    }
   }
 
   // ---- banner
