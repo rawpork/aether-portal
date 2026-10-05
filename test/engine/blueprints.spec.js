@@ -29,6 +29,9 @@ function createEngine() {
     stored: [],
     calls: [],
     taskOutcome: 'COMPLETED',
+    // false: an older engine without POST /api/projects/run (404), so Deploy falls back to execute-task.
+    projectRuns: true,
+    polls: 0,
     config: { execution_mode: 'direct-anthropic', direct_fallback: { anthropic_key_configured: true, gemini_key_configured: true }, model_routes_effective: { step: 'direct-gemini' } },
     async fetch(url, init = {}) {
       const { pathname } = new URL(url);
@@ -56,6 +59,20 @@ function createEngine() {
       if (one) {
         const found = engine.stored.find((b) => b.blueprint_id === one[1]);
         return found ? reply(200, found) : reply(404, { error: 'No compiled blueprint ' + one[1] + '.' });
+      }
+      if (method === 'POST' && pathname === '/api/projects/run') {
+        if (!engine.projectRuns) return reply(404, { error: 'not found' });
+        const plan = { summary: 'Plan it.', goals: ['Ship'], planned_by: 'elarion', preview_page: false, steps: [{ id: 'research', title: 'Research', depends_on: [], prompt: 'Read' }, { id: 'build', title: 'Build', depends_on: ['research'], prompt: 'Build' }] };
+        return reply(202, { status: 'RUNNING', task_id: 'deploy-' + body.blueprint_id, agent_id: body.agent_id, plan, repos: [], skills: [], total_steps: 4 });
+      }
+      const task = /^\/api\/agents\/([^/]+)\/tasks\/([^/]+)$/.exec(pathname);
+      if (method === 'GET' && task) {
+        engine.polls++;
+        const plan = [{ step_id: 'plan', action: 'echo' }, { step_id: 'step-research', action: 'prompt' }, { step_id: 'step-build', action: 'prompt' }, { step_id: 'deliverables', action: 'prompt' }];
+        const base = { task_id: task[2], agent_id: task[1], run_id: 'r', total_steps: 4, plan, results: [], history: [], total_tokens: { input: 300, output: 80 }, started_at: 't', finished_at: null, interrupted_step_index: null };
+        if (engine.polls < 2) return reply(200, { ...base, status: 'RUNNING', completed_steps: 1 });
+        if (engine.taskOutcome === 'HALTED') return reply(200, { ...base, status: 'HALTED', completed_steps: 2, interrupted_step_index: 2 });
+        return reply(200, { ...base, status: 'COMPLETED', completed_steps: 4, finished_at: 't2' });
       }
       if (method === 'POST' && pathname === '/api/agents/execute-task') {
         const summary = { task_id: body.task_id, agent_id: body.agent_id, run_id: 'r', results: [], total_tokens: { input: 300, output: 80 } };
@@ -86,6 +103,7 @@ async function mount(options = {}) {
     onUpgrade: (bp) => upgrades.push(bp.blueprint_id),
     onStarted: (id) => started.push(id),
     onExecuted: (o) => executed.push(o.status),
+    pollMs: 0,
     ...options,
   });
   await settle();
@@ -260,7 +278,7 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     expect(ws.elements.upgradeModal.querySelector('a').getAttribute('href')).toBe('https://billing.example/upgrade');
   });
 
-  it('Pro: a "Ready to run?" preflight checks the engine, then runs every phase as a task loop on master-brain', async () => {
+  it('Pro: a "Ready to run?" preflight checks the engine, then Elarion plans the run and it is followed to the end', async () => {
     await mount({ tier: 'pro' });
     await compileExample();
     const deploy = ws.elements.viewer.querySelector('.bp-deploy');
@@ -269,7 +287,7 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     const confirm = ws.elements.viewer.querySelector('.bp-confirm');
     expect(confirm.hidden).toBe(false);
     expect(confirm.querySelector('.bp-preflight-title').textContent).toBe('Ready to run?');
-    expect(confirm.textContent).toMatch(/2 phases on master-brain/);
+    expect(confirm.textContent).toMatch(/Elarion analyzes the blueprint \(2 phases\)/);
     expect(confirm.querySelector('.bp-confirm-run').disabled).toBe(true);
     await settle();
     expect([...confirm.querySelectorAll('.bp-check')].map((li) => li.dataset.ok + ':' + li.querySelector('strong').textContent)).toEqual(['yes:Engine connection', 'yes:Model keys', 'note:Budget', 'note:Estimate']);
@@ -278,13 +296,30 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
 
     confirm.querySelector('.bp-confirm-run').click();
     await settle();
+    await settle();
+    const run = engine.calls.find((c) => c.pathname === '/api/projects/run');
+    expect(run.body).toEqual({ blueprint_id: 'bp_00000001_1790000000001', agent_id: 'master-brain' });
+    expect(engine.calls.some((c) => c.pathname === '/api/agents/execute-task')).toBe(false);
+    expect(engine.calls.filter((c) => c.pathname === '/api/agents/master-brain/tasks/deploy-bp_00000001_1790000000001')).toHaveLength(2);
+    expect(started).toEqual(['deploy-bp_00000001_1790000000001']);
+    expect(executed).toEqual(['COMPLETED']);
+    expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Executed all 4 steps · 380 tokens. Deliverables are under Outcomes & Deliverables.');
+  });
+
+  it('Pro: an engine without project runs gets the blueprint phases as a plain task loop', async () => {
+    engine.projectRuns = false;
+    await mount({ tier: 'pro' });
+    await compileExample();
+    ws.elements.viewer.querySelector('.bp-deploy').click();
+    await settle();
+    ws.elements.viewer.querySelector('.bp-confirm-run').click();
+    await settle();
     const run = engine.calls.find((c) => c.pathname === '/api/agents/execute-task');
     expect(run.body.agent_id).toBe('master-brain');
     expect(run.body.task_id).toBe('deploy-bp_00000001_1790000000001');
     expect(run.body.steps.map((s) => s.step_id + ':' + s.params.prompt)).toEqual(['phase-1:Analyze all scraped sources.', 'phase-2:Build project.']);
-    expect(started).toEqual(['deploy-bp_00000001_1790000000001']);
     expect(executed).toEqual(['COMPLETED']);
-    expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Executed all 2 phases · 380 tokens.');
+    expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toMatch(/^Executed all 2 steps · 380 tokens\./);
   });
 
   it('Pro: keeps Run disabled when the preflight cannot reach the engine', async () => {
@@ -306,7 +341,8 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     await settle();
     ws.elements.viewer.querySelector('.bp-confirm-run').click();
     await settle();
-    expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Halted by the circuit breaker before phase-2 (1 phases done).');
+    await settle();
+    expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Halted by the circuit breaker before step-build (2 steps done).');
     expect(executed).toEqual(['HALTED']);
   });
 });

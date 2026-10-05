@@ -6,7 +6,12 @@
 //   when Miserly is in use.
 // - Outcomes & Deliverables: every executed project run (deploy-* tasks) with its phases' results, the links the agents
 //   produced, a Markdown report to download, and the Outcome card it became in Space (POST /api/outcomes), opened
-//   with one tap.
+//   with one tap. Project runs (POST /api/projects/run) also show Elarion's plan (goals and DAG) and every
+//   deliverable file the agents wrote as a ````file:<path> block, each downloadable, and all of them go into the
+//   report the Outcome card carries.
+// - Live preview: only when the blueprint explicitly asked for one (the plan's preview_page) and the run wrote
+//   preview/index.html, that page is saved as a draft at /s/<slug> (POST /api/sites). It goes public only when the
+//   operator presses Approve & publish.
 import { getEngineApi, isRelayUrl, onEngineState } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
 
@@ -126,15 +131,74 @@ export function extractLinks(texts, max = 8) {
 
 const responseOf = (result) => (result && result.output && typeof result.output.response === 'string' ? result.output.response : '');
 
-// A run's Markdown report: project, status, each phase's result, the links found and the generated scaffold.
+export const PREVIEW_PATH = 'preview/index.html';
+
+// A relative path that stays inside the project (forward slashes, no "..", no drive or leading slash), or null.
+export function safeRelativePath(raw) {
+  const cleaned = String(raw || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!cleaned || cleaned.length > 200 || cleaned.startsWith('/') || /^[a-z]:/i.test(cleaned) || /[\0<>:"|?*]/.test(cleaned)) return null;
+  const parts = cleaned.split('/');
+  return parts.some((p) => !p || p === '.' || p === '..') ? null : parts.join('/');
+}
+
+// The deliverable files in a run's answers: every ````file:<path> block (the engine's format; later versions of a
+// path win), as [{ path, content }] in first-seen order.
+export function deliverableFiles(record) {
+  const files = new Map();
+  for (const text of (record.results || []).map(responseOf)) {
+    for (const match of text.matchAll(/(`{3,})file:([^\n`]+)\n([\s\S]*?)\n?\1(?!`)/g)) {
+      const path = safeRelativePath(match[2]);
+      if (path) files.set(path, match[3]);
+    }
+  }
+  return [...files].map(([path, content]) => ({ path, content }));
+}
+
+// Elarion's plan from a project run (its "plan" step), or null for plain phase runs.
+export function projectPlanOf(record) {
+  const step = (record.results || []).find((r) => r.step_id === 'plan');
+  return (step && step.output && step.output.elarion_plan) || null;
+}
+
+// The name a step shows: the blueprint's phase name, the plan's step title, or what the step is.
+export function stepName(record, run, stepId) {
+  if (run.phaseNames && run.phaseNames[stepId]) return run.phaseNames[stepId];
+  if (stepId === 'deliverables') return 'Deliverables';
+  const plan = projectPlanOf(record);
+  const node = plan && Array.isArray(plan.dag) ? plan.dag.find((d) => 'step-' + d.id === stepId) : null;
+  return node ? node.title : stepId;
+}
+
+const REPORT_FILES_BUDGET = 12000;
+
+// A run's Markdown report: project, status, Elarion's plan, each step's result, the links found, the generated
+// scaffold and the deliverable files (contents included while they fit, so the Outcome card carries them).
 export function runReport(record, run = {}) {
   const lines = ['# ' + (run.project || record.task_id), '', '- Run: ' + record.task_id + ' · ' + record.status + ' · ' + (record.finished_at || record.started_at), '- Tokens: ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString(), ''];
+  const plan = projectPlanOf(record);
+  if (plan) {
+    lines.push('## Plan', '', plan.summary || '', '');
+    if (plan.goals && plan.goals.length) lines.push(...plan.goals.map((g) => '- Goal: ' + g), '');
+    if (plan.dag && plan.dag.length) lines.push(...plan.dag.map((d, i) => (i + 1) + '. ' + d.title + (d.depends_on.length ? ' (after ' + d.depends_on.join(', ') + ')' : '')), '');
+  }
   for (const result of record.results || []) {
-    lines.push('## ' + (run.phaseNames && run.phaseNames[result.step_id] ? run.phaseNames[result.step_id] : result.step_id), '', responseOf(result).trim() || '_(no text)_', '');
+    if (result.step_id === 'plan') continue;
+    lines.push('## ' + stepName(record, run, result.step_id), '', responseOf(result).trim() || '_(no text)_', '');
   }
   const links = extractLinks((record.results || []).map(responseOf));
   if (links.length) lines.push('## Links', '', ...links.map((url) => '- ' + url), '');
   if (run.scaffold && run.scaffold.length) lines.push('## Generated artifacts', '', ...run.scaffold.map((path) => '- `' + path + '`'), '');
+  const files = deliverableFiles(record);
+  if (files.length) {
+    lines.push('## Deliverable files', '', ...files.map((f) => '- `' + f.path + '` (' + f.content.length.toLocaleString() + ' characters)'), '');
+    let budget = REPORT_FILES_BUDGET;
+    for (const file of files) {
+      if (file.content.length > budget) continue;
+      budget -= file.content.length;
+      lines.push('### ' + file.path, '', '````', file.content, '````', '');
+    }
+  }
+  if (run.siteSlug) lines.push('## Live preview', '', '- /s/' + run.siteSlug + (run.sitePublished ? '' : ' (draft until approved in Mission Control)'), '');
   return lines.join('\n');
 }
 
@@ -152,6 +216,7 @@ export function mountOutcomesList(container, options = {}) {
     el(doc, 'div', { class: 'oc-outcomes-body' }, [empty, list]),
   ]));
   let destroyed = false;
+  const origin = win.location && win.location.origin && win.location.origin !== 'null' ? win.location.origin : '';
 
   const runs = () => readJson(storage, PROJECT_RUNS_KEY, {});
   const saveRun = (taskId, patch) => {
@@ -166,29 +231,84 @@ export function mountOutcomesList(container, options = {}) {
   async function sendToSpace(record) {
     const run = runs()[record.task_id] || {};
     const sources = readJson(storage, PROJECT_SOURCES_KEY, {})[run.project] || [];
-    const steps = (record.results || []).map((result) => ({
-      title: run.phaseNames && run.phaseNames[result.step_id] ? run.phaseNames[result.step_id] : result.step_id,
+    const steps = (record.results || []).filter((result) => result.step_id !== 'plan').map((result) => ({
+      title: stepName(record, run, result.step_id),
       detail: responseOf(result).replace(/\s+/g, ' ').slice(0, 600),
     }));
-    const response = await portalFetch('/api/outcomes', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ title: run.project || record.task_id, goal: run.goal || '', steps, report: runReport(record, run), source_ids: sources }),
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+    const plan = projectPlanOf(record);
+    const goal = run.goal || (plan && plan.goals && plan.goals.length ? plan.goals.join('; ') : '');
+    const body = await portalJson('/api/outcomes', { method: 'POST', body: JSON.stringify({ title: run.project || record.task_id, goal, steps, report: runReport(record, run), source_ids: sources }) });
     saveRun(record.task_id, { nodeId: body.id });
     return body.id;
   }
 
-  function download(record) {
-    const url = URL.createObjectURL(new Blob([runReport(record, runs()[record.task_id] || {})], { type: 'text/markdown' }));
-    const a = el(doc, 'a', { href: url, download: record.task_id + '.md' });
+  async function portalJson(url, init) {
+    const response = await portalFetch(url, { credentials: 'same-origin', ...init, headers: { 'Content-Type': 'application/json', Accept: 'application/json' } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'HTTP ' + response.status);
+    return body;
+  }
+
+  // The run's preview page as a draft at /s/<slug>: only when the blueprint asked for a live preview page and the
+  // run wrote preview/index.html. Returns the site, or null when there is nothing to preview.
+  async function draftPreview(record) {
+    const plan = projectPlanOf(record);
+    const page = deliverableFiles(record).find((f) => f.path === PREVIEW_PATH);
+    if (!plan || !plan.preview_page || !page) return null;
+    const run = runs()[record.task_id] || {};
+    const payload = { title: run.project || record.task_id, html: page.content };
+    if (run.nodeId) payload.outcome_id = run.nodeId;
+    if (run.siteSlug) payload.slug = run.siteSlug;
+    const body = await portalJson('/api/sites', { method: 'POST', body: JSON.stringify(payload) });
+    saveRun(record.task_id, { siteSlug: body.site.slug, sitePublished: body.site.status === 'live' && !body.site.unpublished_changes });
+    return body.site;
+  }
+
+  function downloadText(name, text, type) {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = el(doc, 'a', { href: url, download: name });
     doc.body.append(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function download(record) {
+    downloadText(record.task_id + '.md', runReport(record, runs()[record.task_id] || {}), 'text/markdown');
+  }
+
+  // Preview link and the approval gate for the run's /s/ page: Publish… opens a confirm; Approve & publish sends it.
+  function previewRow(record, run) {
+    const row = el(doc, 'div', { class: 'oc-preview' });
+    const message = el(doc, 'span', { class: 'mc-muted', 'aria-live': 'polite' });
+    const path = '/api/sites/' + encodeURIComponent(run.siteSlug);
+    row.append(el(doc, 'span', { class: 'oc-preview-label', text: run.sitePublished ? 'Live page:' : 'Preview page (draft):' }),
+      el(doc, 'a', { class: 'oc-link', href: '/s/' + run.siteSlug + (run.sitePublished ? '' : '?preview=1'), target: '_blank', rel: 'noopener', text: '↗ ' + origin + '/s/' + run.siteSlug }));
+    if (!run.sitePublished) {
+      const publish = el(doc, 'button', { type: 'button', class: 'bp-primary oc-site-publish', text: 'Publish…' });
+      const confirm = el(doc, 'div', { class: 'oc-site-confirm', hidden: true, role: 'group', 'aria-label': 'Approve publishing' });
+      const approve = el(doc, 'button', { type: 'button', class: 'bp-primary oc-site-approve', text: 'Approve & publish' });
+      const cancel = el(doc, 'button', { type: 'button', class: 'toggle-button', text: 'Cancel' });
+      confirm.append(el(doc, 'p', { text: 'Make this page public at ' + origin + '/s/' + run.siteSlug + '? Anyone with the link can see it.' }), el(doc, 'div', { class: 'bp-preflight-actions' }, [cancel, approve]));
+      publish.addEventListener('click', () => { confirm.hidden = false; publish.hidden = true; approve.focus(); });
+      cancel.addEventListener('click', () => { confirm.hidden = true; publish.hidden = false; });
+      approve.addEventListener('click', async () => {
+        approve.disabled = true;
+        message.textContent = 'Publishing…';
+        try {
+          await portalJson(path + '/publish', { method: 'POST', body: JSON.stringify({ approve: true }) });
+          saveRun(record.task_id, { sitePublished: true });
+          refresh();
+        } catch (error) {
+          approve.disabled = false;
+          message.textContent = 'Could not publish: ' + error.message;
+        }
+      });
+      row.append(publish, message, confirm);
+    } else {
+      row.append(message);
+    }
+    return row;
   }
 
   function renderRun(record) {
@@ -218,10 +338,30 @@ export function mountOutcomesList(container, options = {}) {
       actions.append(send);
     }
     actions.append(message);
-    const phases = el(doc, 'div', { class: 'oc-phases' }, (record.results || []).map((result) => {
+    const plan = projectPlanOf(record);
+    const planBlock = plan
+      ? el(doc, 'details', { class: 'oc-phase oc-plan' }, [
+        el(doc, 'summary', { text: (plan.planned_by === 'elarion' ? 'Elarion’s plan' : 'Plan (blueprint phases)') + ' · ' + (plan.dag || []).length + ' steps' }),
+        el(doc, 'p', { text: [plan.summary, plan.fallback_reason ? '(' + plan.fallback_reason + ')' : ''].filter(Boolean).join(' ') }),
+        el(doc, 'ul', { class: 'oc-goals' }, (plan.goals || []).map((g) => el(doc, 'li', { text: g }))),
+        el(doc, 'ol', { class: 'oc-dag' }, (plan.dag || []).map((d) => el(doc, 'li', { text: d.title + (d.depends_on.length ? ' ← ' + d.depends_on.map((id) => stepName(record, run, 'step-' + id)).join(', ') : '') }))),
+      ])
+      : doc.createTextNode('');
+    const files = deliverableFiles(record);
+    const fileBlock = files.length
+      ? el(doc, 'div', { class: 'oc-files' }, [
+        el(doc, 'strong', { class: 'oc-files-title', text: 'Deliverables · ' + files.length + (files.length === 1 ? ' file' : ' files') }),
+        el(doc, 'ul', {}, files.map((file) => {
+          const get = el(doc, 'button', { type: 'button', class: 'oc-file', title: 'Download ' + file.path, text: '⤓ ' + file.path });
+          get.addEventListener('click', () => downloadText(file.path.split('/').pop(), file.content, 'text/plain'));
+          return el(doc, 'li', {}, [get]);
+        })),
+      ])
+      : doc.createTextNode('');
+    const phases = el(doc, 'div', { class: 'oc-phases' }, (record.results || []).filter((result) => result.step_id !== 'plan').map((result) => {
       const text = responseOf(result).trim();
       return el(doc, 'details', { class: 'oc-phase' }, [
-        el(doc, 'summary', { text: (run.phaseNames && run.phaseNames[result.step_id]) || result.step_id }),
+        el(doc, 'summary', { text: stepName(record, run, result.step_id) }),
         el(doc, 'p', { text: text || '(no text)' }),
       ]);
     }));
@@ -233,8 +373,11 @@ export function mountOutcomesList(container, options = {}) {
         el(doc, 'strong', { text: run.project || record.task_id }),
         el(doc, 'span', { class: 'mc-chip', 'data-status': record.status, text: record.status }),
       ]),
-      el(doc, 'p', { class: 'mc-muted oc-run-meta', text: record.completed_steps + '/' + record.total_steps + ' phases · ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString() + ' tokens · ' + String(record.finished_at || record.started_at).slice(0, 16).replace('T', ' ') }),
+      el(doc, 'p', { class: 'mc-muted oc-run-meta', text: record.completed_steps + '/' + record.total_steps + ' steps · ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString() + ' tokens · ' + String(record.finished_at || record.started_at).slice(0, 16).replace('T', ' ') }),
       linkRow,
+      run.siteSlug ? previewRow(record, run) : doc.createTextNode(''),
+      fileBlock,
+      planBlock,
       phases,
       actions,
     ]);
@@ -263,6 +406,7 @@ export function mountOutcomesList(container, options = {}) {
     if (outcome && outcome.status === 'COMPLETED') {
       try {
         const record = await api.getTaskStatus(outcome.agent_id || 'master-brain', taskId);
+        await draftPreview(record).catch((error) => { status.textContent = 'The preview page could not be saved (' + error.message + ').'; });
         await sendToSpace(record);
       } catch (error) {
         status.textContent = 'The run finished, but adding it to Space failed (' + error.message + '); use Add to Space.';

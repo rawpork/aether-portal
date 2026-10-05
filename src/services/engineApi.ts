@@ -78,6 +78,8 @@ export const isRelayUrl = (baseUrl: string): boolean => {
 const DEFAULT_TIMEOUT_MS = 15_000;
 // Master Brain turns go through Miserly.io; the engine allows the model up to 300s.
 const CHAT_TIMEOUT_MS = 310_000;
+// Project runs: the engine plans for up to 90 s (plus repo inspection) before answering.
+const PROJECT_PLAN_TIMEOUT_MS = 150_000;
 
 // ---------------------------------------------------------------------------
 // Engine contract types
@@ -204,6 +206,31 @@ export interface TaskHistoryEntry {
 	step_index?: number;
 	step_id?: string;
 	detail?: string;
+}
+
+// POST /api/projects/run: Elarion's plan for a compiled blueprint, answered once its run has started (202).
+export interface ProjectPlanStep {
+	id: string;
+	title: string;
+	depends_on: string[];
+	prompt: string;
+}
+
+export interface ProjectRunStarted {
+	status: 'RUNNING';
+	task_id: string;
+	agent_id: string;
+	plan: {
+		summary: string;
+		goals: string[];
+		steps: ProjectPlanStep[];
+		preview_page: boolean;
+		planned_by: 'elarion' | 'phases';
+		fallback_reason?: string;
+	};
+	repos: { repo: string; ok: boolean; error?: string }[];
+	skills: string[];
+	total_steps: number;
 }
 
 export interface TaskRecord {
@@ -749,6 +776,17 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			});
 		},
 
+		// POST /api/projects/run: Elarion analyzes the stored blueprint, plans a DAG and starts it as deploy-<id>.
+		// Planning is one model call, so this waits up to PROJECT_PLAN_TIMEOUT_MS; follow the run with getTaskStatus.
+		runProject(blueprintId: string, opts: { agentId?: string; signal?: AbortSignal } = {}): Promise<ProjectRunStarted> {
+			requireText('blueprintId', blueprintId);
+			return request<ProjectRunStarted>('POST', '/api/projects/run', {
+				body: { blueprint_id: blueprintId, agent_id: opts.agentId },
+				timeoutMs: PROJECT_PLAN_TIMEOUT_MS,
+				signal: opts.signal,
+			});
+		},
+
 		// GET /api/agents/:agentId/tasks/:taskId: latest run record for the authenticated user (404 if none).
 		getTaskStatus(agentId: string, taskId: string): Promise<TaskRecord> {
 			requireText('agentId', agentId);
@@ -877,6 +915,7 @@ export const resetBreaker: EngineApi['resetBreaker'] = (...args) => getEngineApi
 export const getAgentState: EngineApi['getAgentState'] = (...args) => getEngineApi().getAgentState(...args);
 export const sendMasterBrainChat: EngineApi['sendMasterBrainChat'] = (...args) => getEngineApi().sendMasterBrainChat(...args);
 export const executeSubAgentTask: EngineApi['executeSubAgentTask'] = (...args) => getEngineApi().executeSubAgentTask(...args);
+export const runProject: EngineApi['runProject'] = (...args) => getEngineApi().runProject(...args);
 export const getTaskStatus: EngineApi['getTaskStatus'] = (...args) => getEngineApi().getTaskStatus(...args);
 export const compileBlueprint: EngineApi['compileBlueprint'] = (...args) => getEngineApi().compileBlueprint(...args);
 export const listTasks: EngineApi['listTasks'] = (...args) => getEngineApi().listTasks(...args);

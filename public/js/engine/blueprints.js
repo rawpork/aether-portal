@@ -3,7 +3,8 @@
 // /api/artifacts/:id) with their route matrix, generated scaffold and sources.
 //
 // Tier gating: every tier can draft, validate, compile and preview. "Deploy & Execute Blueprint" is a Pro Engine
-// action: Pro runs the blueprint's phases as a sub-agent task loop on master-brain; other tiers get the upgrade prompt.
+// action: Pro hands the blueprint to Elarion (POST /api/projects/run), who plans a DAG of steps and runs it as a task
+// loop on master-brain; other tiers get the upgrade prompt.
 import { getEngineApi } from '../engine-api.bundle.js';
 import { EXAMPLE_SPEC, blueprintToTaskSteps, isProTier, parseBlueprintSpec, routeMatrix } from './blueprint-spec.js';
 import { describeAuthError } from './connection.js';
@@ -37,6 +38,8 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const onUpgrade = options.onUpgrade || (() => {});
   const onStarted = options.onStarted || (() => {});
   const onExecuted = options.onExecuted || (() => {});
+  // How often a started project run is checked until it ends.
+  const pollMs = options.pollMs ?? 2000;
   // (blueprint, outcome) after every run: the Outcomes list records it and, when it completed, adds it to Space.
   const onCompleted = options.onCompleted || (() => {});
 
@@ -276,7 +279,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
     const checkList = el(doc, 'ul', { class: 'bp-checks' });
     const confirmRow = el(doc, 'div', { class: 'bp-confirm bp-preflight', hidden: true, role: 'group', 'aria-label': 'Ready to run?' }, [
       el(doc, 'h4', { class: 'bp-preflight-title', text: 'Ready to run?' }),
-      el(doc, 'p', { class: 'mc-muted', text: phases.length + (phases.length === 1 ? ' phase' : ' phases') + ' on ' + EXECUTE_AGENT_ID + ', one model call each through the engine.' }),
+      el(doc, 'p', { class: 'mc-muted', text: 'Elarion analyzes the blueprint (' + phases.length + (phases.length === 1 ? ' phase' : ' phases') + '), plans the steps and runs them on ' + EXECUTE_AGENT_ID + ', ending with the deliverable files.' }),
       checkList,
       el(doc, 'div', { class: 'bp-preflight-actions' }, [confirmCancel, confirmRun]),
     ]);
@@ -355,20 +358,58 @@ export function mountBlueprintWorkspace(container, options = {}) {
     );
   }
 
+  // Follows a started run until it is no longer RUNNING (a choice step keeps it running while the operator answers).
+  // A few failed checks in a row (the tunnel blinking) are tolerated before giving up.
+  async function waitForRun(agentId, taskId) {
+    let misses = 0;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+      if (destroyed) throw new Error('Mission Control was closed; the run continues on the engine.');
+      try {
+        const record = await api.getTaskStatus(agentId, taskId);
+        misses = 0;
+        if (record.status !== 'RUNNING') return record;
+      } catch (error) {
+        if (++misses >= 5) throw error;
+      }
+    }
+  }
+
+  // Deploy & Execute: Elarion analyzes the blueprint and plans a DAG (POST /api/projects/run), then the run is
+  // followed to its end. An engine without project runs (404) runs the blueprint's phases as a plain task loop.
   async function execute(bp, deploy, confirmRow, deployStatus) {
     confirmRow.hidden = true;
     deploy.disabled = true;
     const taskId = 'deploy-' + bp.blueprint_id;
-    deployStatus.textContent = 'Running ' + taskId + '… progress is live in the Task Loop Monitor.';
+    deployStatus.textContent = 'Elarion is analyzing the blueprint and planning the run…';
     try {
-      const run = api.executeSubAgentTask(EXECUTE_AGENT_ID, taskId, blueprintToTaskSteps(bp));
-      onStarted(taskId);
-      const outcome = await run;
+      let started = null;
+      try {
+        started = await api.runProject(bp.blueprint_id, { agentId: EXECUTE_AGENT_ID });
+      } catch (error) {
+        if (!error || error.status !== 404) throw error;
+      }
+      let outcome;
+      if (started) {
+        onStarted(taskId);
+        const plan = started.plan;
+        deployStatus.textContent = 'Running ' + taskId + ': ' + (plan.planned_by === 'elarion' ? 'Elarion’s plan' : 'the blueprint’s phases') + ', ' + plan.steps.length + (plan.steps.length === 1 ? ' step' : ' steps') + ' then deliverables. Progress is live in the Task Loop Monitor.';
+        const record = await waitForRun(started.agent_id, taskId);
+        const stopped = record.interrupted_step_index ?? (record.failure ? record.failure.step_index : null);
+        outcome = { ...record, interrupted_step_id: stopped != null && record.plan[stopped] ? record.plan[stopped].step_id : undefined, project_plan: plan };
+      } else {
+        deployStatus.textContent = 'Running ' + taskId + '… progress is live in the Task Loop Monitor.';
+        const run = api.executeSubAgentTask(EXECUTE_AGENT_ID, taskId, blueprintToTaskSteps(bp));
+        onStarted(taskId);
+        outcome = await run;
+      }
       const tokens = outcome.total_tokens.input + outcome.total_tokens.output;
       deployStatus.textContent =
         outcome.status === 'COMPLETED'
-          ? 'Executed all ' + outcome.completed_steps + ' phases · ' + tokens.toLocaleString() + ' tokens.'
-          : 'Halted by the circuit breaker before ' + outcome.interrupted_step_id + ' (' + outcome.completed_steps + ' phases done).';
+          ? 'Executed all ' + outcome.completed_steps + ' steps · ' + tokens.toLocaleString() + ' tokens. Deliverables are under Outcomes & Deliverables.'
+          : outcome.status === 'FAILED'
+            ? 'Failed at ' + outcome.interrupted_step_id + ': ' + ((outcome.failure && outcome.failure.error) || 'unknown error') + ' (' + outcome.completed_steps + ' steps done).'
+            : 'Halted by the circuit breaker before ' + outcome.interrupted_step_id + ' (' + outcome.completed_steps + ' steps done).';
       onExecuted(outcome);
       onCompleted(bp, outcome);
     } catch (error) {

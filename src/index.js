@@ -10,6 +10,7 @@ import { renderMissionControlPage } from "./mission-control-page.js";
 import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { seedOnboardingGraph } from "./onboarding.js";
+import { handleSitesApi, serveSite } from "./sites.js";
 import { graphEventFor, publishGraphEvent, subscribeGraphEvents } from "./graph-events.js";
 
 // The live sync Durable Object (wrangler.jsonc durable_objects).
@@ -999,6 +1000,23 @@ export default {
         console.error("Share Ingest Error:", err);
         return jsonResponse({ error: "Saving failed." }, 500);
       }
+    }
+
+    // Endpoint 5e: Aether-hosted websites (src/sites.js). /api/sites drafts, lists, publishes (with the operator's
+    // explicit approval) and removes the signed-in user's sites; /s/<slug> serves the live page to anyone.
+    if (url.pathname === "/api/sites" || url.pathname.startsWith("/api/sites/")) {
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      try {
+        return await handleSitesApi(request, env, url, auth.user.id);
+      } catch (err) {
+        console.error("Sites Error:", err);
+        return jsonResponse({ error: "The site request failed." }, 500);
+      }
+    }
+    if (url.pathname.startsWith("/s/")) {
+      const viewer = url.searchParams.get("preview") === "1" ? await getSessionUser(request, env) : null;
+      return serveSite(request, env, url, viewer ? viewer.id : null);
     }
 
     // Endpoint 5d: Mission Control (src/mission-control-page.js): Elarion, the agent task monitor and the circuit breaker

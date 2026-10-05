@@ -503,6 +503,15 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .oc-phase p { margin: 6px 0 0; white-space: pre-wrap; color: var(--text-2); }
     .oc-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
     .oc-open-space { text-decoration: none; }
+    .oc-plan ul, .oc-plan ol { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--text-2); }
+    .oc-files { margin: 8px 0; }
+    .oc-files-title { display: block; margin-bottom: 6px; font-size: 13px; }
+    .oc-files ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+    .oc-file { padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-s, 6px); background: transparent; color: var(--text); font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; cursor: pointer; }
+    .oc-file:hover { border-color: var(--accent-line); color: var(--accent); }
+    .oc-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+    .oc-site-confirm { flex-basis: 100%; padding: 12px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); background: var(--accent-soft); }
+    .oc-site-confirm p { margin: 0 0 8px; overflow-wrap: anywhere; }
     @media (max-width: 680px) { .oc-outcomes-body { padding: 4px 14px 18px; } }
     /* Agent dialogue (public/js/engine/agent-dialogue.js): one thread per run, a coloured badge per agent. */
     .ad { padding: 8px 24px 24px; }

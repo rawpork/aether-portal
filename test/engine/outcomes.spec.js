@@ -1,7 +1,7 @@
 // Project flow: Space handoff, the "Ready to run?" preflight, and Outcomes & Deliverables.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { extractLinks, mountOutcomesList, PROJECT_PAYLOAD_KEY, PROJECT_RUNS_KEY, PROJECT_SOURCES_KEY, preflightChecks, runReport, takeProjectPayload } from '../../public/js/engine/outcomes.js';
+import { deliverableFiles, extractLinks, mountOutcomesList, PROJECT_PAYLOAD_KEY, PROJECT_RUNS_KEY, PROJECT_SOURCES_KEY, preflightChecks, runReport, safeRelativePath, takeProjectPayload } from '../../public/js/engine/outcomes.js';
 
 const memoryStorage = () => {
 	const data = new Map();
@@ -128,5 +128,77 @@ describe('Outcomes & Deliverables list', () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(posts).toHaveLength(1);
 		expect(JSON.parse(storage.getItem(PROJECT_RUNS_KEY))['deploy-bp_9']).toMatchObject({ project: 'Launch plan', nodeId: 'node_outcome_1', scaffold: ['README.md'] });
+	});
+});
+
+describe('project runs: plan, deliverable files and the live preview', () => {
+	const planStep = (preview) => ({ step_index: 0, step_id: 'plan', action: 'echo', output: { elarion_plan: { summary: 'Build the kit.', goals: ['Ship a page'], planned_by: 'elarion', preview_page: preview, dag: [{ id: 'build', title: 'Build', depends_on: [] }] } }, tokens: { input: 0, output: 0 } });
+	const files = 'Done.\n````file:README.md\n# Kit\n```sh\nnpm start\n```\n````\n````file:preview/index.html\n<!doctype html><title>Kit</title>\n````\n````file:../escape\nno\n````';
+	const project = (preview) => ({
+		task_id: 'deploy-bp_7', agent_id: 'master-brain', run_id: 'r7', status: 'COMPLETED', total_steps: 3, completed_steps: 3, started_at: 't', finished_at: 't2', total_tokens: { input: 5, output: 5 }, history: [], plan: [],
+		results: [planStep(preview), { step_index: 1, step_id: 'step-build', action: 'prompt', output: { response: 'Built.' }, tokens: { input: 1, output: 1 } }, { step_index: 2, step_id: 'deliverables', action: 'prompt', output: { response: files }, tokens: { input: 1, output: 1 } }],
+	});
+
+	it('reads the deliverable files safely, keeping fences inside them', () => {
+		expect(deliverableFiles(project(false))).toEqual([{ path: 'README.md', content: '# Kit\n```sh\nnpm start\n```' }, { path: 'preview/index.html', content: '<!doctype html><title>Kit</title>' }]);
+		expect(safeRelativePath('a/../../b')).toBeNull();
+	});
+
+	it('puts the plan, step titles and file contents into the report', () => {
+		const md = runReport(project(false), { project: 'Kit' });
+		expect(md).toMatch(/## Plan\n\nBuild the kit\.\n\n- Goal: Ship a page\n\n1\. Build/);
+		expect(md).toMatch(/## Build\n\nBuilt\./);
+		expect(md).toMatch(/## Deliverables\n/);
+		expect(md).toMatch(/## Deliverable files\n\n- `README.md`/);
+		expect(md).toMatch(/### README.md\n\n````\n# Kit/);
+		expect(md).not.toMatch(/## plan/);
+	});
+
+	const mountProject = async (preview) => {
+		const record = project(preview);
+		const storage = memoryStorage();
+		const posts = [];
+		const container = document.createElement('div');
+		document.body.append(container);
+		const engineFetch = async (url) => {
+			const json = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+			return new URL(url).pathname === '/api/tasks' ? json({ tasks: [record], counts: {} }) : json(record);
+		};
+		const portalFetch = async (url, init) => {
+			posts.push({ url, body: JSON.parse(init.body) });
+			const body = url === '/api/sites' ? { success: true, site: { slug: 'kit', status: 'draft', url: '/s/kit', unpublished_changes: false } } : { success: true, id: 'node_kit' };
+			return new Response(JSON.stringify(body), { status: 201, headers: { 'content-type': 'application/json' } });
+		};
+		const view = mountOutcomesList(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engineFetch }), storage, portalFetch });
+		await view.recordRun({ blueprint_id: 'bp_7', project_name: 'Kit', execution_phases: [], project_scaffold: [], sources: [] }, { status: 'COMPLETED', agent_id: 'master-brain' });
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+		return { container, posts, view };
+	};
+
+	it('drafts the preview page at /s/ when the blueprint asked for it, and publishes only after approval', async () => {
+		const { container, posts, view } = await mountProject(true);
+		expect(posts.map((p) => p.url)).toEqual(['/api/sites', '/api/outcomes']);
+		expect(posts[0].body).toEqual({ title: 'Kit', html: '<!doctype html><title>Kit</title>' });
+		expect(posts[1].body.report).toMatch(/## Live preview\n\n- \/s\/kit \(draft until approved/);
+		expect([...container.querySelectorAll('.oc-file')].map((b) => b.textContent)).toEqual(['⤓ README.md', '⤓ preview/index.html']);
+		expect(container.querySelector('.oc-preview a').getAttribute('href')).toBe('/s/kit?preview=1');
+		const confirm = container.querySelector('.oc-site-confirm');
+		expect(confirm.hidden).toBe(true);
+		container.querySelector('.oc-site-publish').click();
+		expect(confirm.hidden).toBe(false);
+		expect(posts.some((p) => p.url.endsWith('/publish'))).toBe(false);
+		container.querySelector('.oc-site-approve').click();
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+		expect(posts.at(-1)).toEqual({ url: '/api/sites/kit/publish', body: { approve: true } });
+		view.destroy();
+		container.remove();
+	});
+
+	it('writes no page when the blueprint did not ask for a preview', async () => {
+		const { container, posts, view } = await mountProject(false);
+		expect(posts.map((p) => p.url)).toEqual(['/api/outcomes']);
+		expect(container.querySelector('.oc-preview')).toBeNull();
+		view.destroy();
+		container.remove();
 	});
 });
