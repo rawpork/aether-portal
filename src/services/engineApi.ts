@@ -146,6 +146,12 @@ export interface ChatResponse {
 }
 
 // GET /api/roadmap: ROADMAP.md's phases and goals, recent Claude Code sessions (metadata only) and the memory index.
+export interface SkillIngestResult {
+	draft: { slug: string; name: string; description: string; markdown: string; source: { kind: 'github' | 'url' | 'text'; url: string | null; title: string } };
+	exists: boolean;
+	model?: string;
+}
+
 export interface RoadmapGoal {
 	text: string;
 	detail: string;
@@ -800,6 +806,19 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 				signal: opts.signal,
 				acceptStatuses: [423],
 			});
+		},
+
+		// POST /api/skills/ingest: Elarion reads a link (GitHub repo, web page) or pasted text and drafts a SKILL.md.
+		// Nothing is saved; saveSkill writes it. Reading and drafting take up to two minutes.
+		ingestSkill(source: string, opts: { name?: string } = {}): Promise<SkillIngestResult> {
+			requireText('source', source);
+			return request<SkillIngestResult>('POST', '/api/skills/ingest', { body: { source, name: opts.name }, timeoutMs: PROJECT_PLAN_TIMEOUT_MS });
+		},
+
+		// POST /api/skills/save: writes Aether_Engine/skills/<slug>/SKILL.md (409 if it exists and replace is not set).
+		saveSkill(slug: string, markdown: string, opts: { replace?: boolean } = {}): Promise<{ saved: true; slug: string; file: string }> {
+			requireText('slug', slug);
+			return request('POST', '/api/skills/save', { body: { slug, markdown, replace: opts.replace === true } });
 		},
 
 		// GET /api/roadmap: the project's roadmap and recent sessions, read on the engine's computer.

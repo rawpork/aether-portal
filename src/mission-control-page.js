@@ -301,6 +301,27 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     /* ---------- Overview */
     #mc-workforce { display: flex; flex-direction: column; gap: 20px; }
     .wf-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border: 1px solid var(--alert-line); border-radius: var(--radius-m); background: var(--alert-soft); color: var(--alert); font-size: 13px; }
+    /* Decision center (decision-center.js): the banner slot on every view and the numbered choice popups. */
+    #mc-next { max-width: 1240px; margin: 0 auto 16px; }
+    body[data-view="elaron"] #mc-next { width: 100%; }
+    .dc-scrim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(4, 8, 14, 0.62); }
+    .dc-modal { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); color: var(--text); }
+    .dc-modal[data-kind="alert"], .dc-modal[data-kind="go"] { border-color: var(--accent-line); }
+    .dc-modal[data-kind="warn"] { border-color: var(--danger-line); }
+    .dc-title { margin: 0 0 8px; font-size: 18px; }
+    .dc-body { margin: 0 0 14px; color: var(--text-2); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .dc-working::after { content: " …"; }
+    .dc-options { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .dc-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+    .dc-option:hover, .dc-option:focus-visible { border-color: var(--accent); outline: none; }
+    .dc-num { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: var(--radius-s); background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; }
+    .dc-option-text { display: flex; flex-direction: column; min-width: 0; }
+    .dc-option-label { font-size: 14px; font-weight: 600; }
+    .dc-option-hint { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .dc-keys { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+    .dc-preview { margin: 0 0 12px; padding: 10px 12px; max-height: 40vh; overflow: auto; border-radius: var(--radius-s); background: var(--surface-soft); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .dc-editor { width: 100%; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-soft); color: var(--text); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
+    .dc-warn { margin: 0 0 12px; color: var(--off); font-size: 13px; }
     /* "Do this next" (workforce.js nextAction) and the live pulse card. */
     .wf-next { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; padding: 16px 20px; border: 1px solid var(--accent-line); border-left: 4px solid var(--accent); border-radius: var(--radius-m); background: var(--surface); }
     .wf-next[data-kind="warn"] { border-color: var(--alert-line); border-left-color: var(--alert); }
@@ -1190,6 +1211,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       </div>
     </header>
     <main class="mc-main">
+      <section id="mc-next" aria-label="Do this next" hidden></section>
       <div class="mc-view" id="mc-view-overview"><div id="mc-workforce"></div></div>
       <div class="mc-view" id="mc-view-studio" hidden>
         <section class="surface mc-panel" aria-labelledby="mc-studio-title">
@@ -1236,7 +1258,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     </main>
     <form class="mc-command" id="mc-command" autocomplete="off" aria-label="Command bar">
       <label class="mc-visually-hidden" for="mc-command-input">Ask Elarion</label>
-      <input id="mc-command-input" type="text" enterkeyhint="send" placeholder="Ask Elarion, or describe what to do…" maxlength="4000">
+      <input id="mc-command-input" type="text" enterkeyhint="send" placeholder="Ask Elarion, or add repo <link> to learn a skill…" maxlength="4000">
       <button type="button" class="mic" id="mc-command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone">${ICONS.mic}</button>
       <button type="submit">Send</button>
     </form>

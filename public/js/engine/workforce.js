@@ -278,6 +278,8 @@ export function mountWorkforce(container, options = {}) {
   const onAgentsChange = options.onAgentsChange || (() => {});
   // Opens a Mission Control view for the "Do this next" button (connect, operator, blueprints).
   const onNavigate = options.onNavigate || (() => {});
+  // false when the page shows the banner itself (Mission Control's decision center does, on every view).
+  const showNext = options.showNext !== false;
   const storage = options.storage || (() => { try { return win.localStorage; } catch { return null; } })();
   const now = options.now || (() => Date.now());
 
@@ -640,6 +642,7 @@ export function mountWorkforce(container, options = {}) {
   }
 
   function renderNext() {
+    if (!showNext) return;
     let runs = {};
     try {
       runs = JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {};
@@ -891,6 +894,12 @@ export function mountWorkforce(container, options = {}) {
 
   return {
     refresh,
+    // Opens the selected agent's Live activity (the decision center's "Watch live").
+    showActivity() {
+      detailTab = 'activity';
+      renderDetail(true);
+      if (detail.scrollIntoView) detail.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    },
     selectAgent,
     setTab,
     getAgents: () => agents,

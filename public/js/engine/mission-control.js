@@ -12,6 +12,7 @@ import { mountOperatorConsole } from './operator-console.js';
 import { mountAgentDialogue } from './agent-dialogue.js';
 import { mountDualAgents } from './dual-agents.js';
 import { mountRoadmap } from './roadmap.js';
+import { mountDecisionCenter, skillCommandSource } from './decision-center.js';
 import { mountCommandBar } from './command-bar.js';
 import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
 import { mountStudioCanvas } from './studio-canvas.js';
@@ -345,6 +346,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     onOpenElarion: () => tabs.select('elaron', true),
     onNavigate: (view) => tabs.select(view, true),
     storage: options.storage,
+    showNext: false,
     // Sidebar: agent count, and the compute card (tokens spent; the bar is the share of runs that completed).
     onAgentsChange: (agents, counts) => {
       if (agentBadge) agentBadge.textContent = String(agents.length);
@@ -394,6 +396,12 @@ export async function mountMissionControl(doc = document, options = {}) {
     mic: byId('mc-command-mic'),
     win: doc.defaultView || globalThis,
     onSubmit: (text) => {
+      // "add repo <link>", "add skill <link or text>", "learn <...>": Elarion drafts a SKILL.md to review and save.
+      const source = skillCommandSource(text);
+      if (source && decisions) {
+        decisions.learn(source);
+        return;
+      }
       tabs.select('elaron');
       if (!dock.send(text)) {
         // Busy or halted: leave the text in the dock's own box so it isn't lost.
@@ -403,6 +411,19 @@ export async function mountMissionControl(doc = document, options = {}) {
     },
   }) : null;
   const stopHeader = startHeader(doc);
+  // The "Do this next" banner on every view, and numbered choice popups for decisions, finished runs and skills.
+  const decisions = options.decisions === false ? null : mountDecisionCenter(doc, {
+    api,
+    slot: byId('mc-next'),
+    storage: options.storage,
+    onNavigate: (view) => {
+      if (view === 'activity') {
+        tabs.select('overview', true);
+        workforce.showActivity();
+      } else if (view === 'connect') tabs.select('connect', true);
+      else tabs.select(view, true);
+    },
+  });
   offerPairingFromLink(doc, wizard, tabs);
   try {
     importProject(doc, blueprints, tabs, options.storage || (doc.defaultView && doc.defaultView.localStorage));
@@ -411,7 +432,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   }
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, outcomes, operator, dialogue, dual, roadmap, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();
