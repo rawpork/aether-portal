@@ -491,6 +491,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .bp-check[data-ok="no"] .bp-check-mark, .bp-check[data-ok="no"] strong { color: var(--danger-text); }
     .bp-check[data-ok="note"] .bp-check-mark { color: var(--muted); }
     .bp-preflight-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .bp-website { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0 2px; border-top: 1px solid var(--accent-line); font-size: 13px; line-height: 1.45; cursor: pointer; }
+    .bp-website-box { flex: none; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
     #mc-outcomes { margin-top: 20px; }
     .oc-outcomes-body { padding: 4px 24px 24px; }
     .oc-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }

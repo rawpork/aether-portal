@@ -809,10 +809,11 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 
 		// POST /api/projects/run: Elarion analyzes the stored blueprint, plans a DAG and starts it as deploy-<id>.
 		// Planning is one model call, so this waits up to PROJECT_PLAN_TIMEOUT_MS; follow the run with getTaskStatus.
-		runProject(blueprintId: string, opts: { agentId?: string; signal?: AbortSignal } = {}): Promise<ProjectRunStarted> {
+		// deliver: 'website' asks for a live website page (preview/index.html), drafted at /s/<slug> by the portal.
+		runProject(blueprintId: string, opts: { agentId?: string; deliver?: 'website'; signal?: AbortSignal } = {}): Promise<ProjectRunStarted> {
 			requireText('blueprintId', blueprintId);
 			return request<ProjectRunStarted>('POST', '/api/projects/run', {
-				body: { blueprint_id: blueprintId, agent_id: opts.agentId },
+				body: { blueprint_id: blueprintId, agent_id: opts.agentId, deliver: opts.deliver },
 				timeoutMs: PROJECT_PLAN_TIMEOUT_MS,
 				signal: opts.signal,
 			});

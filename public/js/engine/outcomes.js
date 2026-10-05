@@ -164,6 +164,7 @@ export function projectPlanOf(record) {
 export function stepName(record, run, stepId) {
   if (run.phaseNames && run.phaseNames[stepId]) return run.phaseNames[stepId];
   if (stepId === 'deliverables') return 'Deliverables';
+  if (stepId === 'review') return 'Goal check & fixes';
   const plan = projectPlanOf(record);
   const node = plan && Array.isArray(plan.dag) ? plan.dag.find((d) => 'step-' + d.id === stepId) : null;
   return node ? node.title : stepId;

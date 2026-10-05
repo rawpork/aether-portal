@@ -12,6 +12,12 @@ import { runPreflight } from './outcomes.js';
 
 export const EXECUTE_AGENT_ID = 'master-brain';
 
+// Whether a blueprint talks about a website, which pre-ticks "Deliver a live website" on the preflight card.
+export function mentionsWebsite(bp) {
+  const text = [bp.project_name, ...(bp.execution_phases || []).flatMap((p) => [p.phase_name, p.prompt_template]), ...(bp.sources || []).map((s) => s.scraped_summary || '')].join(' ');
+  return /\b(web ?site|web ?page|landing page|home ?page|preview (page|site))\b/i.test(text);
+}
+
 function el(doc, tag, props = {}, children = []) {
   const node = doc.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
@@ -275,12 +281,20 @@ export function mountBlueprintWorkspace(container, options = {}) {
     const deployStatus = el(doc, 'p', { class: 'bp-deploy-status mc-muted', 'aria-live': 'polite' });
     const confirmCancel = el(doc, 'button', { type: 'button', class: 'toggle-button bp-confirm-cancel', text: 'Cancel' });
     const confirmRun = el(doc, 'button', { type: 'button', class: 'bp-primary bp-confirm-run', text: 'Run blueprint' });
+    // Website delivery: the run also builds a live website, drafted at /s/<slug> and public only after Approve & publish.
+    const websiteBox = el(doc, 'input', { type: 'checkbox', class: 'bp-website-box' });
+    websiteBox.checked = mentionsWebsite(bp);
+    const websiteRow = el(doc, 'label', { class: 'bp-website' }, [
+      websiteBox,
+      el(doc, 'span', {}, [el(doc, 'strong', { text: 'Deliver a live website' }), doc.createTextNode(' · hosted by Aether at /s/your-site. You preview it, and it goes public only when you approve it.')]),
+    ]);
     // "Ready to run?" preflight: engine connection, model keys, budget and an estimate, before anything is spent.
     const checkList = el(doc, 'ul', { class: 'bp-checks' });
     const confirmRow = el(doc, 'div', { class: 'bp-confirm bp-preflight', hidden: true, role: 'group', 'aria-label': 'Ready to run?' }, [
       el(doc, 'h4', { class: 'bp-preflight-title', text: 'Ready to run?' }),
       el(doc, 'p', { class: 'mc-muted', text: 'Elarion analyzes the blueprint (' + phases.length + (phases.length === 1 ? ' phase' : ' phases') + '), plans the steps and runs them on ' + EXECUTE_AGENT_ID + ', ending with the deliverable files.' }),
       checkList,
+      websiteRow,
       el(doc, 'div', { class: 'bp-preflight-actions' }, [confirmCancel, confirmRun]),
     ]);
     const showPreflight = async () => {
@@ -309,7 +323,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
       confirmRow.hidden = true;
       deploy.focus();
     });
-    confirmRun.addEventListener('click', () => execute(bp, deploy, confirmRow, deployStatus));
+    confirmRun.addEventListener('click', () => execute(bp, deploy, confirmRow, deployStatus, { website: websiteBox.checked }));
 
     const json = JSON.stringify(bp, null, 2);
     const download = el(doc, 'button', { type: 'button', class: 'toggle-button bp-download', text: 'Download JSON' });
@@ -377,7 +391,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
 
   // Deploy & Execute: Elarion analyzes the blueprint and plans a DAG (POST /api/projects/run), then the run is
   // followed to its end. An engine without project runs (404) runs the blueprint's phases as a plain task loop.
-  async function execute(bp, deploy, confirmRow, deployStatus) {
+  async function execute(bp, deploy, confirmRow, deployStatus, { website = false } = {}) {
     confirmRow.hidden = true;
     deploy.disabled = true;
     const taskId = 'deploy-' + bp.blueprint_id;
@@ -385,7 +399,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
     try {
       let started = null;
       try {
-        started = await api.runProject(bp.blueprint_id, { agentId: EXECUTE_AGENT_ID });
+        started = await api.runProject(bp.blueprint_id, { agentId: EXECUTE_AGENT_ID, deliver: website ? 'website' : undefined });
       } catch (error) {
         if (!error || error.status !== 404) throw error;
       }
@@ -393,7 +407,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
       if (started) {
         onStarted(taskId);
         const plan = started.plan;
-        deployStatus.textContent = 'Running ' + taskId + ': ' + (plan.planned_by === 'elarion' ? 'Elarion’s plan' : 'the blueprint’s phases') + ', ' + plan.steps.length + (plan.steps.length === 1 ? ' step' : ' steps') + ' then deliverables. Progress is live in the Task Loop Monitor.';
+        deployStatus.textContent = 'Running ' + taskId + ': ' + (plan.planned_by === 'elarion' ? 'Elarion’s plan' : 'the blueprint’s phases') + ', ' + plan.steps.length + (plan.steps.length === 1 ? ' step' : ' steps') + ', then deliverables' + (plan.preview_page ? ' and the website' : '') + ' and a goal check. Progress is live in the Task Loop Monitor.';
         const record = await waitForRun(started.agent_id, taskId);
         const stopped = record.interrupted_step_index ?? (record.failure ? record.failure.step_index : null);
         outcome = { ...record, interrupted_step_id: stopped != null && record.plan[stopped] ? record.plan[stopped].step_id : undefined, project_plan: plan };

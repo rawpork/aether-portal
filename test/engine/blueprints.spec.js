@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
 import { EXAMPLE_SPEC } from '../../public/js/engine/blueprint-spec.js';
-import { mountBlueprintWorkspace } from '../../public/js/engine/blueprints.js';
+import { mentionsWebsite, mountBlueprintWorkspace } from '../../public/js/engine/blueprints.js';
 
 function compiledFrom(spec, n) {
   return {
@@ -299,11 +299,31 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     await settle();
     const run = engine.calls.find((c) => c.pathname === '/api/projects/run');
     expect(run.body).toEqual({ blueprint_id: 'bp_00000001_1790000000001', agent_id: 'master-brain' });
+    expect(confirm.querySelector('.bp-website-box').checked).toBe(false);
     expect(engine.calls.some((c) => c.pathname === '/api/agents/execute-task')).toBe(false);
     expect(engine.calls.filter((c) => c.pathname === '/api/agents/master-brain/tasks/deploy-bp_00000001_1790000000001')).toHaveLength(2);
     expect(started).toEqual(['deploy-bp_00000001_1790000000001']);
     expect(executed).toEqual(['COMPLETED']);
     expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Executed all 4 steps · 380 tokens. Deliverables are under Outcomes & Deliverables.');
+  });
+
+  it('Pro: ticking "Deliver a live website" asks the engine for a website', async () => {
+    await mount({ tier: 'pro' });
+    await compileExample();
+    ws.elements.viewer.querySelector('.bp-deploy').click();
+    await settle();
+    const confirm = ws.elements.viewer.querySelector('.bp-confirm');
+    expect(confirm.querySelector('.bp-website').textContent).toMatch(/Deliver a live website · hosted by Aether at \/s\/your-site/);
+    confirm.querySelector('.bp-website-box').click();
+    confirm.querySelector('.bp-confirm-run').click();
+    await settle();
+    expect(engine.calls.find((c) => c.pathname === '/api/projects/run').body).toEqual({ blueprint_id: 'bp_00000001_1790000000001', agent_id: 'master-brain', deliver: 'website' });
+  });
+
+  it('pre-ticks website delivery when the blueprint talks about a website', () => {
+    expect(mentionsWebsite({ project_name: 'Bakery landing page' })).toBe(true);
+    expect(mentionsWebsite({ project_name: 'Sync', execution_phases: [{ phase_name: 'Build', prompt_template: 'Make the website.' }] })).toBe(true);
+    expect(mentionsWebsite({ project_name: 'Knowledge sync', sources: [{ scraped_summary: 'Edge SQLite' }] })).toBe(false);
   });
 
   it('Pro: an engine without project runs gets the blueprint phases as a plain task loop', async () => {
