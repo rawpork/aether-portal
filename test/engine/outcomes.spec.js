@@ -1,7 +1,7 @@
 // Project flow: Space handoff, the "Ready to run?" preflight, and Outcomes & Deliverables.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { deliverableFiles, extractLinks, mountOutcomesList, PROJECT_PAYLOAD_KEY, PROJECT_RUNS_KEY, PROJECT_SOURCES_KEY, preflightChecks, runReport, safeRelativePath, takeProjectPayload } from '../../public/js/engine/outcomes.js';
+import { deliverableFiles, extractLinks, finishCheckOf, mountOutcomesList, PROJECT_PAYLOAD_KEY, PROJECT_RUNS_KEY, PROJECT_SOURCES_KEY, preflightChecks, runReport, safeRelativePath, takeProjectPayload } from '../../public/js/engine/outcomes.js';
 
 const memoryStorage = () => {
 	const data = new Map();
@@ -198,6 +198,38 @@ describe('project runs: plan, deliverable files and the live preview', () => {
 		const { container, posts, view } = await mountProject(false);
 		expect(posts.map((p) => p.url)).toEqual(['/api/outcomes']);
 		expect(container.querySelector('.oc-preview')).toBeNull();
+		view.destroy();
+		container.remove();
+	});
+});
+
+describe('missing pieces and the finish line', () => {
+	const record = {
+		task_id: 'deploy-bp_8', agent_id: 'master-brain', run_id: 'r8', status: 'COMPLETED', total_steps: 4, completed_steps: 4, started_at: 't', finished_at: 't2', total_tokens: { input: 1, output: 1 }, history: [], plan: [],
+		results: [
+			{ step_index: 0, step_id: 'plan', action: 'echo', output: { elarion_plan: { summary: 'S', goals: ['G'], planned_by: 'elarion', preview_page: false, dag: [], gaps: [{ kind: 'auth', need: 'Wire the API key.', evidence: 'get an API key' }] } } },
+			{ step_index: 1, step_id: 'gap-fill', action: 'prompt', output: { response: 'Filled.' } },
+			{ step_index: 2, step_id: 'finish-line', action: 'prompt', output: { response: 'Done.', finish_check: { placeholders_before: 2, placeholders_after: 0, repairs: 1, remaining: [] } } },
+		],
+	};
+
+	it('names the new steps, and the report lists the gaps and the finish line', () => {
+		expect(finishCheckOf(record)).toMatchObject({ placeholders_after: 0, repairs: 1 });
+		const md = runReport(record, { project: 'Weather' });
+		expect(md).toMatch(/## Missing pieces found\n\n- auth: Wire the API key\. \("get an API key"\)/);
+		expect(md).toMatch(/## Finish line\n\n- Placeholders left: 0 \(fixed 2 in 1 pass\)/);
+		expect(md).toMatch(/## Missing pieces filled\n\nFilled\./);
+		expect(md).toMatch(/## Finish line & polish\n\nDone\./);
+	});
+
+	it('shows the finish-line badge on the run', async () => {
+		const container = document.createElement('div');
+		document.body.append(container);
+		const json = (d) => new Response(JSON.stringify(d), { status: 200, headers: { 'content-type': 'application/json' } });
+		const view = mountOutcomesList(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: async (url) => (new URL(url).pathname === '/api/tasks' ? json({ tasks: [record], counts: {} }) : json(record)) }), storage: memoryStorage(), portalFetch: async () => json({ sites: [] }) });
+		for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+		expect(container.querySelector('.oc-finish').textContent).toBe('✓ Finish line: no TODOs or placeholders left (Elarion fixed 2)');
+		expect(container.querySelector('.oc-gaps li').textContent).toBe('auth: Wire the API key.');
 		view.destroy();
 		container.remove();
 	});

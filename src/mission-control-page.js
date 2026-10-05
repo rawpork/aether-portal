@@ -613,6 +613,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .rm-error { color: var(--danger-text); }
     @media (max-width: 680px) { .rm-body { padding: 4px 14px 18px; } }
     .oc-plan ul, .oc-plan ol { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--text-2); }
+    .oc-gaps-title { margin: 10px 0 0; font-size: 13px; font-weight: 600; }
+    .oc-finish { margin: 8px 0; font-size: 13px; font-weight: 600; color: var(--ok); }
+    .oc-finish[data-ok="false"] { color: var(--danger-text); }
     .oc-files { margin: 8px 0; }
     .oc-files-title { display: block; margin-bottom: 6px; font-size: 13px; }
     .oc-files ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }

@@ -154,6 +154,12 @@ export function deliverableFiles(record) {
   return [...files].map(([path, content]) => ({ path, content }));
 }
 
+// The finish-line guard's result: { placeholders_before, placeholders_after, repairs, remaining } or null.
+export function finishCheckOf(record) {
+  const step = (record.results || []).find((r) => r.step_id === 'finish-line');
+  return (step && step.output && step.output.finish_check) || null;
+}
+
 // Elarion's plan from a project run (its "plan" step), or null for plain phase runs.
 export function projectPlanOf(record) {
   const step = (record.results || []).find((r) => r.step_id === 'plan');
@@ -165,6 +171,8 @@ export function stepName(record, run, stepId) {
   if (run.phaseNames && run.phaseNames[stepId]) return run.phaseNames[stepId];
   if (stepId === 'deliverables') return 'Deliverables';
   if (stepId === 'review') return 'Goal check & fixes';
+  if (stepId === 'gap-fill') return 'Missing pieces filled';
+  if (stepId === 'finish-line') return 'Finish line & polish';
   const plan = projectPlanOf(record);
   const node = plan && Array.isArray(plan.dag) ? plan.dag.find((d) => 'step-' + d.id === stepId) : null;
   return node ? node.title : stepId;
@@ -181,7 +189,10 @@ export function runReport(record, run = {}) {
     lines.push('## Plan', '', plan.summary || '', '');
     if (plan.goals && plan.goals.length) lines.push(...plan.goals.map((g) => '- Goal: ' + g), '');
     if (plan.dag && plan.dag.length) lines.push(...plan.dag.map((d, i) => (i + 1) + '. ' + d.title + (d.depends_on.length ? ' (after ' + d.depends_on.join(', ') + ')' : '')), '');
+    if (plan.gaps && plan.gaps.length) lines.push('## Missing pieces found', '', ...plan.gaps.map((g) => '- ' + g.kind + ': ' + g.need + (g.evidence ? ' ("' + g.evidence + '")' : '')), '');
   }
+  const finish = finishCheckOf(record);
+  if (finish) lines.push('## Finish line', '', '- Placeholders left: ' + finish.placeholders_after + (finish.repairs ? ' (fixed ' + finish.placeholders_before + ' in ' + finish.repairs + (finish.repairs === 1 ? ' pass' : ' passes') + ')' : ''), '');
   for (const result of record.results || []) {
     if (result.step_id === 'plan') continue;
     lines.push('## ' + stepName(record, run, result.step_id), '', responseOf(result).trim() || '_(no text)_', '');
@@ -346,7 +357,15 @@ export function mountOutcomesList(container, options = {}) {
         el(doc, 'p', { text: [plan.summary, plan.fallback_reason ? '(' + plan.fallback_reason + ')' : ''].filter(Boolean).join(' ') }),
         el(doc, 'ul', { class: 'oc-goals' }, (plan.goals || []).map((g) => el(doc, 'li', { text: g }))),
         el(doc, 'ol', { class: 'oc-dag' }, (plan.dag || []).map((d) => el(doc, 'li', { text: d.title + (d.depends_on.length ? ' ← ' + d.depends_on.map((id) => stepName(record, run, 'step-' + id)).join(', ') : '') }))),
+        plan.gaps && plan.gaps.length ? el(doc, 'p', { class: 'oc-gaps-title', text: 'Missing pieces Elarion found and filled:' }) : doc.createTextNode(''),
+        plan.gaps && plan.gaps.length ? el(doc, 'ul', { class: 'oc-gaps' }, plan.gaps.map((g) => el(doc, 'li', { text: g.kind + ': ' + g.need }))) : doc.createTextNode(''),
       ])
+      : doc.createTextNode('');
+    const finish = finishCheckOf(record);
+    const finishBadge = finish
+      ? el(doc, 'p', { class: 'oc-finish', 'data-ok': String(finish.placeholders_after === 0), text: finish.placeholders_after === 0
+        ? '✓ Finish line: no TODOs or placeholders left' + (finish.repairs ? ' (Elarion fixed ' + finish.placeholders_before + ')' : '')
+        : '! Finish line: ' + finish.placeholders_after + ' placeholder' + (finish.placeholders_after === 1 ? '' : 's') + ' still left. See the Finish line step.' })
       : doc.createTextNode('');
     const files = deliverableFiles(record);
     const fileBlock = files.length
@@ -377,6 +396,7 @@ export function mountOutcomesList(container, options = {}) {
       el(doc, 'p', { class: 'mc-muted oc-run-meta', text: record.completed_steps + '/' + record.total_steps + ' steps · ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString() + ' tokens · ' + String(record.finished_at || record.started_at).slice(0, 16).replace('T', ' ') }),
       linkRow,
       run.siteSlug ? previewRow(record, run) : doc.createTextNode(''),
+      finishBadge,
       fileBlock,
       planBlock,
       phases,
