@@ -301,6 +301,28 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     /* ---------- Overview */
     #mc-workforce { display: flex; flex-direction: column; gap: 20px; }
     .wf-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border: 1px solid var(--alert-line); border-radius: var(--radius-m); background: var(--alert-soft); color: var(--alert); font-size: 13px; }
+    /* "Do this next" (workforce.js nextAction) and the live pulse card. */
+    .wf-next { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; padding: 16px 20px; border: 1px solid var(--accent-line); border-left: 4px solid var(--accent); border-radius: var(--radius-m); background: var(--surface); }
+    .wf-next[data-kind="warn"] { border-color: var(--alert-line); border-left-color: var(--alert); }
+    .wf-next[data-kind="alert"] { border-left-color: var(--alert); }
+    .wf-next-text { flex: 1 1 320px; min-width: 0; }
+    .wf-next-text .eyebrow { margin: 0 0 2px; }
+    .wf-next-title { margin: 0; font-size: 17px; font-weight: 600; }
+    .wf-next-sub { margin: 4px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+    .wf-next-go { flex: none; }
+    .pulse { margin: 4px 0 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .pulse[data-state="working"], .pulse[data-state="waiting"] { border-color: var(--accent-line); }
+    .pulse[data-state="failed"], .pulse[data-state="halted"] { border-color: var(--danger-line); }
+    .pulse .eyebrow { margin: 0; }
+    .pulse-step { margin: 4px 0 2px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+    .pulse-since { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+    .pulse-error { margin: 6px 0; color: var(--off); font-size: 13px; overflow-wrap: anywhere; }
+    .pulse-bar { height: 4px; margin: 8px 0 10px; border-radius: 999px; background: var(--line); overflow: hidden; }
+    .pulse-bar span { display: block; height: 100%; background: var(--accent); }
+    .pulse details { margin-top: 8px; }
+    .pulse summary, .tl-more summary { cursor: pointer; color: var(--accent); font-size: 12px; font-weight: 600; }
+    .pulse-text { margin: 6px 0 0; padding: 10px 12px; max-height: 320px; overflow: auto; border-radius: var(--radius-s); background: var(--surface); color: var(--text-2); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .tl-more { margin-top: 4px; }
     .wf-banner[data-kind="error"] { border-color: var(--danger-line); background: var(--danger-soft); color: var(--off); }
     .wf-overview { padding: 24px 28px 4px; }
     .wf-overview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }

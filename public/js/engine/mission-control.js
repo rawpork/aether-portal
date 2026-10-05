@@ -343,6 +343,8 @@ export async function mountMissionControl(doc = document, options = {}) {
     portalFetch: options.portalFetch,
     onConnect: () => tabs.select('connect', true),
     onOpenElarion: () => tabs.select('elaron', true),
+    onNavigate: (view) => tabs.select(view, true),
+    storage: options.storage,
     // Sidebar: agent count, and the compute card (tokens spent; the bar is the share of runs that completed).
     onAgentsChange: (agents, counts) => {
       if (agentBadge) agentBadge.textContent = String(agents.length);

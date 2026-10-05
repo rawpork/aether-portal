@@ -6,6 +6,8 @@ import {
   EMERGENCY_REASON,
   PAUSE_REASON,
   activityItems,
+  nextAction,
+  runPulse,
   mountWorkforce,
   outputLines,
   summarizeAgent,
@@ -218,3 +220,80 @@ describe('mounted overview', () => {
     expect(container.querySelector('.metric-value').textContent).toBe('—');
   });
 });
+
+describe('finger on the pulse', () => {
+  const withPlan = {
+    ...runningRecord,
+    plan: [
+      { step_id: 'map-schema', action: 'prompt', summary: 'Map the old schema to the new one.' },
+      { step_id: 'validate-deps', action: 'echo', summary: '' },
+      { step_id: 'generate-sequence', action: 'prompt', summary: 'Write the migration SQL for every table.' },
+      { step_id: 'ship', action: 'prompt', summary: 'Ship it.' },
+    ],
+  };
+
+  it('timeline entries carry what a step was asked and what it wrote', () => {
+    const items = activityItems(withPlan);
+    expect(items[0]).toMatchObject({ title: 'Step started', text: 'Write the migration SQL for every table.', textLabel: 'What it was asked' });
+    expect(items.find((i) => i.title === 'Step completed' && i.detail.startsWith('Map Schema'))).toMatchObject({ text: 'Schema mapped.', textLabel: 'What it wrote' });
+  });
+
+  it('runPulse names the step being worked on, since when, and the latest output', () => {
+    expect(runPulse(withPlan)).toMatchObject({ state: 'working', index: 2, step: 'Generate Sequence', asked: 'Write the migration SQL for every table.', since: iso(60000), done: 2, total: 4, last: { step: 'Validate Deps', text: '12,480 records checked' } });
+    expect(runPulse({ ...withPlan, awaiting: { question: 'Ship to prod?', options: ['Yes', 'No'] } })).toMatchObject({ state: 'waiting', question: 'Ship to prod?' });
+    expect(runPulse({ ...withPlan, status: 'FAILED', failure: { step_index: 2, error: 'HTTP 503: overloaded' } })).toMatchObject({ state: 'failed', error: 'HTTP 503: overloaded' });
+    expect(runPulse(null)).toBeNull();
+  });
+
+  it('nextAction names one thing to do, in priority order', () => {
+    const done = { task_id: 'deploy-bp_1', status: 'COMPLETED', completed_steps: 5, total_steps: 5, finished_at: '2026-10-05T01:00:00Z' };
+    expect(nextAction({ error: { isUnreachable: true } })).toMatchObject({ title: 'Start the engine', action: { view: 'connect' } });
+    expect(nextAction({ tasks: [{ ...runningTask, awaiting: { question: 'Ship?' } }] })).toMatchObject({ title: 'Elarion is waiting for your answer', action: { view: 'operator' } });
+    expect(nextAction({ tasks: [runningTask] }).text).toMatch(/^customer-migration · step 3 of 4\./);
+    expect(nextAction({ tasks: [done], runs: { 'deploy-bp_1': { siteSlug: 'kit', nodeId: 'n' } } })).toMatchObject({ title: 'Your website draft is ready', action: { view: 'blueprints' } });
+    expect(nextAction({ tasks: [done], runs: {} }).title).toBe('Your project finished');
+    expect(nextAction({ tasks: [{ ...done, status: 'FAILED' }] }).title).toBe('The last project run failed');
+    expect(nextAction({ tasks: [] }).title).toBe('Start your first project');
+    expect(nextAction({ tasks: [done], runs: { 'deploy-bp_1': { nodeId: 'n', siteSlug: 'kit', sitePublished: true } } }).text).toMatch(/website is live/);
+  });
+
+  it('the overview shows the banner and the pulse card, and a poll never scrolls the page', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const fetch = async (url) => {
+      const { pathname } = new URL(url);
+      const json = (d) => new Response(JSON.stringify(d), { status: 200, headers: { 'content-type': 'application/json' } });
+      if (pathname === '/api/tasks') return json({ tasks: [runningTask], counts: { running: 1, completed: 0, halted: 0, failed: 0 } });
+      if (pathname.endsWith('/state')) return json({ agent_id: 'atlas', state: 'ACTIVE' });
+      return json(withPlan);
+    };
+    const navigated = [];
+    const view = mountWorkforce(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch }), now: () => NOW, onNavigate: (v) => navigated.push(v), storage: { getItem: () => null } });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(container.querySelector('.wf-next-title').textContent).toBe('A run is in progress');
+    expect(container.querySelector('.pulse-step').textContent).toBe('Generate Sequence');
+    expect(container.querySelector('[data-pulse-since]').textContent).toBe('00:01:00');
+    expect(container.querySelector('.pulse-last summary').textContent).toBe('Just finished: Validate Deps');
+    const focusCalls = [];
+    const original = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (opts) { focusCalls.push(opts); };
+    try {
+      container.querySelector('.subtabs [role="tab"]').focus = original;
+      container.querySelector('.subtabs [role="tab"]').focus();
+      withPlanTick(withPlan);
+      await view.refresh();
+      await new Promise((r) => setTimeout(r, 30));
+    } finally {
+      HTMLElement.prototype.focus = original;
+    }
+    expect(focusCalls.length).toBeGreaterThan(0);
+    expect(focusCalls.every((o) => o && o.preventScroll === true)).toBe(true);
+    view.destroy();
+    container.remove();
+  });
+});
+
+// A poll that moves the run along (one more history entry), so the detail panel is rebuilt.
+function withPlanTick(record) {
+  record.history = [...record.history, { at: iso(30000), event: 'STEP_COMPLETED', step_index: 2, step_id: 'generate-sequence' }];
+}

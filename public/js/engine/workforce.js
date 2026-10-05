@@ -4,6 +4,9 @@
 // drive that agent's circuit breaker on the engine (POST /api/agents/trip-breaker and /api/agents/reset), the
 // engine's only per-agent control. The detail panel's sub-tabs show the latest run's activity timeline, its steps,
 // its output, the AEPS SKILL.md playbooks bundled by the portal (GET /api/skills/aeps) and the Elarion API bridge.
+// A "Do this next" banner on top names the one thing to do now (start the engine, answer Elarion, approve a website,
+// start a project), and Live activity shows the work itself: what the running step was asked, how long it has been
+// at it, and what each finished step actually wrote, not just step titles.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, describeTask, formatDuration } from './task-monitor.js';
@@ -181,15 +184,67 @@ export function taskRows(record, agent) {
 // Activity timeline, newest first.
 export function activityItems(record) {
   if (!record) return [];
+  const plan = record.plan || [];
   return record.history
     .slice()
     .reverse()
-    .map((h) => ({
-      at: clockTime(h.at),
-      title: EVENT_TEXT[h.event] || h.event,
-      detail: [h.step_id ? titleCase(h.step_id) : '', h.detail || ''].filter(Boolean).join(' · ') || (h.event === 'STARTED' ? record.total_steps + ' steps queued' : ''),
-      kind: h.event === 'STEP_FAILED' || h.event === 'HALTED' ? 'bad' : h.event === 'STEP_STARTED' || h.event === 'STARTED' ? 'spark' : 'ok',
-    }));
+    .map((h) => {
+      // The work behind the event: what a started step was asked, what a finished step wrote.
+      const result = h.event === 'STEP_COMPLETED' ? (record.results || []).find((r) => r.step_index === h.step_index) : null;
+      const text = result ? outputText(result.output) : h.event === 'STEP_STARTED' && plan[h.step_index] ? plan[h.step_index].summary || '' : '';
+      return {
+        key: h.at + ':' + h.event + ':' + (h.step_index ?? ''),
+        at: clockTime(h.at),
+        title: EVENT_TEXT[h.event] || h.event,
+        detail: [h.step_id ? titleCase(h.step_id) : '', h.detail || '', result && result.output && result.output.model ? result.output.model : ''].filter(Boolean).join(' · ') || (h.event === 'STARTED' ? record.total_steps + ' steps queued' : ''),
+        kind: h.event === 'STEP_FAILED' || h.event === 'HALTED' ? 'bad' : h.event === 'STEP_STARTED' || h.event === 'STARTED' ? 'spark' : 'ok',
+        text,
+        textLabel: result ? 'What it wrote' : 'What it was asked',
+      };
+    });
+}
+
+// What the selected run is doing right now, for the pulse card: { state: 'working' | 'waiting' | 'done' | 'failed' |
+// 'halted', step, index, total, asked, since, last: { step, text, model } }. null without a record.
+export function runPulse(record) {
+  if (!record) return null;
+  const plan = record.plan || [];
+  const results = record.results || [];
+  const lastResult = results[results.length - 1];
+  const last = lastResult ? { step: titleCase(lastResult.step_id), text: outputText(lastResult.output), model: lastResult.output && lastResult.output.model ? lastResult.output.model : '' } : null;
+  const base = { total: record.total_steps, done: record.completed_steps, last };
+  if (record.status === 'RUNNING' && record.awaiting) return { ...base, state: 'waiting', question: record.awaiting.question, options: record.awaiting.options || [] };
+  if (record.status === 'RUNNING') {
+    const index = record.completed_steps;
+    const started = [...record.history].reverse().find((h) => h.event === 'STEP_STARTED' && h.step_index === index);
+    const step = plan[index] || {};
+    return { ...base, state: 'working', index, step: titleCase(step.step_id || 'step ' + (index + 1)), asked: step.summary || '', since: started ? started.at : record.started_at };
+  }
+  if (record.status === 'FAILED') return { ...base, state: 'failed', error: record.failure ? record.failure.error : '' };
+  if (record.status === 'HALTED') return { ...base, state: 'halted', error: record.halt ? record.halt.reason || '' : '' };
+  return { ...base, state: 'done' };
+}
+
+// The one thing to do next, for the banner on top of Mission Control. tasks: GET /api/tasks summaries; runs: the
+// Outcomes list's stored project runs (website drafts, Space cards). Returns { kind, title, text, action?: { label,
+// view } } with view one of connect | operator | blueprints | activity.
+export function nextAction({ error = null, tasks = [], runs = {} } = {}) {
+  if (error) {
+    return error.isUnauthorized
+      ? { kind: 'warn', title: 'Reconnect to the engine', text: 'The engine turned down this session’s sign-in. Open Settings to reconnect.', action: { label: 'Open Settings', view: 'connect' } }
+      : { kind: 'warn', title: 'Start the engine', text: 'Mission Control can’t reach the Aether Engine. Say “Start Engine” to Claude Code on your computer, then reload this page.', action: { label: 'Connection settings', view: 'connect' } };
+  }
+  const waiting = tasks.find((t) => t.status === 'RUNNING' && t.awaiting);
+  if (waiting) return { kind: 'alert', title: 'Elarion is waiting for your answer', text: (waiting.awaiting.question || 'A run needs a decision') + ' · ' + waiting.task_id, action: { label: 'Answer now', view: 'operator' } };
+  const running = tasks.find((t) => t.status === 'RUNNING');
+  if (running) return { kind: 'live', title: 'A run is in progress', text: running.task_id + ' · step ' + Math.min(running.completed_steps + 1, running.total_steps) + ' of ' + running.total_steps + '. Watch the work live below; nothing is needed from you until it finishes.', action: { label: 'Watch live', view: 'activity' } };
+  const latest = tasks.filter((t) => String(t.task_id).startsWith('deploy-')).sort((a, b) => String(b.finished_at || b.started_at).localeCompare(String(a.finished_at || a.started_at)))[0];
+  const run = latest ? runs[latest.task_id] || {} : {};
+  if (latest && latest.status === 'FAILED') return { kind: 'warn', title: 'The last project run failed', text: latest.task_id + '. See why under Studio → Engine activity (click the red step), then run it again from Projects.', action: { label: 'Open Projects', view: 'blueprints' } };
+  if (latest && latest.status === 'COMPLETED' && run.siteSlug && !run.sitePublished) return { kind: 'go', title: 'Your website draft is ready', text: 'Preview /s/' + run.siteSlug + ', then press Approve & publish when you’re happy with it.', action: { label: 'Review the website', view: 'blueprints' } };
+  if (latest && latest.status === 'COMPLETED' && !run.nodeId) return { kind: 'go', title: 'Your project finished', text: 'Look over the deliverables and add the result to Space.', action: { label: 'See deliverables', view: 'blueprints' } };
+  if (!latest) return { kind: 'go', title: 'Start your first project', text: 'Open a card in Space and tap Make it a project, or paste links under Projects. Elarion plans the work and runs it.', action: { label: 'Open Projects', view: 'blueprints' } };
+  return { kind: 'go', title: 'All caught up', text: 'The last project is done' + (run.sitePublished ? ' and its website is live' : '') + '. Start the next one when you’re ready.', action: { label: 'New project', view: 'blueprints' } };
 }
 
 const outputText = (output) => {
@@ -221,6 +276,9 @@ export function mountWorkforce(container, options = {}) {
   const onConnect = options.onConnect || (() => {});
   const onOpenElarion = options.onOpenElarion || (() => {});
   const onAgentsChange = options.onAgentsChange || (() => {});
+  // Opens a Mission Control view for the "Do this next" button (connect, operator, blueprints).
+  const onNavigate = options.onNavigate || (() => {});
+  const storage = options.storage || (() => { try { return win.localStorage; } catch { return null; } })();
   const now = options.now || (() => Date.now());
 
   let destroyed = false;
@@ -231,6 +289,9 @@ export function mountWorkforce(container, options = {}) {
   let bannerTimer = null;
   let agents = [];
   let counts = null;
+  let allTasks = [];
+  // Timeline entries the operator opened, so a poll's rebuild keeps them open.
+  const openItems = new Set();
   let error = null;
   let selectedId = null;
   let detailTab = 'activity';
@@ -243,6 +304,7 @@ export function mountWorkforce(container, options = {}) {
 
   // --- static skeleton
   const banner = el(doc, 'div', { class: 'wf-banner', role: 'status', hidden: true });
+  const next = el(doc, 'section', { class: 'wf-next', 'aria-label': 'Do this next', hidden: true });
   const projectName = el(doc, 'h2', { class: 'wf-project-name', text: 'Aether Engine workforce' });
   const projectPill = el(doc, 'span', { class: 'pill', 'data-kind': 'queued', text: 'Connecting' });
   const metrics = el(doc, 'div', { class: 'wf-metrics' });
@@ -258,7 +320,7 @@ export function mountWorkforce(container, options = {}) {
     cards,
   ]);
   const detail = el(doc, 'section', { class: 'surface wf-detail', 'aria-label': 'Selected agent' });
-  container.replaceChildren(banner, overview, el(doc, 'div', { class: 'wf-split' }, [workforce, detail]));
+  container.replaceChildren(banner, next, overview, el(doc, 'div', { class: 'wf-split' }, [workforce, detail]));
 
   // --- engine calls
   async function act(agentId, fn) {
@@ -331,6 +393,7 @@ export function mountWorkforce(container, options = {}) {
       const order = { running: 0, 'needs-input': 1, tripped: 1, paused: 2, idle: 3, waiting: 4 };
       agents.sort((a, b) => order[a.status] - order[b.status] || (a.agentId === ELARION_AGENT_ID ? -1 : b.agentId === ELARION_AGENT_ID ? 1 : 0));
       counts = list.counts;
+      allTasks = list.tasks;
       error = null;
       if (!selectedId || !agents.some((a) => a.agentId === selectedId)) selectedId = agents[0].agentId;
       const selected = agents.find((a) => a.agentId === selectedId);
@@ -368,7 +431,8 @@ export function mountWorkforce(container, options = {}) {
     fn();
     if (key) {
       const again = container.querySelector('[data-focus="' + key + '"]');
-      if (again) again.focus();
+      // preventScroll: a poll's rebuild must not drag the page back to the panel while the operator reads elsewhere.
+      if (again) again.focus({ preventScroll: true });
     }
   }
 
@@ -515,6 +579,42 @@ export function mountWorkforce(container, options = {}) {
     }
   }
 
+  // The pulse card: what the run is doing right now, in words, with the latest real output.
+  function pulseCard(pulse) {
+    if (!pulse) return null;
+    const lastBlock = pulse.last && pulse.last.text
+      ? el(doc, 'details', { class: 'pulse-last', open: '' }, [
+        el(doc, 'summary', { text: 'Just finished: ' + pulse.last.step + (pulse.last.model ? ' · ' + pulse.last.model : '') }),
+        el(doc, 'pre', { class: 'pulse-text', text: pulse.last.text.length > 1500 ? pulse.last.text.slice(0, 1500) + '…\n(full text under Output)' : pulse.last.text }),
+      ])
+      : null;
+    const progress = el(doc, 'div', { class: 'pulse-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(pulse.total), 'aria-valuenow': String(pulse.done), 'aria-label': 'Steps done' }, [
+      el(doc, 'span', { style: 'width:' + (pulse.total ? Math.round((pulse.done / pulse.total) * 100) : 0) + '%' }),
+    ]);
+    if (pulse.state === 'working') {
+      return el(doc, 'div', { class: 'pulse', 'data-state': 'working' }, [
+        el(doc, 'p', { class: 'eyebrow eyebrow-accent', text: 'Working on now · step ' + (pulse.index + 1) + ' of ' + pulse.total }),
+        el(doc, 'p', { class: 'pulse-step', text: pulse.step }),
+        el(doc, 'p', { class: 'pulse-since mono' }, [doc.createTextNode('for '), el(doc, 'span', { 'data-pulse-since': pulse.since, text: formatClock(now() - new Date(pulse.since).getTime()) })]),
+        progress,
+        pulse.asked ? el(doc, 'details', { class: 'pulse-asked' }, [el(doc, 'summary', { text: 'What it was asked' }), el(doc, 'p', { class: 'pulse-text', text: pulse.asked })]) : null,
+        lastBlock,
+      ]);
+    }
+    if (pulse.state === 'waiting') {
+      const answer = el(doc, 'button', { type: 'button', class: 'btn btn-primary btn-small', text: 'Answer in Operator' });
+      answer.addEventListener('click', () => onNavigate('operator'));
+      return el(doc, 'div', { class: 'pulse', 'data-state': 'waiting' }, [el(doc, 'p', { class: 'eyebrow eyebrow-accent', text: 'Waiting for you' }), el(doc, 'p', { class: 'pulse-step', text: pulse.question }), progress, answer, lastBlock]);
+    }
+    const label = { done: 'Finished · ' + pulse.done + ' of ' + pulse.total + ' steps', failed: 'Stopped by an error', halted: 'Stopped by the breaker' }[pulse.state];
+    return el(doc, 'div', { class: 'pulse', 'data-state': pulse.state }, [
+      el(doc, 'p', { class: 'eyebrow', text: label }),
+      pulse.error ? el(doc, 'p', { class: 'pulse-error', text: pulse.error }) : null,
+      progress,
+      lastBlock,
+    ]);
+  }
+
   function renderActivity(agent) {
     const items = activityItems(record);
     const live = agent.status === 'running';
@@ -522,14 +622,47 @@ export function mountWorkforce(container, options = {}) {
     if (!items.length) return [head, el(doc, 'p', { class: 'empty', text: agent.latest ? 'Loading the run timeline…' : 'No runs yet for ' + agent.name + '.' })];
     return [
       head,
-      el(doc, 'ol', { class: 'timeline' }, items.map((i) =>
-        el(doc, 'li', { class: 'tl-item', 'data-kind': i.kind }, [
+      pulseCard(runPulse(record)),
+      el(doc, 'ol', { class: 'timeline' }, items.map((i) => {
+        let more = null;
+        if (i.text) {
+          more = el(doc, 'details', { class: 'tl-more' }, [el(doc, 'summary', { text: i.textLabel }), el(doc, 'pre', { class: 'pulse-text', text: i.text.length > 4000 ? i.text.slice(0, 4000) + '…' : i.text })]);
+          if (openItems.has(i.key)) more.open = true;
+          more.addEventListener('toggle', () => (more.open ? openItems.add(i.key) : openItems.delete(i.key)));
+        }
+        return el(doc, 'li', { class: 'tl-item', 'data-kind': i.kind }, [
           el(doc, 'span', { class: 'tl-mark', 'aria-hidden': 'true', text: i.kind === 'ok' ? '✓' : i.kind === 'bad' ? '!' : '✦' }),
           el(doc, 'span', { class: 'tl-time mono', text: i.at }),
-          el(doc, 'span', { class: 'tl-body' }, [el(doc, 'span', { class: 'tl-title', text: i.title }), i.detail ? el(doc, 'span', { class: 'tl-detail', text: i.detail }) : null]),
-        ]),
-      )),
+          el(doc, 'span', { class: 'tl-body' }, [el(doc, 'span', { class: 'tl-title', text: i.title }), i.detail ? el(doc, 'span', { class: 'tl-detail', text: i.detail }) : null, more]),
+        ]);
+      })),
     ];
+  }
+
+  function renderNext() {
+    let runs = {};
+    try {
+      runs = JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {};
+    } catch { /* unreadable storage: no run hints */ }
+    const action = nextAction({ error, tasks: allTasks, runs });
+    if (!changed('next', action)) return;
+    next.hidden = !action;
+    if (!action) return;
+    next.dataset.kind = action.kind;
+    const children = [el(doc, 'div', { class: 'wf-next-text' }, [el(doc, 'p', { class: 'eyebrow', text: 'Do this next' }), el(doc, 'p', { class: 'wf-next-title', text: action.title }), el(doc, 'p', { class: 'wf-next-sub', text: action.text })])];
+    if (action.action) {
+      const go = el(doc, 'button', { type: 'button', class: 'btn btn-primary wf-next-go', text: action.action.label });
+      go.addEventListener('click', () => {
+        if (action.action.view === 'activity') {
+          detailTab = 'activity';
+          renderDetail(true);
+          if (detail.scrollIntoView) detail.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        } else if (action.action.view === 'connect') onConnect();
+        else onNavigate(action.action.view);
+      });
+      children.push(go);
+    }
+    next.replaceChildren(...children);
   }
 
   function renderTasks(agent) {
@@ -725,6 +858,7 @@ export function mountWorkforce(container, options = {}) {
   }
 
   function render() {
+    renderNext();
     renderOverview();
     renderCards();
     renderDetail();
@@ -735,6 +869,8 @@ export function mountWorkforce(container, options = {}) {
     const agent = agents.find((a) => a.agentId === selectedId);
     const cell = detail.querySelector('[data-runtime]');
     if (agent && cell && agent.status === 'running') cell.textContent = runtimeText(agent);
+    const since = detail.querySelector('[data-pulse-since]');
+    if (since) since.textContent = formatClock(now() - new Date(since.getAttribute('data-pulse-since')).getTime());
   }, 1000);
 
   refreshBtn.addEventListener('click', () => refresh());
