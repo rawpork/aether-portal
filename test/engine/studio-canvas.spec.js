@@ -181,6 +181,7 @@ describe('mounted canvas', () => {
     expect(inspector.hidden).toBe(false);
     expect(root.querySelector('.bridge[data-edge="' + GRAPH.edges[2].id + '"]').getAttribute('data-selected')).toBe('true');
     expect(inspector.querySelector('.inspector-route').textContent).toBe('announce → slack');
+    expect(inspector.textContent).not.toContain('null');
     expect(inspector.querySelector('.inspector-pct').textContent).toBe('77%');
     expect(inspector.querySelector('.pill').textContent).toBe('Logic');
     expect(inspector.querySelector('.meter').getAttribute('aria-valuenow')).toBe('77');

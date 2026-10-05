@@ -405,7 +405,8 @@ export function mountStudioCanvas(container, options = {}) {
     });
     const pct = Math.round(edge.confidence * 100);
     inspector.hidden = false;
-    inspector.replaceChildren(
+    // replaceChildren would print a null part as the text "null"; parts left out are dropped.
+    inspector.replaceChildren(...[
       el(doc, 'div', { class: 'inspector-head' }, [el(doc, 'h3', { text: 'Edge Inspector' }), close]),
       el(doc, 'p', { class: 'inspector-route' }, [el(doc, 'strong', { text: m.step_id }), ' → ', el(doc, 'strong', { text: m.server })]),
       bridgeVisible(edge, threshold) ? null : el(doc, 'p', { class: 'mini-label inspector-hidden-note', text: 'Hidden at the current slider setting (' + threshold + '% minimum).' }),
@@ -450,7 +451,7 @@ export function mountStudioCanvas(container, options = {}) {
           ['Edge id', edge.id],
         ].flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })]),
       ),
-    );
+    ].filter(Boolean));
   }
 
   function renderStatus() {
