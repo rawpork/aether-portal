@@ -157,3 +157,40 @@ describe("/api/link route", () => {
 		}
 	});
 });
+
+describe("createProjectOutcome", () => {
+	it("stores an accepted Outcome Node and links only the sources the user owns", async () => {
+		const { createProjectOutcome } = await import("../src/index.js");
+		const statements = [];
+		const DB = {
+			prepare(sql) {
+				return {
+					bind(...args) {
+						return {
+							sql, args,
+							async all() { return { results: args.slice(1).filter((id) => id === "n1").map((id) => ({ id })) }; },
+						};
+					},
+				};
+			},
+			async batch(list) { statements.push(...list); return []; },
+		};
+		const result = await createProjectOutcome({ DB }, "user_1", { title: "  Launch   plan ", goal: "Ship it", steps: [{ title: "Ingest", detail: "Read the docs" }, { title: "" }], report: "# Report", source_ids: ["n1", "n_other", "n1"] });
+		expect(result.status).toBe(201);
+		expect(result.body).toMatchObject({ success: true, linked: 1 });
+		const insert = statements.find((s) => s.sql.startsWith("INSERT INTO saved_nodes"));
+		expect(insert.sql).toContain("'outcome', 'reference', 'accepted'");
+		expect(insert.args[1]).toBe("user_1");
+		expect(insert.args[3]).toBe("Launch plan");
+		expect(JSON.parse(insert.args[5])).toMatchObject({ template: "project", goal: "Ship it", steps: [{ title: "Ingest", detail: "Read the docs", inputs: [] }] });
+		const links = statements.filter((s) => s.sql.includes("outcome_inputs"));
+		expect(links.map((s) => s.args[1])).toEqual(["n1"]);
+		expect((await createProjectOutcome({ DB }, "user_1", { title: " " })).status).toBe(400);
+	});
+
+	it("is a signed-in POST route", async () => {
+		expect((await SELF.fetch("http://example.com/api/outcomes")).status).toBe(405);
+		const response = await SELF.fetch("http://example.com/api/outcomes", { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://example.com" }, body: "{}" });
+		expect(response.status).toBe(401);
+	});
+});

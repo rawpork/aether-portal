@@ -24,6 +24,7 @@ describe("graphEventFor", () => {
 		expect(graphEventFor("DELETE", "/api/link")).toEqual({ type: "link.deleted" });
 		expect(graphEventFor("PATCH", "/api/groups/grp_1")).toEqual({ type: "group.updated" });
 		expect(graphEventFor("POST", "/api/share")).toEqual({ type: "node.created" });
+		expect(graphEventFor("POST", "/api/outcomes")).toEqual({ type: "node.created" });
 		expect(graphEventFor("POST", "/api/outcome/node_o/regenerate")).toEqual({ type: "node.updated" });
 		expect(graphEventFor("PATCH", "/api/settings")).toEqual({ type: "settings.updated" });
 	});

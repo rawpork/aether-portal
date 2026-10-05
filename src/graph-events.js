@@ -37,6 +37,7 @@ export function graphEventFor(method, pathname) {
   }
   if (pathname === "/api/node" && method === "POST") return { type: "node.created" };
   if (pathname === "/api/share" && method === "POST") return { type: "node.created" };
+  if (pathname === "/api/outcomes" && method === "POST") return { type: "node.created" };
   if (pathname === "/api/link") {
     const type = { POST: "link.created", PATCH: "link.updated", DELETE: "link.deleted" }[method];
     return type ? { type } : null;

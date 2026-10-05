@@ -610,6 +610,22 @@ export default {
       }
     }
 
+    // Endpoint 4e: A finished Mission Control project run becomes an Outcome Node in Space (POST, signed in), linked to
+    // the cards it was made from. { title, goal, steps: [{ title, detail }], report, source_ids }.
+    if (url.pathname === "/api/outcomes") {
+      if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      const auth = await authenticateUser(request, env, url);
+      if (auth.error) return auth.error;
+      const body = await request.json().catch(() => null);
+      try {
+        const result = await createProjectOutcome(env, auth.user.id, body);
+        return jsonResponse(result.body, result.status);
+      } catch (err) {
+        console.error("Project Outcome Error:", err);
+        return jsonResponse({ error: "Could not add the outcome to Space." }, 500);
+      }
+    }
+
     // Endpoint 4d: Stored links between two of the user's nodes. POST { source, target, relationship? } links them,
     // PATCH { source, target, relationship } relabels the link, DELETE { source, target } removes it.
     if (url.pathname === "/api/link") {
@@ -3198,6 +3214,7 @@ export default {
       <span id="card-links-status" class="card-links-status" aria-live="polite"></span>
     </div>
     <button type="button" id="card-link-button" class="card-link-button" title="Connect this node to another">🔗 Link to…</button>
+    <button type="button" id="card-project-button" class="card-link-button" title="Package this card and its connected cards as a project blueprint in Mission Control">▶ Make it a project</button>
     <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
       <div class="ask-row">
@@ -8948,6 +8965,50 @@ export default {
       commandMic.title = 'Voice input is not available in this browser';
     }
 
+    // ---- Make it a project (the node card): packages the card and its connected cards (links as links; notes as links to
+    // their own /node page, with the note text as the snippet) into a blueprint spec, hands it to Mission Control through
+    // same-origin storage and opens Projects there. The card ids travel with it, so the finished run comes back to Space
+    // as an Outcome linked to them. ----
+    const PROJECT_PAYLOAD_KEY = 'aether.projectPayload';
+    const PROJECT_MAX_CARDS = 13;
+    const projectPayloadFor = node => {
+      const byId = new Map(graphData.nodes.map(item => [item.id, item]));
+      const neighbours = [];
+      graphData.links.forEach(link => {
+        const a = linkEndId(link.source);
+        const b = linkEndId(link.target);
+        if (a === node.id && b !== node.id) neighbours.push(b);
+        else if (b === node.id && a !== node.id) neighbours.push(a);
+      });
+      const items = [node, ...[...new Set(neighbours)].map(id => byId.get(id)).filter(Boolean)].slice(0, PROJECT_MAX_CARDS);
+      const links = items.map(item => {
+        const raw = String(item.url || '');
+        const isHttp = /^https?:/i.test(raw);
+        const snippet = [item.description, item.user_note, isHttp ? '' : raw, (item.tags || []).map(entry => '#' + entry.tag).join(' ')]
+          .filter(Boolean).join(' · ');
+        return {
+          url: isHttp ? raw : window.location.origin + '/node/' + encodeURIComponent(item.id),
+          title: truncate(String(item.title || item.name || 'Untitled'), 200),
+          rawSnippet: truncate(snippet, 1200)
+        };
+      });
+      return {
+        spec: { projectName: truncate(String(node.title || node.name || 'Project'), 120), lodLevel: 2, useMiserlyProxy: false, links, interviewResponses: { database: 'cloudflare_d1', hosting: 'cloudflare_workers' } },
+        sourceIds: items.map(item => item.id),
+        at: Date.now()
+      };
+    };
+    document.getElementById('card-project-button').addEventListener('click', () => {
+      if (!focus.node) return;
+      try {
+        localStorage.setItem(PROJECT_PAYLOAD_KEY, JSON.stringify(projectPayloadFor(focus.node)));
+      } catch (err) {
+        alert('Your browser blocked storage, so the project could not be handed to Mission Control.');
+        return;
+      }
+      window.location.href = '/mission-control?project=1#blueprints';
+    });
+
     // Pages through an admin batch endpoint (POST ?cursor=N) until it reports done.
     // finish(updated, processed, bodies), when given, runs after the graph reloads; returning true skips the summary alert.
     const runAdminBatches = async ({ button, path, busyLabel, summarize, finish }) => {
@@ -11525,6 +11586,42 @@ async function loadMinedEdges(env, userId) {
 const LINK_RELATION_MAX = 80;
 
 // node_edges is undirected and stored with source_id < target_id, so either order names the same edge.
+// ---- Project outcomes (Mission Control -> Space) ----
+const PROJECT_OUTCOME_MAX_STEPS = 20;
+const PROJECT_REPORT_MAX = 20000;
+const PROJECT_SOURCES_MAX = 50;
+
+// Validates a finished project run and stores it as an accepted Outcome Node with its sources as inputs. Only source
+// ids the user owns are linked. Returns { status, body } for the route.
+export async function createProjectOutcome(env, userId, body) {
+  const clean = (value, max) => String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+  const title = clean(body?.title, NODE_TITLE_MAX);
+  if (!title) return { status: 400, body: { error: "title is required." } };
+  const goal = clean(body?.goal, 1000);
+  const steps = (Array.isArray(body?.steps) ? body.steps : []).slice(0, PROJECT_OUTCOME_MAX_STEPS)
+    .map(step => ({ title: clean(step?.title, 120), detail: clean(step?.detail, 600), inputs: [] }))
+    .filter(step => step.title);
+  const report = String(body?.report ?? "").slice(0, PROJECT_REPORT_MAX);
+  const wanted = [...new Set((Array.isArray(body?.source_ids) ? body.source_ids : []).map(String).filter(Boolean))].slice(0, PROJECT_SOURCES_MAX);
+  let owned = [];
+  if (wanted.length) {
+    const { results } = await env.DB.prepare(
+      `SELECT id FROM saved_nodes WHERE user_id = ? AND id IN (${wanted.map(() => "?").join(", ")})`
+    ).bind(userId, ...wanted).all();
+    owned = (results || []).map(row => row.id);
+  }
+  const id = "node_" + crypto.randomUUID();
+  const plan = { template: "project", goal: goal || title, why: "Delivered by a Mission Control project run.", effort: "", steps };
+  const statements = [
+    env.DB.prepare(
+      "INSERT INTO saved_nodes (id, user_id, url, title, description, category, status, outcome_status, outcome_plan, ai_processed_at) VALUES (?, ?, ?, ?, ?, 'outcome', 'reference', 'accepted', ?, CURRENT_TIMESTAMP)"
+    ).bind(id, userId, "aether:outcome/" + id, title, report || goal || null, JSON.stringify(plan)),
+    ...owned.map(nodeId => env.DB.prepare("INSERT OR IGNORE INTO outcome_inputs (outcome_id, node_id, user_id) VALUES (?, ?, ?)").bind(id, nodeId, userId))
+  ];
+  await env.DB.batch(statements);
+  return { status: 201, body: { success: true, id, linked: owned.length } };
+}
+
 export function normalizeEdgePair(a, b) {
   return a < b ? [a, b] : [b, a];
 }

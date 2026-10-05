@@ -7,6 +7,7 @@
 import { getEngineApi } from '../engine-api.bundle.js';
 import { EXAMPLE_SPEC, blueprintToTaskSteps, isProTier, parseBlueprintSpec, routeMatrix } from './blueprint-spec.js';
 import { describeAuthError } from './connection.js';
+import { runPreflight } from './outcomes.js';
 
 export const EXECUTE_AGENT_ID = 'master-brain';
 
@@ -36,6 +37,8 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const onUpgrade = options.onUpgrade || (() => {});
   const onStarted = options.onStarted || (() => {});
   const onExecuted = options.onExecuted || (() => {});
+  // (blueprint, outcome) after every run: the Outcomes list records it and, when it completed, adds it to Space.
+  const onCompleted = options.onCompleted || (() => {});
 
   let artifacts = [];
   let selectedId = null;
@@ -269,11 +272,26 @@ export function mountBlueprintWorkspace(container, options = {}) {
     const deployStatus = el(doc, 'p', { class: 'bp-deploy-status mc-muted', 'aria-live': 'polite' });
     const confirmCancel = el(doc, 'button', { type: 'button', class: 'toggle-button bp-confirm-cancel', text: 'Cancel' });
     const confirmRun = el(doc, 'button', { type: 'button', class: 'bp-primary bp-confirm-run', text: 'Run blueprint' });
-    const confirmRow = el(doc, 'div', { class: 'bp-confirm', hidden: true }, [
-      el(doc, 'span', { text: 'Run ' + phases.length + (phases.length === 1 ? ' phase' : ' phases') + ' on ' + EXECUTE_AGENT_ID + '? Each phase is one model call through the engine.' }),
-      confirmCancel,
-      confirmRun,
+    // "Ready to run?" preflight: engine connection, model keys, budget and an estimate, before anything is spent.
+    const checkList = el(doc, 'ul', { class: 'bp-checks' });
+    const confirmRow = el(doc, 'div', { class: 'bp-confirm bp-preflight', hidden: true, role: 'group', 'aria-label': 'Ready to run?' }, [
+      el(doc, 'h4', { class: 'bp-preflight-title', text: 'Ready to run?' }),
+      el(doc, 'p', { class: 'mc-muted', text: phases.length + (phases.length === 1 ? ' phase' : ' phases') + ' on ' + EXECUTE_AGENT_ID + ', one model call each through the engine.' }),
+      checkList,
+      el(doc, 'div', { class: 'bp-preflight-actions' }, [confirmCancel, confirmRun]),
     ]);
+    const showPreflight = async () => {
+      confirmRun.disabled = true;
+      checkList.replaceChildren(el(doc, 'li', { class: 'bp-check', 'data-ok': 'pending', text: 'Checking the engine…' }));
+      const { checks, canRun } = await runPreflight({ api, phases: phases.length, budgetCapUsd: miserly.enabled ? miserly.budget_cap_usd : null });
+      checkList.replaceChildren(...checks.map((check) => el(doc, 'li', { class: 'bp-check', 'data-ok': check.ok === true ? 'yes' : check.ok === false ? 'no' : 'note' }, [
+        el(doc, 'span', { class: 'bp-check-mark', 'aria-hidden': 'true', text: check.ok === true ? '✓' : check.ok === false ? '✕' : '•' }),
+        el(doc, 'strong', { text: check.label }),
+        doc.createTextNode(' ' + check.detail),
+      ])));
+      confirmRun.disabled = !canRun;
+      if (canRun) confirmRun.focus();
+    };
     deploy.addEventListener('click', () => {
       if (!pro) {
         onUpgrade(bp);
@@ -282,7 +300,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
         return;
       }
       confirmRow.hidden = false;
-      confirmRun.focus();
+      showPreflight();
     });
     confirmCancel.addEventListener('click', () => {
       confirmRow.hidden = true;
@@ -352,6 +370,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
           ? 'Executed all ' + outcome.completed_steps + ' phases · ' + tokens.toLocaleString() + ' tokens.'
           : 'Halted by the circuit breaker before ' + outcome.interrupted_step_id + ' (' + outcome.completed_steps + ' phases done).';
       onExecuted(outcome);
+      onCompleted(bp, outcome);
     } catch (error) {
       deployStatus.textContent = 'Execution failed: ' + engineErrorText(error);
     } finally {

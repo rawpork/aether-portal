@@ -480,6 +480,30 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .oc-chip-num { font-family: var(--mono); font-weight: 600; }
     .oc-prompt-message { margin: 8px 0 0; min-height: 1em; font-size: 12px; color: var(--muted); }
     .oc-tabs { padding: 0 24px; }
+    /* "Ready to run?" preflight (blueprints.js) and Outcomes & Deliverables (outcomes.js). */
+    .bp-preflight { flex-direction: column; align-items: stretch; gap: 8px; padding: 14px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); background: var(--accent-soft); }
+    .bp-preflight-title { margin: 0; font-size: 15px; }
+    .bp-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .bp-check { display: flex; gap: 8px; align-items: baseline; font-size: 13px; line-height: 1.45; }
+    .bp-check-mark { flex: none; width: 16px; font-weight: 700; text-align: center; }
+    .bp-check[data-ok="yes"] .bp-check-mark { color: var(--ok); }
+    .bp-check[data-ok="no"] .bp-check-mark, .bp-check[data-ok="no"] strong { color: var(--danger-text); }
+    .bp-check[data-ok="note"] .bp-check-mark { color: var(--muted); }
+    .bp-preflight-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    #mc-outcomes { margin-top: 20px; }
+    .oc-outcomes-body { padding: 4px 24px 24px; }
+    .oc-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+    .oc-run { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .oc-run-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .oc-run-meta { margin: 4px 0 8px; font-size: 12px; }
+    .oc-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .oc-link { padding: 4px 10px; border: 1px solid var(--accent-line); border-radius: 999px; color: var(--accent); font-size: 12px; text-decoration: none; }
+    .oc-phase { margin: 4px 0; font-size: 13px; }
+    .oc-phase summary { cursor: pointer; font-weight: 600; }
+    .oc-phase p { margin: 6px 0 0; white-space: pre-wrap; color: var(--text-2); }
+    .oc-run-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+    .oc-open-space { text-decoration: none; }
+    @media (max-width: 680px) { .oc-outcomes-body { padding: 4px 14px 18px; } }
     /* Agent dialogue (public/js/engine/agent-dialogue.js): one thread per run, a coloured badge per agent. */
     .ad { padding: 8px 24px 24px; }
     .ad-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
@@ -1067,7 +1091,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         </section>
       </div>
       <div class="mc-view surface" id="mc-view-elaron" hidden><section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section></div>
-      <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div></div>
+      <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div><div id="mc-outcomes"></div></div>
       <div class="mc-view" id="mc-view-operator" hidden>
         <section class="surface mc-panel" aria-labelledby="mc-operator-title">
           <div class="mc-panel-head"><h2 id="mc-operator-title">Operator Console</h2><span id="mc-operator-status" class="mc-muted" aria-live="polite"></span></div>

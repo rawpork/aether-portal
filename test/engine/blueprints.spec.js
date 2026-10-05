@@ -29,6 +29,7 @@ function createEngine() {
     stored: [],
     calls: [],
     taskOutcome: 'COMPLETED',
+    config: { execution_mode: 'direct-anthropic', direct_fallback: { anthropic_key_configured: true, gemini_key_configured: true }, model_routes_effective: { step: 'direct-gemini' } },
     async fetch(url, init = {}) {
       const { pathname } = new URL(url);
       const method = init.method || 'GET';
@@ -42,6 +43,10 @@ function createEngine() {
         const blueprint = compiledFrom(body, engine.stored.length + 1);
         engine.stored.push(blueprint);
         return reply(200, { success: true, message: 'Blueprint successfully compiled and stored.', blueprint_id: blueprint.blueprint_id, artifact_path: '/out/' + blueprint.blueprint_id + '.json', logged: true, blueprint });
+      }
+      if (pathname === '/api/engine/config') {
+        if (!engine.config) return reply(401, { error: 'Invalid token signature.' });
+        return reply(200, engine.config);
       }
       if (pathname === '/api/artifacts') {
         const artifacts = [...engine.stored].reverse().map((b) => ({ filename: b.blueprint_id + '.json', blueprint_id: b.blueprint_id, project_name: b.project_name, created_at: b.metadata.created_at, status: b.status, phases: 2, sources: b.sources.length }));
@@ -255,7 +260,7 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     expect(ws.elements.upgradeModal.querySelector('a').getAttribute('href')).toBe('https://billing.example/upgrade');
   });
 
-  it('Pro: confirms, then runs every phase as a task loop on master-brain', async () => {
+  it('Pro: a "Ready to run?" preflight checks the engine, then runs every phase as a task loop on master-brain', async () => {
     await mount({ tier: 'pro' });
     await compileExample();
     const deploy = ws.elements.viewer.querySelector('.bp-deploy');
@@ -263,7 +268,12 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     deploy.click();
     const confirm = ws.elements.viewer.querySelector('.bp-confirm');
     expect(confirm.hidden).toBe(false);
-    expect(confirm.textContent).toMatch(/Run 2 phases on master-brain\?/);
+    expect(confirm.querySelector('.bp-preflight-title').textContent).toBe('Ready to run?');
+    expect(confirm.textContent).toMatch(/2 phases on master-brain/);
+    expect(confirm.querySelector('.bp-confirm-run').disabled).toBe(true);
+    await settle();
+    expect([...confirm.querySelectorAll('.bp-check')].map((li) => li.dataset.ok + ':' + li.querySelector('strong').textContent)).toEqual(['yes:Engine connection', 'yes:Model keys', 'note:Budget', 'note:Estimate']);
+    expect(confirm.querySelector('.bp-confirm-run').disabled).toBe(false);
     expect(engine.calls.some((c) => c.pathname === '/api/agents/execute-task')).toBe(false);
 
     confirm.querySelector('.bp-confirm-run').click();
@@ -277,11 +287,23 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Executed all 2 phases · 380 tokens.');
   });
 
+  it('Pro: keeps Run disabled when the preflight cannot reach the engine', async () => {
+    engine.config = null;
+    await mount({ tier: 'pro' });
+    await compileExample();
+    ws.elements.viewer.querySelector('.bp-deploy').click();
+    await settle();
+    const confirm = ws.elements.viewer.querySelector('.bp-confirm');
+    expect(confirm.querySelector('.bp-check').dataset.ok).toBe('no');
+    expect(confirm.querySelector('.bp-confirm-run').disabled).toBe(true);
+  });
+
   it('Pro: reports a breaker halt mid-run', async () => {
     engine.taskOutcome = 'HALTED';
     await mount({ tier: 'pro' });
     await compileExample();
     ws.elements.viewer.querySelector('.bp-deploy').click();
+    await settle();
     ws.elements.viewer.querySelector('.bp-confirm-run').click();
     await settle();
     expect(ws.elements.viewer.querySelector('.bp-deploy-status').textContent).toBe('Halted by the circuit breaker before phase-2 (1 phases done).');

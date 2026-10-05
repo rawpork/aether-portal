@@ -11,6 +11,7 @@ import { mountTaskMonitor } from './task-monitor.js';
 import { mountOperatorConsole } from './operator-console.js';
 import { mountAgentDialogue } from './agent-dialogue.js';
 import { mountCommandBar } from './command-bar.js';
+import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
 import { mountStudioCanvas } from './studio-canvas.js';
 import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
@@ -208,6 +209,25 @@ function offerPairingFromLink(doc, wizard, tabs) {
   return wizard.offerPairing(engineUrl);
 }
 
+// /mission-control?project=1: "Make it a project" on a portal card left a project payload in storage; load it.
+function importProject(doc, blueprints, tabs, storage) {
+  const win = doc.defaultView;
+  const params = new URLSearchParams((win && win.location && win.location.search) || '');
+  if (!params.get('project')) return null;
+  params.delete('project');
+  if (win.history) win.history.replaceState(null, '', win.location.pathname + (params.toString() ? '?' + params : '') + '#blueprints');
+  tabs.select('blueprints');
+  const payload = storage ? takeProjectPayload(storage) : null;
+  if (!payload) {
+    blueprints.loadSpec('');
+    blueprints.elements.feedback.textContent = 'The project from Space had expired or was missing. Use Make it a project on the card again.';
+    return null;
+  }
+  const result = blueprints.loadSpec(JSON.stringify(payload.spec, null, 2));
+  blueprints.elements.feedback.textContent = 'Loaded from Space: ' + payload.spec.links.length + (payload.spec.links.length === 1 ? ' card' : ' cards') + '. Validate, then Compile blueprint.';
+  return result;
+}
+
 // /mission-control?outcome=<id>: fetch that outcome's blueprint from the portal and load it into the editor.
 async function importOutcome(doc, blueprints, tabs, fetchImpl) {
   const win = doc.defaultView;
@@ -275,7 +295,9 @@ export async function mountMissionControl(doc = document, options = {}) {
     // A deploy runs as a task loop: show it in the monitor once the engine has registered it, and again when done.
     onStarted: () => setTimeout(() => monitor.refresh(), 300),
     onExecuted: () => monitor.refresh(),
+    onCompleted: (bp, outcome) => { if (outcomes) outcomes.recordRun(bp, outcome); },
   });
+  const outcomes = byId('mc-outcomes') ? mountOutcomesList(byId('mc-outcomes'), { api, portalFetch: options.portalFetch, storage: options.storage }) : null;
   const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
   // The rail's badge counts the choices waiting, so a question is seen from any view.
   const operatorCount = byId('mc-operator-count');
@@ -363,9 +385,14 @@ export async function mountMissionControl(doc = document, options = {}) {
   }) : null;
   const stopHeader = startHeader(doc);
   offerPairingFromLink(doc, wizard, tabs);
+  try {
+    importProject(doc, blueprints, tabs, options.storage || (doc.defaultView && doc.defaultView.localStorage));
+  } catch (error) {
+    blueprints.elements.feedback.textContent = 'Could not load the project from Space (' + error.message + ').';
+  }
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
-  return { connection, breaker, monitor, operator, dialogue, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, outcomes, operator, dialogue, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();
