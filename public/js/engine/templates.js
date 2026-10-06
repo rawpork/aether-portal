@@ -147,6 +147,22 @@ export const TEMPLATES = [
     ],
   },
   {
+    id: 'agency-cost-suite',
+    category: 'ai',
+    skill: true,
+    name: 'AI Agency Cost & Proposal Suite',
+    summary: 'Price AI and voice work for clients: a cost calculator on current token, character and minute rates (Claude, ElevenLabs, Vapi), wholesale cost against a locked client price with 60-80% margin targets, white-labeled feasibility reports with good / better / best tiers, and a dashboard of unit costs and client billing alerts that feeds Mission Control.',
+    website: true,
+    // Clients open proposals and billing in a browser, so email sign-in rather than the category's API keys.
+    defaults: { auth: 'magic_link' },
+    links: [
+      { url: 'https://docs.claude.com/en/docs/about-claude/pricing', title: 'Claude pricing' },
+      { url: 'https://elevenlabs.io/pricing/api', title: 'ElevenLabs API pricing' },
+      { url: 'https://vapi.ai/pricing', title: 'Vapi pricing' },
+      { url: 'https://docs.stripe.com/invoicing', title: 'Stripe Invoicing' },
+    ],
+  },
+  {
     id: 'print-cad-studio',
     category: 'hardware',
     skill: true,

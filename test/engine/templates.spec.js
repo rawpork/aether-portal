@@ -35,8 +35,9 @@ describe('brief helpers', () => {
 			expect(AUTH_TYPES.map((a) => a.id)).toContain(defaults.auth);
 			expect(DATABASES.map((d) => d.id)).toContain(defaults.database);
 			expect(defaults.hosting).toMatch(/^cloudflare_/);
+			expect(validateCompileRequest(briefToSpec(t, { projectName: t.name, auth: defaults.auth })).errors).toEqual([]);
 		}
-		expect(TEMPLATES.filter((t) => t.skill).map((t) => t.name).sort()).toEqual(['3D Print & CAD Production Studio', 'AI Skill & Task Sandbox', 'Equipment & Asset Rental Portal', 'Resale & Listing Automation Suite']);
+		expect(TEMPLATES.filter((t) => t.skill).map((t) => t.name).sort()).toEqual(['3D Print & CAD Production Studio', 'AI Agency Cost & Proposal Suite', 'AI Skill & Task Sandbox', 'Equipment & Asset Rental Portal', 'Resale & Listing Automation Suite']);
 	});
 
 	it('defaults come from the category, and a template overrides only what it sets', () => {
@@ -44,6 +45,7 @@ describe('brief helpers', () => {
 		expect(templateDefaults(byId('equipment-rental'))).toEqual({ auth: 'magic_link', database: 'supabase_postgres', hosting: 'cloudflare_pages' });
 		expect(templateDefaults(byId('resale-listing'))).toEqual({ auth: 'oauth', database: 'supabase_postgres', hosting: 'cloudflare_pages' });
 		expect(templateDefaults(byId('skill-sandbox'))).toEqual({ auth: 'api_keys', database: 'cloudflare_d1', hosting: 'cloudflare_workers' });
+		expect(templateDefaults(byId('agency-cost-suite'))).toEqual({ auth: 'magic_link', database: 'cloudflare_d1', hosting: 'cloudflare_workers' });
 		expect(templateDefaults(byId('api-webhooks')).database).toBe('cloudflare_kv');
 		expect(briefToSpec(byId('equipment-rental'), { auth: 'magic_link' }).interviewResponses).toEqual({ database: 'supabase_postgres', hosting: 'cloudflare_pages', unresolvedConnectors: [] });
 	});
@@ -106,10 +108,10 @@ describe('Create / Templates view', () => {
 		expect(groups.every((g) => g.open)).toBe(true);
 		const inGroup = (i) => [...groups[i].querySelectorAll('.tp-card')].map((c) => c.dataset.template);
 		expect(inGroup(0)).toEqual(['equipment-rental', 'resale-listing']);
-		expect(inGroup(1)).toEqual(['api-webhooks', 'skill-sandbox']);
+		expect(inGroup(1)).toEqual(['api-webhooks', 'skill-sandbox', 'agency-cost-suite']);
 		expect(inGroup(2)).toEqual(['print-cad-studio']);
 		expect(inGroup(3)).toEqual(['team-dashboard']);
-		expect(groups[1].querySelector('.tp-count').textContent).toBe('2');
+		expect(groups[1].querySelector('.tp-count').textContent).toBe('3');
 		// Every template appears exactly once; skill blueprints are marked.
 		expect([...container.querySelectorAll('.tp-card')].map((c) => c.dataset.template).sort()).toEqual([...TEMPLATES.map((t) => t.id), 'blank'].sort());
 		expect(container.querySelector('[data-template="skill-sandbox"] .tp-skill').textContent).toBe('Skill blueprint');
