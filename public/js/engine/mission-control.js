@@ -16,14 +16,15 @@ import { mountDecisionCenter, skillCommandSource } from './decision-center.js';
 import { mountCommandBar } from './command-bar.js';
 import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
 import { mountStudioCanvas } from './studio-canvas.js';
+import { mountTemplates } from './templates.js';
 import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
 import { mountQuickSetup } from './quick-setup.js';
 import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
 
-// view -> sidebar button id (its aria-controls names the view's panel). #studio / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
-const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', blueprints: 'mc-nav-blueprints', roadmap: 'mc-nav-roadmap', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
-const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', blueprints: 'Projects', roadmap: 'Roadmap', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
+// view -> sidebar button id (its aria-controls names the view's panel). #studio / #create / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
+const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', create: 'mc-nav-create', blueprints: 'mc-nav-blueprints', roadmap: 'mc-nav-roadmap', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
+const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', create: 'Create / Templates', blueprints: 'Projects', roadmap: 'Roadmap', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
 
 // A set of tabs over panels (Operator: Live log / Agent dialogue): roving tabindex, arrow keys move between them.
 export function setupTabset(doc, pairs, onChange = () => {}) {
@@ -300,6 +301,23 @@ export async function mountMissionControl(doc = document, options = {}) {
     onExecuted: () => monitor.refresh(),
     onCompleted: (bp, outcome) => { if (outcomes) outcomes.recordRun(bp, outcome); },
   });
+  // Create / Templates: a template and its brief compile into a blueprint, which then opens under Projects with
+  // Deploy & Execute ready.
+  const templates = byId('mc-templates') ? mountTemplates(byId('mc-templates'), {
+    api,
+    onCompiled: async (blueprintId, blueprint, { template }) => {
+      tabs.select('blueprints');
+      await blueprints.refresh();
+      await blueprints.select(blueprintId, blueprint);
+      blueprints.elements.feedback.textContent = 'Created ' + blueprintId + ' from the ' + template.name + ' template and your brief. Press Deploy & Execute to start the run.';
+      const deployButton = blueprints.elements.viewer.querySelector('.bp-deploy');
+      if (deployButton) deployButton.focus();
+    },
+    onBlank: () => {
+      tabs.select('blueprints');
+      blueprints.elements.editor.focus();
+    },
+  }) : null;
   const outcomes = byId('mc-outcomes') ? mountOutcomesList(byId('mc-outcomes'), { api, portalFetch: options.portalFetch, storage: options.storage }) : null;
   const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
   // The rail's badge counts the choices waiting, so a question is seen from any view.
@@ -434,7 +452,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
   if (skillButton && decisions) skillButton.addEventListener('click', () => decisions.askSource());
-  return { connection, breaker, monitor, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  return { connection, breaker, monitor, templates, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

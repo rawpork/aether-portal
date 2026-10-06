@@ -1,8 +1,8 @@
 // Quick-choice chips, the Claude ⇄ Gemini console and the Roadmap dashboard.
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { choiceReply, parseNumberedOptions, renderChoiceChips } from '../../public/js/engine/choice-chips.js';
-import { backgroundItems, codeBlocks, fallbackNote, mountDualAgents, pastePayload, providerOf } from '../../public/js/engine/dual-agents.js';
+import { choiceReply, decisionOptions, parseNumberedOptions, parseYesNo, renderChoiceChips } from '../../public/js/engine/choice-chips.js';
+import { COPY_KEY, MAX_AUTO_HOPS, backgroundItems, codeBlocks, fallbackNote, loadCopySettings, mountDualAgents, pastePayload, providerOf, wrapRelay } from '../../public/js/engine/dual-agents.js';
 import { ago, mountRoadmap, summarize } from '../../public/js/engine/roadmap.js';
 
 const settle = async () => {
@@ -44,6 +44,21 @@ describe('parseNumberedOptions', () => {
 	});
 });
 
+describe('decision gates', () => {
+	it('a closing yes/no question becomes Yes / No chips that send the plain word', () => {
+		expect(parseYesNo('Plan is ready.\nShould I add Stripe billing now?').map(choiceReply)).toEqual(['Yes', 'No']);
+		expect(parseYesNo('Done. **Do you want** me to deploy it?')).toHaveLength(2);
+		expect(parseYesNo('What should we call it?')).toEqual([]);
+		expect(parseYesNo('Should I deploy?\nI will wait.')).toEqual([]);
+	});
+
+	it('numbered options win over yes/no; a reply that asks nothing has no gate', () => {
+		expect(decisionOptions('Which one should I use?\n1. D1\n2. KV').map((o) => o.label)).toEqual(['D1', 'KV']);
+		expect(decisionOptions('Shall we go with D1?').map((o) => o.label)).toEqual(['Yes', 'No']);
+		expect(decisionOptions('Here is the schema.')).toEqual([]);
+	});
+});
+
 describe('renderChoiceChips', () => {
 	it('sends one choice, then disables the row; number keys pick too', () => {
 		const picks = [];
@@ -78,6 +93,21 @@ describe('dual-agent helpers', () => {
 	});
 });
 
+describe('inter-agent copy settings', () => {
+	it('wraps what is passed on in the prefix and suffix', () => {
+		expect(wrapRelay(' code ', { pre: 'Review:', post: ' Code only. ' })).toBe('Review:\n\ncode\n\nCode only.');
+		expect(wrapRelay('code', { pre: '  ', post: '' })).toBe('code');
+	});
+
+	it('loads saved settings, falling back to Manual Copy', () => {
+		const store = (value) => ({ getItem: () => value });
+		expect(loadCopySettings(store(JSON.stringify({ mode: 'auto', pre: 'A', post: 'B' })))).toEqual({ mode: 'auto', pre: 'A', post: 'B' });
+		expect(loadCopySettings(store('{bad'))).toEqual({ mode: 'manual', pre: '', post: '' });
+		expect(loadCopySettings({ getItem: () => { throw new Error('blocked'); } })).toEqual({ mode: 'manual', pre: '', post: '' });
+		expect(loadCopySettings(null)).toEqual({ mode: 'manual', pre: '', post: '' });
+	});
+});
+
 describe('fallback notes', () => {
 	it('explains in plain words why Claude stood in', () => {
 		expect(fallbackNote('direct-anthropic (fallback: Google Gemini API (direct) returned an error (HTTP 503): This model is currently experiencing high demand.)', 'Gemini').text).toBe('Gemini was unavailable (it is overloaded right now), so Claude answered this one instead.');
@@ -104,9 +134,11 @@ describe('Claude ⇄ Gemini console', () => {
 			return json({ task_id: 'deploy-1', run_id: 'r1', results: [{ step_index: 0, step_id: 'step-read', started_at: '1', output: { response: 'Read the docs.', model: 'gemini-2.5-flash' } }] });
 		};
 		const container = host();
-		const view = mountDualAgents(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), pollMs: 100000 });
+		const saved = {};
+		const storage = { getItem: (k) => saved[k] ?? null, setItem: (k, v) => { saved[k] = v; } };
+		const view = mountDualAgents(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), pollMs: 100000, storage });
 		cleanup.push(() => view.destroy());
-		return { container, view, calls };
+		return { container, view, calls, saved };
 	};
 	const pane = (container, id) => container.querySelector('.da-pane[data-agent="' + id + '"]');
 
@@ -141,6 +173,58 @@ describe('Claude ⇄ Gemini console', () => {
 		chips[1].click();
 		await settle();
 		expect(calls.filter((c) => c.pathname === '/api/master-brain/chat').at(-1).body).toMatchObject({ purpose: 'plan', message: '2. Review it' });
+	});
+
+	it('Manual Copy is the default; the toggle and the wrappers are saved', () => {
+		const { container, view, saved } = mount();
+		const buttons = [...container.querySelectorAll('.da-seg-btn')];
+		expect(buttons.map((b) => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([['Manual Copy', 'true'], ['Auto-Send', 'false']]);
+		buttons[1].click();
+		expect(buttons[1].getAttribute('aria-pressed')).toBe('true');
+		expect(container.querySelector('.da-relay-hint').textContent).toMatch(/pausing at questions/);
+		view.elements.pre.value = 'Review this:';
+		view.elements.pre.dispatchEvent(new Event('input'));
+		expect(JSON.parse(saved[COPY_KEY])).toEqual({ mode: 'auto', pre: 'Review this:', post: '' });
+	});
+
+	it('Paste wraps the payload in the prefix and suffix', async () => {
+		const { container, view } = mount({ chat: () => json({ session_id: 's', response: 'Use D1.', tokens: { input: 1, output: 1 }, model: 'claude-opus-5-5', status: 'ACTIVE' }) });
+		view.elements.pre.value = 'Check:';
+		view.elements.pre.dispatchEvent(new Event('input'));
+		view.elements.post.value = 'Be brief.';
+		view.elements.post.dispatchEvent(new Event('input'));
+		await view.send('claude', 'Plan');
+		pane(container, 'claude').querySelector('.da-paste').click();
+		expect(pane(container, 'gemini').querySelector('.da-input').value).toBe('Check:\n\nUse D1.\n\nBe brief.');
+	});
+
+	it('Auto-Send hands each reply to the other agent and stops at a question until you answer', async () => {
+		let n = 0;
+		const replies = ['Plan: a D1 table.', 'Read it. Should I add an index?', 'Index added.', 'Looks good. Shall I ship it?'];
+		const { container, view, calls } = mount({ chat: (body) => json({ session_id: body.session_id, response: replies[n++] || 'ok', tokens: { input: 1, output: 1 }, model: body.purpose === 'plan' ? 'claude-opus-5-5' : 'gemini-2.5-flash', status: 'ACTIVE' }) });
+		view.setMode('auto');
+		view.elements.pre.value = 'From Claude:';
+		view.elements.pre.dispatchEvent(new Event('input'));
+		await view.send('claude', 'Design storage');
+		const sent = () => calls.filter((c) => c.pathname === '/api/master-brain/chat').map((c) => [c.body.purpose, c.body.message]);
+		expect(sent()).toEqual([['plan', 'Design storage'], ['step', 'From Claude:\n\nPlan: a D1 table.']]);
+		expect(container.querySelector('.da-status').textContent).toBe('Auto-Send is waiting: Gemini asked a question. Pick an answer under its reply.');
+		const chips = [...pane(container, 'gemini').querySelectorAll('.da-gate .qc-chip')];
+		expect(chips.map((c) => c.textContent)).toEqual(['1. Yes', '2. No']);
+		chips[0].click();
+		await settle();
+		expect(sent().slice(2)).toEqual([['step', 'Yes'], ['plan', 'From Claude:\n\nIndex added.']]);
+	});
+
+	it('Auto-Send pauses after the hand-off limit', async () => {
+		const { container, view, calls } = mount({ chat: (body) => json({ session_id: body.session_id, response: 'Next part.', tokens: { input: 1, output: 1 }, model: 'claude-opus-5-5', status: 'ACTIVE' }) });
+		view.setMode('auto');
+		await view.send('claude', 'Go');
+		expect(calls.filter((c) => c.pathname === '/api/master-brain/chat')).toHaveLength(1 + MAX_AUTO_HOPS);
+		expect(container.querySelector('.da-status').textContent).toBe('Auto-Send paused after ' + MAX_AUTO_HOPS + ' hand-offs. Send a message to continue.');
+		view.setMode('manual');
+		await view.send('claude', 'Again');
+		expect(calls.filter((c) => c.pathname === '/api/master-brain/chat')).toHaveLength(2 + MAX_AUTO_HOPS);
 	});
 
 	it('says when Claude stood in for an overloaded Gemini', async () => {

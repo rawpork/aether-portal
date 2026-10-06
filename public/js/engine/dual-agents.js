@@ -4,9 +4,12 @@
 // The engine's MODEL_ROUTES decides the provider for each purpose, and each reply says which model answered. Task
 // steps the engine ran in the background land in the feed of the provider that answered them.
 // Every agent message has "Paste to <other agent>": its code blocks (or the whole text when there are none) go into
-// the other agent's input, ready to send. Numbered options in a question become quick-reply chips.
+// the other agent's input, ready to send. The Inter-agent copy bar switches between Manual Copy (that button) and
+// Auto-Send (each reply goes to the other agent by itself, at most MAX_AUTO_HOPS times in a row), and wraps what is
+// passed on in an optional pre-send prefix and post-send suffix. A reply that asks something (numbered options, or a
+// yes/no question) is a decision gate: it gets quick-reply chips, and Auto-Send waits for your pick.
 import { getEngineApi } from '../engine-api.bundle.js';
-import { choiceReply, parseNumberedOptions, renderChoiceChips } from './choice-chips.js';
+import { choiceReply, decisionOptions, renderChoiceChips } from './choice-chips.js';
 import { describeEngineError } from './operator-console.js';
 
 export const AGENTS = [
@@ -17,6 +20,13 @@ export const POLL_MS = 8000;
 // Background step outputs shown per agent when the console opens; newer ones are added as they finish.
 export const BACKLOG_PER_AGENT = 3;
 const RUN_TEXT_MAX = 6000;
+// Agent-to-agent hand-offs Auto-Send makes before it waits for you (a message you send resets the count).
+export const MAX_AUTO_HOPS = 6;
+export const COPY_KEY = 'aether.dual.copy';
+export const COPY_MODES = [
+  { id: 'manual', label: 'Manual Copy', hint: 'Paste a reply to the other agent yourself, then edit and send it.' },
+  { id: 'auto', label: 'Auto-Send', hint: 'Each reply goes to the other agent by itself, pausing at questions and after ' + MAX_AUTO_HOPS + ' hand-offs.' },
+];
 
 function el(doc, tag, props = {}, children = []) {
   const node = doc.createElement(tag);
@@ -38,6 +48,21 @@ export function codeBlocks(text) {
 export function pastePayload(text) {
   const blocks = codeBlocks(text);
   return blocks.length ? blocks.join('\n\n') : String(text || '').trim();
+}
+
+// What one agent hands the other: the prefix, the text and the suffix, a blank line apart.
+export function wrapRelay(text, { pre = '', post = '' } = {}) {
+  return [String(pre || '').trim(), String(text || '').trim(), String(post || '').trim()].filter(Boolean).join('\n\n');
+}
+
+// The saved copy settings: { mode: 'manual' | 'auto', pre, post }.
+export function loadCopySettings(storage) {
+  let saved = null;
+  try {
+    saved = JSON.parse((storage && storage.getItem(COPY_KEY)) || 'null');
+  } catch { /* storage blocked or unreadable */ }
+  const value = saved && typeof saved === 'object' ? saved : {};
+  return { mode: value.mode === 'auto' ? 'auto' : 'manual', pre: typeof value.pre === 'string' ? value.pre : '', post: typeof value.post === 'string' ? value.post : '' };
 }
 
 // Which feed a model belongs to ('claude' | 'gemini'), from its model name or route; null for others.
@@ -98,6 +123,9 @@ export function mountDualAgents(container, options = {}) {
   const win = doc.defaultView || globalThis;
   const api = options.api || getEngineApi();
   const pollMs = options.pollMs ?? POLL_MS;
+  const storage = options.storage !== undefined ? options.storage : (() => { try { return win.localStorage; } catch { return null; } })();
+  const settings = loadCopySettings(storage);
+  let hops = 0;
   const status = el(doc, 'p', { class: 'mc-muted da-status', 'aria-live': 'polite' });
   const seen = new Set();
   const panes = new Map();
@@ -137,8 +165,45 @@ export function mountDualAgents(container, options = {}) {
     });
   }
 
+  // Inter-agent copy bar: the mode toggle and the prompt wrappers, saved per browser.
+  const save = () => {
+    try { storage && storage.setItem(COPY_KEY, JSON.stringify(settings)); } catch { /* storage blocked */ }
+  };
+  const modeHint = el(doc, 'span', { class: 'mc-muted da-relay-hint' });
+  const modeButtons = COPY_MODES.map((mode) => {
+    const button = el(doc, 'button', { type: 'button', class: 'da-seg-btn', 'data-mode': mode.id, text: mode.label });
+    button.addEventListener('click', () => setMode(mode.id));
+    return button;
+  });
+  function setMode(mode) {
+    settings.mode = mode === 'auto' ? 'auto' : 'manual';
+    hops = 0;
+    modeButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === settings.mode)));
+    modeHint.textContent = COPY_MODES.find((m) => m.id === settings.mode).hint;
+    save();
+  }
+  const wrapper = (cls, label, key, placeholder) => {
+    const area = el(doc, 'textarea', { class: 'da-wrap-input ' + cls, rows: '2', placeholder, 'aria-label': label });
+    area.value = settings[key];
+    area.addEventListener('input', () => {
+      settings[key] = area.value;
+      save();
+    });
+    return { area, field: el(doc, 'label', { class: 'da-wrap-field' }, [el(doc, 'span', { class: 'da-wrap-label', text: label }), area]) };
+  };
+  const pre = wrapper('da-pre', 'Pre-send prefix', 'pre', 'Goes before what is passed on, e.g. "Review this design for gaps:"');
+  const post = wrapper('da-post', 'Post-send suffix', 'post', 'Goes after it, e.g. "Answer with code only."');
+  const wrappers = el(doc, 'details', { class: 'da-wrappers' }, [el(doc, 'summary', { text: 'Prompt wrappers' }), el(doc, 'div', { class: 'da-wrap-grid' }, [pre.field, post.field])]);
+  wrappers.open = Boolean(settings.pre.trim() || settings.post.trim());
+  const relayBar = el(doc, 'div', { class: 'da-relay', role: 'group', 'aria-label': 'Inter-agent copy' }, [
+    el(doc, 'span', { class: 'da-relay-label', text: 'Inter-agent copy' }),
+    el(doc, 'div', { class: 'da-seg' }, modeButtons),
+    modeHint,
+  ]);
+  setMode(settings.mode);
+
   const grid = el(doc, 'div', { class: 'da-grid' }, [...panes.values()].map((p) => p.pane));
-  container.replaceChildren(el(doc, 'div', { class: 'da' }, [grid, status]));
+  container.replaceChildren(el(doc, 'div', { class: 'da' }, [relayBar, wrappers, grid, status]));
 
   // Puts text into an agent's input (after anything already typed) and focuses it, ready to send.
   function pasteTo(agentId, text) {
@@ -172,28 +237,52 @@ export function mountDualAgents(container, options = {}) {
     if (kind === 'agent' || kind === 'run') {
       const actions = el(doc, 'div', { class: 'da-actions' });
       const paste = el(doc, 'button', { type: 'button', class: 'toggle-button da-paste', 'data-to': state.other.id, text: state.agent.id === 'claude' ? 'Paste to Gemini →' : '← Paste to Claude' });
-      paste.addEventListener('click', () => pasteTo(state.other.id, pastePayload(text)));
+      paste.addEventListener('click', () => pasteTo(state.other.id, wrapRelay(pastePayload(text), settings)));
       actions.append(paste);
       item.append(actions);
-      const choices = kind === 'agent' ? parseNumberedOptions(text) : [];
-      if (choices.length) item.append(renderChoiceChips(doc, choices, (option) => sendTo(state, choiceReply(option))));
+      const choices = kind === 'agent' ? decisionOptions(text) : [];
+      if (choices.length) {
+        item.classList.add('da-gate');
+        item.append(renderChoiceChips(doc, choices, (option) => sendTo(state, choiceReply(option))));
+      }
     }
     state.feed.append(item);
     state.feed.scrollTop = state.feed.scrollHeight;
     return item;
   }
 
-  async function sendTo(state, text) {
+  // Auto-Send: hands a reply to the other agent, unless it asks you something or the hand-off limit is reached.
+  async function relayFrom(state, text, gated) {
+    if (settings.mode !== 'auto') return;
+    if (gated) {
+      status.textContent = 'Auto-Send is waiting: ' + state.agent.name + ' asked a question. Pick an answer under its reply.';
+      return;
+    }
+    if (hops >= MAX_AUTO_HOPS) {
+      status.textContent = 'Auto-Send paused after ' + MAX_AUTO_HOPS + ' hand-offs. Send a message to continue.';
+      return;
+    }
+    const target = panes.get(state.other.id);
+    if (target.busy) return;
+    hops += 1;
+    status.textContent = 'Auto-sent ' + state.agent.name + '’s reply to ' + target.agent.name + ' (' + hops + ' of ' + MAX_AUTO_HOPS + ').';
+    await sendTo(target, wrapRelay(pastePayload(text), settings), { auto: true });
+  }
+
+  async function sendTo(state, text, { auto = false } = {}) {
     if (state.busy) return;
+    if (!auto) hops = 0;
+    let reply = null;
+    let item = null;
     state.busy = true;
     state.send.disabled = true;
     addMessage(state, 'user', text);
     const typing = el(doc, 'li', { class: 'da-msg da-typing', text: state.agent.name + ' is thinking…' });
     state.feed.append(typing);
     try {
-      const reply = await api.sendMasterBrainChat(text, state.sessionId, { purpose: state.agent.purpose });
+      reply = await api.sendMasterBrainChat(text, state.sessionId, { purpose: state.agent.purpose });
       typing.remove();
-      addMessage(state, 'agent', reply.response, { model: reply.model, tier: reply.tier, tokens: reply.tokens });
+      item = addMessage(state, 'agent', reply.response, { model: reply.model, tier: reply.tier, tokens: reply.tokens });
       if (reply.model) {
         state.model.textContent = reply.model;
         // The route may fall back to another provider (no key for this one): say so instead of hiding it.
@@ -210,6 +299,7 @@ export function mountDualAgents(container, options = {}) {
       state.busy = false;
       state.send.disabled = false;
     }
+    if (reply && item) await relayFrom(state, reply.response, item.classList.contains('da-gate'));
   }
 
   const visible = () => !container.closest('[hidden]');
@@ -250,11 +340,13 @@ export function mountDualAgents(container, options = {}) {
     refresh,
     pasteTo,
     send: (agentId, text) => sendTo(panes.get(agentId), text),
+    setMode,
+    getSettings: () => ({ ...settings }),
     start() {
       refresh();
       schedule();
     },
-    elements: { grid, status, panes },
+    elements: { grid, status, panes, relayBar, modeButtons, wrappers, pre: pre.area, post: post.area },
     destroy() {
       destroyed = true;
       clearTimeout(timer);

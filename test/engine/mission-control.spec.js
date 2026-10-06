@@ -40,6 +40,7 @@ async function mountPage(options = {}) {
     if (pathname === '/api/agents/master-brain/state') return reply({ agent_id: 'master-brain', state: 'ACTIVE' });
     if (pathname === '/api/tasks') return reply({ tasks: [], counts: { running: 0, completed: 0, halted: 0, failed: 0 } });
     if (pathname === '/api/artifacts') return reply({ success: true, count: 0, artifacts: [] });
+    if (pathname === '/api/blueprint/compile') return reply({ success: true, blueprint_id: 'bp_tpl', blueprint: { blueprint_id: 'bp_tpl', project_name: 'Landing page + waitlist', status: 'APPROVED_FOR_EXECUTION', execution_phases: [], sources: [] }, logged: true });
     return new Response('{}', { status: 404 });
   };
   const store = { getToken: () => null, setToken() {} };
@@ -145,6 +146,24 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(mc.tabs.getView()).toBe('blueprints');
   overviewNav.click();
   expect(window.location.hash).toBe('');
+});
+
+it('Create / Templates: a template and its brief become a blueprint opened under Projects', async () => {
+  await mountPage();
+  document.getElementById('mc-nav-create').click();
+  expect(document.getElementById('mc-view-create').hidden).toBe(false);
+  expect(document.getElementById('mc-crumb-view').textContent).toBe('Create / Templates');
+  expect(window.location.hash).toBe('#create');
+  document.querySelector('#mc-templates [data-template="landing-waitlist"]').click();
+  document.querySelector('.tp-brief input[name="domain"]').value = 'waitlist.example.com';
+  document.querySelector('.tp-brief .tp-submit').click();
+  for (let i = 0; i < 12; i++) await new Promise((r) => setTimeout(r, 0));
+  expect(document.querySelector('.tp-brief')).toBeNull();
+  expect(mc.tabs.getView()).toBe('blueprints');
+  expect(document.querySelector('#mc-blueprints .bp-viewer h3').textContent).toBe('Landing page + waitlist');
+  expect(document.getElementById('bp-feedback').textContent).toBe('Created bp_tpl from the Landing page + waitlist template and your brief. Press Deploy & Execute to start the run.');
+  expect(document.activeElement).toBe(document.querySelector('#mc-blueprints .bp-deploy'));
+  mc.templates.destroy();
 });
 
 it('a pairing link (?engine=<url>) opens Connection and asks before switching engines', async () => {

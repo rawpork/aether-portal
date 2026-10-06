@@ -592,7 +592,44 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .da-input { flex: 1; min-width: 0; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
     .da-send { align-self: flex-end; }
     .da-status { min-height: 18px; margin: 10px 0 0; font-size: 12px; }
-    @media (max-width: 760px) { .da { padding: 4px 14px 18px; } .da-grid { grid-template-columns: 1fr; } .da-pane { height: 62vh; } }
+    .da-relay { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .da-relay-label { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    .da-seg { display: inline-flex; padding: 3px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); }
+    .da-seg-btn { appearance: none; min-height: 34px; padding: 0 14px; border: none; border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .da-seg-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-line); }
+    .da-relay-hint { flex: 1 1 240px; font-size: 12px; }
+    .da-wrappers { margin-bottom: 12px; font-size: 13px; }
+    .da-wrappers summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+    .da-wrap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+    .da-wrap-field { display: flex; flex-direction: column; gap: 4px; }
+    .da-wrap-label { font-size: 12px; color: var(--muted); }
+    .da-wrap-input { resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+    .da-gate { border-left-color: var(--accent); }
+    @media (max-width: 760px) { .da { padding: 4px 14px 18px; } .da-grid, .da-wrap-grid { grid-template-columns: 1fr; } .da-pane { height: 62vh; } }
+    .tp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+    .tp-card { appearance: none; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; height: 100%; min-height: 150px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+    .tp-card:hover, .tp-card:focus-visible { border-color: var(--accent-line); }
+    .tp-blank { border-style: dashed; background: none; }
+    .tp-name { font-size: 15px; font-weight: 600; }
+    .tp-summary { flex: 1; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+    .tp-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tp-status { min-height: 18px; margin: 0; font-size: 12px; }
+    .tp-brief { display: flex; flex-direction: column; gap: 14px; width: min(620px, 100%); }
+    .tp-q { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: none; min-width: 0; }
+    .tp-q legend, .tp-q-title { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; }
+    .tp-input { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
+    textarea.tp-input { resize: vertical; }
+    .tp-note { margin: 0; font-size: 12px; color: var(--muted); }
+    .tp-note[data-ok="no"] { color: var(--danger-text); }
+    .tp-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tp-option { position: relative; display: flex; flex-direction: column; gap: 2px; min-height: 44px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); cursor: pointer; }
+    .tp-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .tp-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+    .tp-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .tp-option-label { font-size: 14px; font-weight: 600; }
+    .tp-option-hint { font-size: 12px; color: var(--muted); }
+    .tp-error { margin: 0; color: var(--danger-text); font-size: 13px; }
+    @media (max-width: 680px) { .tp-options { grid-template-columns: 1fr; } }
     /* Roadmap (roadmap.js). */
     .rm-body { padding: 4px 24px 24px; }
     .rm-head-actions { display: flex; align-items: center; gap: 10px; }
@@ -1187,6 +1224,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
       <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
+      <button type="button" class="rail-item" id="mc-nav-create" aria-controls="mc-view-create" title="Create / Templates: start a project from a template">${ICONS.plus}<span class="rail-label">Create</span></button>
       <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
       <button type="button" class="rail-item" id="mc-nav-roadmap" aria-controls="mc-view-roadmap" title="Roadmap: goals from ROADMAP.md and recent sessions">${ICONS.flag}<span class="rail-label">Roadmap</span></button>
       <button type="button" class="rail-item" id="mc-nav-operator" aria-controls="mc-view-operator" title="Operator Console: live agent activity, and the choices agents are waiting on">${ICONS.console}<span class="rail-label" data-short="Operator">Operator</span><span class="rail-count" id="mc-operator-count" aria-label="choices waiting" hidden>0</span></button>
@@ -1237,6 +1275,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         </section>
       </div>
       <div class="mc-view surface" id="mc-view-elaron" hidden><section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section></div>
+      <div class="mc-view" id="mc-view-create" hidden><div id="mc-templates"></div></div>
       <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div><div id="mc-outcomes"></div></div>
       <div class="mc-view" id="mc-view-roadmap" hidden><div id="mc-roadmap"></div></div>
       <div class="mc-view" id="mc-view-operator" hidden>

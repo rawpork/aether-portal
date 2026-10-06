@@ -41,8 +41,21 @@ export function parseNumberedOptions(text) {
   return ASKS.test(before) || ASKS.test(after) ? options.filter((o) => o.label) : [];
 }
 
-// The text a chip sends: "2. Option B".
-export const choiceReply = (option) => option.n + '. ' + option.label;
+// A yes/no question as the reply's last line ("Should I add Stripe billing?"): [Yes] [No] chips, or [] otherwise.
+const YES_NO = /(?:^|[.!:]\s+)(?:so,?\s+)?(should|shall|do|does|did|can|could|would|will|is|are|may)\s[^?]{2,200}\?\s*$/i;
+export function parseYesNo(text) {
+  const last = String(text || '').trim().split(/\r?\n/).filter((l) => l.trim()).pop() || '';
+  return YES_NO.test(last.replace(/[*_`]/g, '').trim()) ? [{ n: 1, label: 'Yes', reply: 'Yes' }, { n: 2, label: 'No', reply: 'No' }] : [];
+}
+
+// A decision gate in a reply: numbered options first, else a yes/no question. [] when the reply asks nothing.
+export function decisionOptions(text) {
+  const numbered = parseNumberedOptions(text);
+  return numbered.length ? numbered : parseYesNo(text);
+}
+
+// The text a chip sends: "2. Option B" (or the option's own reply, "Yes").
+export const choiceReply = (option) => option.reply || option.n + '. ' + option.label;
 
 // A row of chips for the options; onPick(option) when one is tapped. Every chip disables once one is chosen, and the
 // chosen one stays marked. Number keys 1-9 pick while the row has focus.
