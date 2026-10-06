@@ -614,6 +614,19 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .tp-summary { flex: 1; font-size: 13px; line-height: 1.45; color: var(--text-2); }
     .tp-tags { display: flex; flex-wrap: wrap; gap: 6px; }
     .tp-status { min-height: 18px; margin: 0; font-size: 12px; }
+    .tp-shelf { padding: 14px; border: 1px solid var(--accent-line); border-radius: var(--radius-l); background: var(--accent-soft); }
+    .tp-shelf .tp-card { background: var(--surface); }
+    .tp-section-title { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; font-weight: 600; }
+    .tp-groups { display: flex; flex-direction: column; gap: 10px; }
+    .tp-group { border: 1px solid var(--line); border-radius: var(--radius-l); padding: 0 14px; }
+    .tp-group summary { min-height: 48px; margin: 0; cursor: pointer; list-style: none; }
+    .tp-group summary::-webkit-details-marker { display: none; }
+    .tp-group summary::before { content: '▸'; color: var(--muted); transition: transform 0.15s; }
+    .tp-group[open] summary::before { transform: rotate(90deg); }
+    .tp-group[open] { padding-bottom: 14px; }
+    .tp-count { margin-left: auto; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 12px; text-align: center; }
+    .tp-skill { background: var(--accent-soft); color: var(--accent); }
+    .tp-brief-category { margin-top: -8px; }
     .tp-brief { display: flex; flex-direction: column; gap: 14px; width: min(620px, 100%); }
     .tp-q { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: none; min-width: 0; }
     .tp-q legend, .tp-q-title { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; }

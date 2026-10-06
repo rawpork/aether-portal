@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
 import { validateCompileRequest } from '../../public/js/engine/blueprint-spec.js';
 import { mentionsWebsite } from '../../public/js/engine/blueprints.js';
-import { AUTH_TYPES, BRIEF_SOURCE_URL, DATABASES, TEMPLATES, briefSummary, briefToSpec, mountTemplates, normalizeDomain } from '../../public/js/engine/templates.js';
+import { AUTH_TYPES, BRIEF_SOURCE_URL, CATEGORIES, DATABASES, POPULAR_IDS, TEMPLATES, USAGE_KEY, briefSummary, briefToSpec, loadUsage, mountTemplates, normalizeDomain, popularTemplates, templateDefaults } from '../../public/js/engine/templates.js';
 
 const settle = async () => {
 	for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
@@ -25,13 +25,34 @@ describe('brief helpers', () => {
 		expect(normalizeDomain('')).toBe('');
 	});
 
-	it('every template has real links and defaults from the answer lists', () => {
+	it('every template has a category, real links and defaults from the answer lists', () => {
+		expect(new Set(TEMPLATES.map((t) => t.id)).size).toBe(TEMPLATES.length);
 		for (const t of TEMPLATES) {
+			expect(CATEGORIES.map((c) => c.id)).toContain(t.category);
 			expect(t.links.length).toBeGreaterThan(0);
 			expect(t.links.every((l) => /^https:\/\//.test(l.url))).toBe(true);
-			expect(AUTH_TYPES.map((a) => a.id)).toContain(t.defaults.auth);
-			expect(DATABASES.map((d) => d.id)).toContain(t.defaults.database);
+			const defaults = templateDefaults(t);
+			expect(AUTH_TYPES.map((a) => a.id)).toContain(defaults.auth);
+			expect(DATABASES.map((d) => d.id)).toContain(defaults.database);
+			expect(defaults.hosting).toMatch(/^cloudflare_/);
 		}
+		expect(TEMPLATES.filter((t) => t.skill).map((t) => t.name).sort()).toEqual(['3D Print & CAD Production Studio', 'AI Skill & Task Sandbox', 'Equipment & Asset Rental Portal', 'Resale & Listing Automation Suite']);
+	});
+
+	it('defaults come from the category, and a template overrides only what it sets', () => {
+		const byId = (id) => TEMPLATES.find((t) => t.id === id);
+		expect(templateDefaults(byId('equipment-rental'))).toEqual({ auth: 'magic_link', database: 'supabase_postgres', hosting: 'cloudflare_pages' });
+		expect(templateDefaults(byId('resale-listing'))).toEqual({ auth: 'oauth', database: 'supabase_postgres', hosting: 'cloudflare_pages' });
+		expect(templateDefaults(byId('skill-sandbox'))).toEqual({ auth: 'api_keys', database: 'cloudflare_d1', hosting: 'cloudflare_workers' });
+		expect(templateDefaults(byId('api-webhooks')).database).toBe('cloudflare_kv');
+		expect(briefToSpec(byId('equipment-rental'), { auth: 'magic_link' }).interviewResponses).toEqual({ database: 'supabase_postgres', hosting: 'cloudflare_pages', unresolvedConnectors: [] });
+	});
+
+	it('the shelf shows the recommended starters until others are used more', () => {
+		expect(popularTemplates().map((t) => t.id)).toEqual(POPULAR_IDS);
+		expect(popularTemplates({ 'print-cad-studio': 2, 'landing-waitlist': 1 }).map((t) => t.id)).toEqual(['print-cad-studio', 'landing-waitlist', 'saas-auditor']);
+		expect(loadUsage({ getItem: () => '{bad' })).toEqual({});
+		expect(loadUsage({ getItem: () => { throw new Error('blocked'); } })).toEqual({});
 	});
 
 	it('turns a template and its brief into a valid compile request', () => {
@@ -67,15 +88,67 @@ describe('Create / Templates view', () => {
 		};
 		const container = document.createElement('div');
 		document.body.append(container);
-		const view = mountTemplates(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), onCompiled: (...args) => compiled.push(args), onBlank: () => compiled.push(['blank']) });
+		const saved = { ...(overrides.saved || {}) };
+		const storage = { getItem: (k) => saved[k] ?? null, setItem: (k, v) => { saved[k] = v; } };
+		const view = mountTemplates(container, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), onCompiled: (...args) => compiled.push(args), onBlank: () => compiled.push(['blank']), storage });
 		cleanup.push(() => view.destroy());
-		return { container, view, calls, compiled };
+		return { container, view, calls, compiled, saved };
 	};
 	const brief = () => document.querySelector('.tp-brief');
 
-	it('lists the templates, and a template opens the brief with its defaults', () => {
+	it('shows the Popular & Recommended shelf, then the other templates in collapsible categories', () => {
 		const { container } = mount();
-		expect([...container.querySelectorAll('.tp-name')].map((n) => n.textContent)).toEqual([...TEMPLATES.map((t) => t.name), 'Start from scratch']);
+		const shelf = container.querySelector('.tp-shelf');
+		expect(shelf.querySelector('.tp-section-title').textContent).toBe('🌟 Popular & Recommended');
+		expect([...shelf.querySelectorAll('.tp-card')].map((c) => c.dataset.template)).toEqual(POPULAR_IDS);
+		const groups = [...container.querySelectorAll('.tp-group')];
+		expect(groups.map((g) => g.querySelector('summary span').textContent)).toEqual(['E-Commerce & Fleet Management', 'AI Skills & Workflow Automation', '3D & Hardware Pipelines', 'SaaS & Web Applications']);
+		expect(groups.every((g) => g.open)).toBe(true);
+		const inGroup = (i) => [...groups[i].querySelectorAll('.tp-card')].map((c) => c.dataset.template);
+		expect(inGroup(0)).toEqual(['equipment-rental', 'resale-listing']);
+		expect(inGroup(1)).toEqual(['api-webhooks', 'skill-sandbox']);
+		expect(inGroup(2)).toEqual(['print-cad-studio']);
+		expect(inGroup(3)).toEqual(['team-dashboard']);
+		expect(groups[1].querySelector('.tp-count').textContent).toBe('2');
+		// Every template appears exactly once; skill blueprints are marked.
+		expect([...container.querySelectorAll('.tp-card')].map((c) => c.dataset.template).sort()).toEqual([...TEMPLATES.map((t) => t.id), 'blank'].sort());
+		expect(container.querySelector('[data-template="skill-sandbox"] .tp-skill').textContent).toBe('Skill blueprint');
+		expect(container.querySelector('[data-template="team-dashboard"] .tp-skill')).toBeNull();
+	});
+
+	it('a category template opens the brief with its category defaults and notes hint', () => {
+		const { container } = mount();
+		container.querySelector('[data-template="equipment-rental"]').click();
+		expect(brief().querySelector('.dc-title').textContent).toBe('Project brief · Equipment & Asset Rental Portal');
+		expect(brief().querySelector('.tp-brief-category').textContent).toMatch(/^E-Commerce & Fleet Management · /);
+		expect(brief().querySelector('input[name="auth"]:checked').value).toBe('magic_link');
+		expect(brief().querySelector('input[name="database"]:checked').value).toBe('supabase_postgres');
+		expect(brief().querySelector('textarea[name="notes"]').getAttribute('placeholder')).toMatch(/rent/);
+		brief().querySelector('.tp-cancel').click();
+		container.querySelector('[data-template="print-cad-studio"]').click();
+		expect(brief().querySelector('input[name="database"]:checked').value).toBe('cloudflare_d1');
+		expect(brief().querySelector('textarea[name="notes"]').getAttribute('placeholder')).toMatch(/Printers and materials/);
+	});
+
+	it('the shelf follows what this browser uses, and open sections stay open', async () => {
+		const { container, saved } = mount({ saved: { [USAGE_KEY]: JSON.stringify({ 'print-cad-studio': 2 }) } });
+		expect([...container.querySelectorAll('.tp-shelf .tp-card')].map((c) => c.dataset.template)).toEqual(['print-cad-studio', 'saas-auditor', 'landing-waitlist']);
+		// Its category is empty now, so it is not shown.
+		expect(container.querySelector('.tp-group[data-category="hardware"]')).toBeNull();
+		const ai = container.querySelector('.tp-group[data-category="ai"]');
+		ai.open = false;
+		ai.dispatchEvent(new Event('toggle'));
+		container.querySelector('[data-template="team-dashboard"]').click();
+		brief().querySelector('.tp-submit').click();
+		await settle();
+		expect(JSON.parse(saved[USAGE_KEY])).toEqual({ 'print-cad-studio': 2, 'team-dashboard': 1 });
+		expect([...container.querySelectorAll('.tp-shelf .tp-card')].map((c) => c.dataset.template)).toEqual(['print-cad-studio', 'team-dashboard', 'saas-auditor']);
+		expect(container.querySelector('.tp-group[data-category="ai"]').open).toBe(false);
+		expect(container.querySelector('.tp-group[data-category="saas"] [data-template="landing-waitlist"]')).not.toBeNull();
+	});
+
+	it('a template opens the brief with its defaults', () => {
+		const { container } = mount();
 		container.querySelector('[data-template="team-dashboard"]').click();
 		expect(brief().getAttribute('role')).toBe('dialog');
 		expect(brief().querySelector('.dc-title').textContent).toBe('Project brief · Team dashboard');
@@ -109,7 +182,7 @@ describe('Create / Templates view', () => {
 		const domain = brief().querySelector('input[name="domain"]');
 		domain.value = 'my site';
 		domain.dispatchEvent(new Event('input'));
-		expect(brief().querySelector('.tp-note').dataset.ok).toBe('no');
+		expect(brief().querySelector('#tp-domain-note').dataset.ok).toBe('no');
 		brief().querySelector('.tp-submit').click();
 		await settle();
 		expect(calls).toHaveLength(0);

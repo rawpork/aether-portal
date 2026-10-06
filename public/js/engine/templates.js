@@ -1,4 +1,6 @@
-// Create / Templates (Mission Control -> Create): ready-made project templates. Picking one opens a short project
+// Create / Templates (Mission Control -> Create): ready-made project templates, with a "Popular & Recommended" shelf
+// (the starters used most in this browser, recommended ones until then) above collapsible category sections for the
+// rest; skill-based blueprints are marked. Picking one opens a short project
 // brief (target domain, sign-in, database, anything else Elarion must know) before anything runs; the answers are
 // compiled into a blueprint on the engine (POST /api/blueprint/compile) and the blueprint opens under Projects, one
 // Deploy & Execute away from its run.
@@ -25,14 +27,29 @@ export const DATABASES = [
   { id: 'none', label: 'No database', hint: 'Static content' },
 ];
 
+// Template groups, in display order. A category's defaults pre-fill the brief for its templates; a template's own
+// defaults win where it sets them.
+export const CATEGORIES = [
+  { id: 'commerce', name: 'E-Commerce & Fleet Management', defaults: { auth: 'magic_link', database: 'supabase_postgres', hosting: 'cloudflare_pages' }, notesHint: 'What you sell or rent, prices and deposits, payment provider, pickup or shipping…' },
+  { id: 'ai', name: 'AI Skills & Workflow Automation', defaults: { auth: 'api_keys', database: 'cloudflare_d1', hosting: 'cloudflare_workers' }, notesHint: 'Which models and tools, the tasks to automate, a monthly spend cap…' },
+  { id: 'hardware', name: '3D & Hardware Pipelines', defaults: { auth: 'magic_link', database: 'cloudflare_d1', hosting: 'cloudflare_workers' }, notesHint: 'Printers and materials, file types, max part size, turnaround times…' },
+  { id: 'saas', name: 'SaaS & Web Applications', defaults: { auth: 'magic_link', database: 'cloudflare_d1', hosting: 'cloudflare_workers' }, notesHint: 'Pricing, brand, must-have pages, anything to avoid…' },
+];
+
+// The starters on the Popular & Recommended shelf until this browser has used others more.
+export const POPULAR_IDS = ['saas-auditor', 'landing-waitlist', 'ai-assistant'];
+export const POPULAR_COUNT = 3;
+export const USAGE_KEY = 'aether.templates.used';
+
 const CF = 'https://developers.cloudflare.com/';
 export const TEMPLATES = [
   {
     id: 'saas-auditor',
+    category: 'saas',
     name: 'SaaS cost auditor',
     summary: 'Paste your tool stack, get the overlap, savings and an ROI number, with paid plans through Stripe.',
     website: true,
-    defaults: { auth: 'api_keys', database: 'cloudflare_d1', hosting: 'cloudflare_workers' },
+    defaults: { auth: 'api_keys' },
     links: [
       { url: CF + 'workers/', title: 'Cloudflare Workers' },
       { url: CF + 'd1/', title: 'Cloudflare D1' },
@@ -41,10 +58,11 @@ export const TEMPLATES = [
   },
   {
     id: 'landing-waitlist',
+    category: 'saas',
     name: 'Landing page + waitlist',
     summary: 'A fast product landing page with a waitlist form that stores sign-ups and blocks spam.',
     website: true,
-    defaults: { auth: 'none', database: 'cloudflare_d1', hosting: 'cloudflare_pages' },
+    defaults: { auth: 'none', hosting: 'cloudflare_pages' },
     links: [
       { url: CF + 'pages/', title: 'Cloudflare Pages' },
       { url: CF + 'd1/', title: 'Cloudflare D1' },
@@ -52,10 +70,11 @@ export const TEMPLATES = [
   },
   {
     id: 'ai-assistant',
+    category: 'ai',
     name: 'AI chat assistant',
     summary: 'A chat assistant on the Claude API with streaming replies, saved conversations and a spend cap.',
     website: true,
-    defaults: { auth: 'magic_link', database: 'cloudflare_d1', hosting: 'cloudflare_workers' },
+    defaults: { auth: 'magic_link' },
     links: [
       { url: 'https://docs.claude.com/en/api/messages', title: 'Claude Messages API' },
       { url: CF + 'workers/', title: 'Cloudflare Workers' },
@@ -63,6 +82,7 @@ export const TEMPLATES = [
   },
   {
     id: 'team-dashboard',
+    category: 'saas',
     name: 'Team dashboard',
     summary: 'An internal dashboard with team sign-in, tables and charts over your own data.',
     website: true,
@@ -74,16 +94,98 @@ export const TEMPLATES = [
   },
   {
     id: 'api-webhooks',
+    category: 'ai',
     name: 'API + webhook worker',
     summary: 'A small JSON API that receives webhooks, checks their signatures and keeps state at the edge.',
     website: false,
-    defaults: { auth: 'api_keys', database: 'cloudflare_kv', hosting: 'cloudflare_workers' },
+    defaults: { database: 'cloudflare_kv' },
     links: [
       { url: CF + 'workers/', title: 'Cloudflare Workers' },
       { url: CF + 'kv/', title: 'Cloudflare KV' },
     ],
   },
+  {
+    id: 'equipment-rental',
+    category: 'commerce',
+    skill: true,
+    name: 'Equipment & Asset Rental Portal',
+    summary: 'Rent out equipment by the day: an availability calendar per asset, deposits and checkout, check-out and return tracking, and a fleet view of what is out, due back or in maintenance.',
+    website: true,
+    defaults: {},
+    links: [
+      { url: 'https://docs.stripe.com/payments/checkout', title: 'Stripe Checkout' },
+      { url: 'https://supabase.com/docs/guides/database/overview', title: 'Supabase Database' },
+      { url: CF + 'pages/', title: 'Cloudflare Pages' },
+    ],
+  },
+  {
+    id: 'resale-listing',
+    category: 'commerce',
+    skill: true,
+    name: 'Resale & Listing Automation Suite',
+    summary: 'Turn item photos and notes into marketplace-ready listings: AI-drafted titles and descriptions, price suggestions, an inventory of what is listed and sold, and scheduled relisting.',
+    website: true,
+    defaults: { auth: 'oauth' },
+    links: [
+      { url: 'https://developer.ebay.com/api-docs/sell/inventory/overview.html', title: 'eBay Sell Inventory API' },
+      { url: 'https://docs.claude.com/en/api/messages', title: 'Claude Messages API' },
+      { url: CF + 'workers/configuration/cron-triggers/', title: 'Workers Cron Triggers' },
+    ],
+  },
+  {
+    id: 'skill-sandbox',
+    category: 'ai',
+    skill: true,
+    name: 'AI Skill & Task Sandbox',
+    summary: 'Write a skill (instructions plus tools), run it against test tasks, compare the runs side by side and keep the versions that pass, with a spend cap on every run.',
+    website: true,
+    defaults: {},
+    links: [
+      { url: 'https://docs.claude.com/en/docs/agents-and-tools/tool-use/overview', title: 'Claude tool use' },
+      { url: CF + 'workers/', title: 'Cloudflare Workers' },
+      { url: CF + 'd1/', title: 'Cloudflare D1' },
+    ],
+  },
+  {
+    id: 'print-cad-studio',
+    category: 'hardware',
+    skill: true,
+    name: '3D Print & CAD Production Studio',
+    summary: 'Take STL and 3MF uploads, preview them in 3D in the browser, quote by material, size and print time, and move each job through a queue from slicing to printed and shipped.',
+    website: true,
+    defaults: {},
+    links: [
+      { url: 'https://threejs.org/docs/', title: 'three.js' },
+      { url: CF + 'r2/', title: 'Cloudflare R2' },
+      { url: CF + 'd1/', title: 'Cloudflare D1' },
+    ],
+  },
 ];
+
+export const categoryOf = (template) => CATEGORIES.find((c) => c.id === template.category) || CATEGORIES[CATEGORIES.length - 1];
+
+// The brief's starting answers: the category's defaults, overridden by the template's own.
+export function templateDefaults(template) {
+  return { ...categoryOf(template).defaults, ...template.defaults };
+}
+
+// Times each template was used in this browser: { id: count }.
+export function loadUsage(storage) {
+  try {
+    const value = JSON.parse((storage && storage.getItem(USAGE_KEY)) || '{}');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+// The Popular & Recommended shelf: the most used templates in this browser, the recommended starters filling the
+// rest (and breaking ties).
+export function popularTemplates(usage = {}) {
+  const rank = (t) => (POPULAR_IDS.includes(t.id) ? POPULAR_IDS.indexOf(t.id) : POPULAR_IDS.length);
+  const count = (t) => Number(usage[t.id]) || 0;
+  return [...TEMPLATES].sort((a, b) => count(b) - count(a) || rank(a) - rank(b)).slice(0, POPULAR_COUNT);
+}
 
 const labelOf = (list, id) => (list.find((o) => o.id === id) || { label: id }).label;
 
@@ -114,8 +216,8 @@ export function briefToSpec(template, brief) {
     useMiserlyProxy: true,
     links: [...template.links.map((l) => ({ ...l })), { url: BRIEF_SOURCE_URL, title: 'Project brief', rawSnippet: briefSummary(template, brief) }],
     interviewResponses: {
-      database: brief.database || template.defaults.database,
-      hosting: template.defaults.hosting,
+      database: brief.database || templateDefaults(template).database,
+      hosting: templateDefaults(template).hosting,
       unresolvedConnectors: [],
     },
   };
@@ -137,33 +239,73 @@ export function mountTemplates(container, options = {}) {
   const api = options.api || getEngineApi();
   const onCompiled = options.onCompiled || (() => {});
   const onBlank = options.onBlank || (() => {});
+  const win = doc.defaultView || globalThis;
+  const storage = options.storage !== undefined ? options.storage : (() => { try { return win.localStorage; } catch { return null; } })();
   let modal = null;
 
-  const cards = TEMPLATES.map((template) => {
-    const button = el(doc, 'button', { type: 'button', class: 'tp-card', 'data-template': template.id }, [
+  function card(template) {
+    const defaults = templateDefaults(template);
+    const button = el(doc, 'button', { type: 'button', class: 'tp-card', 'data-template': template.id, 'data-category': template.category }, [
       el(doc, 'span', { class: 'tp-name', text: template.name }),
       el(doc, 'span', { class: 'tp-summary', text: template.summary }),
       el(doc, 'span', { class: 'tp-tags' }, [
-        el(doc, 'span', { class: 'mc-chip', text: labelOf(AUTH_TYPES, template.defaults.auth) }),
-        el(doc, 'span', { class: 'mc-chip', text: labelOf(DATABASES, template.defaults.database) }),
+        template.skill ? el(doc, 'span', { class: 'mc-chip tp-skill', text: 'Skill blueprint' }) : null,
+        el(doc, 'span', { class: 'mc-chip', text: labelOf(AUTH_TYPES, defaults.auth) }),
+        el(doc, 'span', { class: 'mc-chip', text: labelOf(DATABASES, defaults.database) }),
         template.website ? el(doc, 'span', { class: 'mc-chip', text: 'Website' }) : null,
       ]),
     ]);
     button.addEventListener('click', () => openBrief(template, button));
     return el(doc, 'li', {}, [button]);
-  });
+  }
+
+  const status = el(doc, 'p', { class: 'mc-muted tp-status', 'aria-live': 'polite' });
+  const shelf = el(doc, 'section', { class: 'tp-shelf', 'aria-labelledby': 'tp-popular-title' });
+  const groups = el(doc, 'div', { class: 'tp-groups' });
+  const openGroups = new Set(CATEGORIES.map((c) => c.id));
+
+  // The shelf, then every category with the templates not on the shelf (a category left empty is not shown).
+  function render() {
+    const popular = popularTemplates(loadUsage(storage));
+    const onShelf = new Set(popular.map((t) => t.id));
+    shelf.replaceChildren(
+      el(doc, 'h3', { id: 'tp-popular-title', class: 'tp-section-title', text: '🌟 Popular & Recommended' }),
+      el(doc, 'ul', { class: 'tp-grid', 'aria-labelledby': 'tp-popular-title' }, popular.map(card)),
+    );
+    groups.replaceChildren(...CATEGORIES.map((category) => {
+      const list = TEMPLATES.filter((t) => t.category === category.id && !onShelf.has(t.id));
+      if (!list.length) return null;
+      const titleId = 'tp-cat-' + category.id;
+      const group = el(doc, 'details', { class: 'tp-group', 'data-category': category.id }, [
+        el(doc, 'summary', { class: 'tp-section-title' }, [el(doc, 'span', { id: titleId, text: category.name }), el(doc, 'span', { class: 'tp-count', text: String(list.length) })]),
+        el(doc, 'ul', { class: 'tp-grid', 'aria-labelledby': titleId }, list.map(card)),
+      ]);
+      group.open = openGroups.has(category.id);
+      group.addEventListener('toggle', () => (group.open ? openGroups.add(category.id) : openGroups.delete(category.id)));
+      return group;
+    }).filter(Boolean));
+  }
+
+  function recordUse(template) {
+    const usage = loadUsage(storage);
+    usage[template.id] = (Number(usage[template.id]) || 0) + 1;
+    try { storage && storage.setItem(USAGE_KEY, JSON.stringify(usage)); } catch { /* storage blocked */ }
+    render();
+  }
+
   const blank = el(doc, 'button', { type: 'button', class: 'tp-card tp-blank', 'data-template': 'blank' }, [
     el(doc, 'span', { class: 'tp-name', text: 'Start from scratch' }),
     el(doc, 'span', { class: 'tp-summary', text: 'Paste your own links and settings as a blueprint spec under Projects.' }),
   ]);
   blank.addEventListener('click', () => onBlank());
-  cards.push(el(doc, 'li', {}, [blank]));
 
-  const status = el(doc, 'p', { class: 'mc-muted tp-status', 'aria-live': 'polite' });
+  render();
   container.replaceChildren(el(doc, 'section', { class: 'bp-card tp', 'aria-labelledby': 'tp-title' }, [
     el(doc, 'div', { class: 'bp-card-head' }, [el(doc, 'h2', { id: 'tp-title', text: 'Create from a template' })]),
     el(doc, 'p', { class: 'mc-muted', text: 'Pick a starting point. A short brief comes next, and nothing runs until you press Deploy & Execute under Projects.' }),
-    el(doc, 'ul', { class: 'tp-grid', 'aria-label': 'Project templates' }, cards),
+    shelf,
+    groups,
+    el(doc, 'ul', { class: 'tp-grid tp-blank-row', 'aria-label': 'Other ways to start' }, [el(doc, 'li', {}, [blank])]),
     status,
   ]));
 
@@ -189,20 +331,23 @@ export function mountTemplates(container, options = {}) {
   // The project brief, asked before the blueprint is compiled. Resolves once it is closed or compiled.
   function openBrief(template, returnTo = null) {
     closeBrief();
+    const defaults = templateDefaults(template);
+    const category = categoryOf(template);
     const name = el(doc, 'input', { type: 'text', class: 'tp-input', name: 'projectName', maxlength: '80', 'aria-label': 'Project name' });
     name.value = template.name;
     const domain = el(doc, 'input', { type: 'text', class: 'tp-input', name: 'domain', inputmode: 'url', placeholder: 'www.example.com (leave empty for free staging)', autocomplete: 'off', 'aria-describedby': 'tp-domain-note' });
     const domainNote = el(doc, 'p', { id: 'tp-domain-note', class: 'tp-note' });
-    const notes = el(doc, 'textarea', { class: 'tp-input', name: 'notes', rows: '3', maxlength: '1200', placeholder: 'Pricing, brand, must-have pages, anything to avoid…' });
+    const notes = el(doc, 'textarea', { class: 'tp-input', name: 'notes', rows: '3', maxlength: '1200', placeholder: category.notesHint });
     const error = el(doc, 'p', { class: 'tp-error', role: 'alert', hidden: true });
     const submit = el(doc, 'button', { type: 'submit', class: 'bp-primary tp-submit', text: 'Create project' });
     const cancel = el(doc, 'button', { type: 'button', class: 'toggle-button tp-cancel', text: 'Cancel' });
     const form = el(doc, 'form', { class: 'dc-modal tp-brief', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'tp-brief-title', autocomplete: 'off' }, [
       el(doc, 'h2', { id: 'tp-brief-title', class: 'dc-title', text: 'Project brief · ' + template.name }),
+      el(doc, 'p', { class: 'tp-note tp-brief-category', text: category.name + ' · answers start from this category\u2019s usual setup' }),
       el(doc, 'label', { class: 'tp-q tp-name-row' }, [el(doc, 'span', { class: 'tp-q-title', text: 'Project name' }), name]),
       el(doc, 'label', { class: 'tp-q' }, [el(doc, 'span', { class: 'tp-q-title', text: '1. Which domain will it live on?' }), domain, domainNote]),
-      choiceQuestion(2, 'How do people sign in?', 'auth', AUTH_TYPES, template.defaults.auth),
-      choiceQuestion(3, 'Where is the data kept?', 'database', DATABASES, template.defaults.database),
+      choiceQuestion(2, 'How do people sign in?', 'auth', AUTH_TYPES, defaults.auth),
+      choiceQuestion(3, 'Where is the data kept?', 'database', DATABASES, defaults.database),
       el(doc, 'label', { class: 'tp-q' }, [el(doc, 'span', { class: 'tp-q-title', text: '4. Anything Elarion must know? (optional)' }), notes]),
       error,
       el(doc, 'div', { class: 'bp-preflight-actions' }, [cancel, submit]),
@@ -222,8 +367,8 @@ export function mountTemplates(container, options = {}) {
     const answers = () => ({
       projectName: name.value,
       domain: domain.value,
-      auth: (form.querySelector('input[name="auth"]:checked') || {}).value || template.defaults.auth,
-      database: (form.querySelector('input[name="database"]:checked') || {}).value || template.defaults.database,
+      auth: (form.querySelector('input[name="auth"]:checked') || {}).value || defaults.auth,
+      database: (form.querySelector('input[name="database"]:checked') || {}).value || defaults.database,
       notes: notes.value,
     });
 
@@ -260,6 +405,7 @@ export function mountTemplates(container, options = {}) {
         try {
           const compiled = await api.compileBlueprint(spec);
           closeBrief();
+          recordUse(template);
           status.textContent = 'Created ' + compiled.blueprint_id + ' from ' + template.name + '.';
           await onCompiled(compiled.blueprint_id, compiled.blueprint, { template, brief, spec });
           resolve(compiled);
