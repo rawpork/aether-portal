@@ -82,7 +82,7 @@ Elarion turns a blueprint into finished deliverables, and Mission Control shows 
 - [ ] First real website project end to end: blueprint → run → goal check → /s/ preview → Approve & publish.
 - [ ] Provider keys only in Cloudflare (Miserly passthrough), so none live on the PC.
 
-## Phase 6: Sandboxed Build, Staging & Launch (BUILT 2026-10-05, sandbox install pending)
+## Phase 6: Sandboxed Build, Staging & Launch (BUILT 2026-10-05, sandbox installed)
 Deliverables are proven to build before anyone sees them, staged on a free URL, scored, and launched where the operator chooses.
 - [x] Step 6.1: Sandboxed build and test pass (BUILT 2026-10-05) - a `build` step at the end of every project run sends the deliverables to a WSL Ubuntu sandbox (`scripts/sandbox-setup.ps1`: "sandbox" user without sudo, Windows drives not mounted, Windows interop off, no keys inside, WSL capped at 2 GB / 2 CPUs) where `sandbox/runner.js` runs `npm install`, `npm run build` and `npm test` (time-limited) in a throwaway folder. Failures go back to Elarion on the Claude route, which rewrites the files; up to 3 rounds. Command execution exists only here: the public task API's schema does not accept build steps, and guest agents cannot run them
 - [x] Step 6.2: Automatic staging (BUILT 2026-10-05) - a passing build's output is deployed to Cloudflare Pages (`aether-<project>-<id>.pages.dev`, branch `staging`) with the operator's wrangler login; only files are uploaded, nothing generated runs on the PC. The staged root and up to 8 of its links are checked. `SANDBOX_STAGING=off` turns staging off
@@ -93,11 +93,11 @@ Deliverables are proven to build before anyone sees them, staged on a free URL, 
 - [x] Step 6.6: Inter-agent copy bar (BUILT 2026-10-05) - Operator -> Claude ⇄ Gemini gets [Manual Copy] / [Auto-Send] (Auto-Send passes each reply to the other agent, at most 6 hand-offs in a row), pre-send prefix and post-send suffix text areas (saved per browser), and Question Chips for decision gates: numbered options or a closing yes/no question become chips, and Auto-Send waits for the pick
 
 ### Phase 6 next steps
-- [x] Install the sandbox (2026-10-05): Ubuntu (WSL 2), sandbox user, Node 22 and the runner are in place, and no Windows drive is mounted. The setup script's isolation check flags the empty /mnt/c and /mnt/d mount-point folders as visible drives; it should test for a mount, not for the folders
+- [x] Install the sandbox (2026-10-05): Ubuntu (WSL 2), sandbox user, Node 22 and the runner are in place, and no Windows drive is mounted. The setup script's isolation check now tests for a mount (`mountpoint`), not the empty /mnt/c and /mnt/d mount-point folders, and still stops setup if a drive is reachable
 - [x] First sandbox case study (2026-10-05): Miserly.io built in the sandbox (npm ci, typecheck, wrangler dry-run build, 9/9 tests) and staged at https://staging.aether-miserly-io.pages.dev. Viability 58/100 (below 70, so no launch popup): the placeholder check counts `REPLACE_ME` sample values in .dev.vars.example, a README "..." and a "Retrieving…" loading line, and four secrets are still to set
 - [x] Staging fix (2026-10-05): wrangler 4.140+ turns `pages project create` next to a Workers config into a Worker deploy; the engine now creates with `--force` from an empty folder
 - [ ] First full project run through the sandbox: blueprint, build, repair, staging on pages.dev, launch choice.
-- [ ] Viability: skip example-value files and UI ellipses in the placeholder check, so finished projects like Miserly.io are not scored as unfinished.
+- [x] Viability scanner rules (2026-10-05): sample values in .env.example / .dev.vars.example, a "..." in Markdown and prose like "Retrieving your API key…" no longer count as placeholders. Miserly.io re-scored in the sandbox: 58 → 88 ("Ready to launch", 9/9 tests, staged `/` answers 200); the remaining points are its four secrets still to set
 - [ ] Paste referral links as AFFILIATE_VERCEL_URL / AFFILIATE_NETLIFY_URL / AFFILIATE_SUPABASE_URL in the engine .env when the affiliate accounts exist.
 
 ## ?? Active Architecture & System State
