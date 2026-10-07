@@ -22,6 +22,16 @@ const BADGE_TEXT = {
   ERROR: 'ENGINE ERROR',
 };
 
+// Button and dialog wording. The defaults are the standalone breaker's; Mission Control's status pill passes plain-language
+// labels and the extra agents to stop (see mountBreakerBar options).
+const DEFAULT_LABELS = {
+  trip: { long: 'TRIP BREAKER', short: 'TRIP', aria: 'Trip breaker' },
+  reset: { long: 'RESET AGENT', short: 'RESET', aria: 'Reset agent' },
+  confirmTitle: 'Trip the circuit breaker?',
+  confirmAction: 'Trip Breaker',
+  confirmText: (agentId) => 'This halts ' + agentId + ' immediately: running task loops stop at their next step, chat is refused and voice streams close. It stays halted until you reset it.',
+};
+
 function el(doc, tag, props = {}, children = []) {
   const node = doc.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
@@ -40,8 +50,16 @@ export function mountBreakerBar(container, options = {}) {
   const pollMs = options.pollIntervalMs || POLL_INTERVAL_MS;
   const offlinePollMs = options.offlinePollIntervalMs || OFFLINE_POLL_INTERVAL_MS;
   const onAuthNeeded = options.onAuthNeeded || null;
+  const labels = {
+    ...DEFAULT_LABELS,
+    ...(options.labels || {}),
+    trip: { ...DEFAULT_LABELS.trip, ...((options.labels || {}).trip || {}) },
+    reset: { ...DEFAULT_LABELS.reset, ...((options.labels || {}).reset || {}) },
+  };
+  // Other agents the trip button also stops, besides `agentId` (the workforce's agent ids). Read at click time.
+  const extraTargets = () => (options.getTripTargets ? options.getTripTargets() : []).filter((id) => id !== agentId);
 
-  const view = { state: 'CONNECTING', reason: null, detail: null, busy: false };
+  const view = { state: 'CONNECTING', reason: null, detail: null, busy: false, syncedAt: null };
   let timer = null;
   let polling = false;
   let destroyed = false;
@@ -52,27 +70,25 @@ export function mountBreakerBar(container, options = {}) {
     el(doc, 'span', { class: 'engine-dot', 'aria-hidden': 'true' }),
     badgeLabel,
   ]);
-  const tripButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-trip', 'aria-haspopup': 'dialog', 'aria-label': 'Trip breaker' }, [
-    el(doc, 'span', { class: 'engine-trip-long', text: 'TRIP BREAKER' }),
-    el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: 'TRIP' }),
+  const tripButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-trip', 'aria-haspopup': 'dialog', 'aria-label': labels.trip.aria }, [
+    el(doc, 'span', { class: 'engine-trip-long', text: labels.trip.long }),
+    el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: labels.trip.short }),
   ]);
-  const resetButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-reset', 'aria-label': 'Reset agent', hidden: true }, [
-    el(doc, 'span', { class: 'engine-trip-long', text: 'RESET AGENT' }),
-    el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: 'RESET' }),
+  const resetButton = el(doc, 'button', { type: 'button', class: 'bar-btn engine-reset', 'aria-label': labels.reset.aria, hidden: true }, [
+    el(doc, 'span', { class: 'engine-trip-long', text: labels.reset.long }),
+    el(doc, 'span', { class: 'engine-trip-short', 'aria-hidden': 'true', text: labels.reset.short }),
   ]);
   container.replaceChildren(badge, tripButton, resetButton);
 
   // --- trip confirmation dialog
   const confirmError = el(doc, 'p', { class: 'modal-error' });
   const confirmCancel = el(doc, 'button', { type: 'button', class: 'toggle-button', text: 'Cancel' });
-  const confirmTrip = el(doc, 'button', { type: 'button', class: 'toggle-button engine-trip-confirm', text: 'Trip Breaker' });
+  const confirmTrip = el(doc, 'button', { type: 'button', class: 'toggle-button engine-trip-confirm', text: labels.confirmAction });
+  const confirmText = el(doc, 'p', { class: 'engine-modal-text' });
   const confirmModal = el(doc, 'div', { class: 'modal-backdrop engine-modal', hidden: true }, [
     el(doc, 'div', { class: 'modal-panel', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': 'engine-trip-title' }, [
-      el(doc, 'h3', { id: 'engine-trip-title', class: 'engine-danger-title', text: 'Trip the circuit breaker?' }),
-      el(doc, 'p', {
-        class: 'engine-modal-text',
-        text: 'This halts ' + agentId + ' immediately: running task loops stop at their next step, chat is refused and voice streams close. It stays halted until you reset it.',
-      }),
+      el(doc, 'h3', { id: 'engine-trip-title', class: 'engine-danger-title', text: labels.confirmTitle }),
+      confirmText,
       confirmError,
       el(doc, 'div', { class: 'modal-actions' }, [confirmCancel, confirmTrip]),
     ]),
@@ -93,15 +109,18 @@ export function mountBreakerBar(container, options = {}) {
     badge.setAttribute('aria-label', 'Engine agent ' + agentId + ': ' + BADGE_TEXT[view.state]);
 
     // The panic button stays available even when the last poll failed; only an already-halted agent disables it.
-    tripButton.disabled = view.busy || halted;
+    // With other agents still to stop, a halted master does not disable it.
+    tripButton.disabled = view.busy || (halted && extraTargets().length === 0);
     resetButton.hidden = !halted;
     resetButton.disabled = view.busy;
+    if (options.onChange) options.onChange({ state: view.state, reason: view.reason, detail: view.detail, syncedAt: view.syncedAt, busy: view.busy });
   }
 
   function setState(state, extra = {}) {
     view.state = state;
     view.reason = extra.reason || null;
     view.detail = extra.detail || null;
+    if (state === 'ACTIVE' || state === 'HALTED') view.syncedAt = Date.now();
     render();
   }
 
@@ -157,8 +176,18 @@ export function mountBreakerBar(container, options = {}) {
     confirmError.textContent = '';
     render();
     try {
-      await api.tripBreaker(agentId, MANUAL_TRIP_REASON);
+      const others = extraTargets();
+      // An already-halted master is not tripped again; the rest still are.
+      if (view.state !== 'HALTED') await api.tripBreaker(agentId, MANUAL_TRIP_REASON);
+      const results = await Promise.allSettled(others.map((id) => api.tripBreaker(id, MANUAL_TRIP_REASON)));
+      const failed = others.filter((id, i) => results[i].status === 'rejected');
       setState('HALTED', { reason: MANUAL_TRIP_REASON });
+      if (options.onStopped) options.onStopped();
+      if (failed.length) {
+        // Keep the dialog open so the operator sees which ones did not stop; Stop again retries only those.
+        confirmError.textContent = agentId + ' is stopped, but these did not stop: ' + failed.join(', ') + '. Try again, or stop them from their cards.';
+        return;
+      }
       confirmModal.hidden = true;
       resetButton.focus();
     } catch (error) {
@@ -189,6 +218,7 @@ export function mountBreakerBar(container, options = {}) {
 
   tripButton.addEventListener('click', () => {
     confirmError.textContent = '';
+    confirmText.textContent = options.labels && options.labels.confirmText ? options.labels.confirmText(agentId, extraTargets()) : DEFAULT_LABELS.confirmText(agentId);
     confirmModal.hidden = false;
     // Cancel takes focus so an accidental Enter does not trip the breaker.
     confirmCancel.focus();

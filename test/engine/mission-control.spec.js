@@ -98,7 +98,8 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   const header = document.querySelector('header.mc-top');
   expect(header.querySelector('.mc-crumbs').textContent).toBe('Operations / Mission Control');
   expect(document.getElementById('mc-greeting').textContent).toMatch(/^Good (morning|afternoon|evening), Alex$/);
-  expect(document.getElementById('mc-clock').textContent).toMatch(/^\d\d:\d\d:\d\d$/);
+  expect(document.getElementById('mc-clock')).toBe(null);
+  expect(document.querySelector('#mc-status .status-pill [data-status="text"]').textContent).toBe('All idle');
   expect(header.querySelector('#mc-breaker .engine-badge').dataset.state).toBe('ACTIVE');
   expect(header.querySelector('.engine-trip')).not.toBe(null);
   expect(document.querySelector('.rail-avatar').textContent).toBe('A');

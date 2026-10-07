@@ -127,6 +127,7 @@ export function mountQuickSetup(container, options = {}) {
 
   function showSummary(summary) {
     const b = badgeState(summary);
+    if (options.onBadge) options.onBadge(b);
     if (badge) {
       badge.hidden = b.hidden;
       if (!b.hidden) {

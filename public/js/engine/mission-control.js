@@ -5,6 +5,7 @@ import '../shell-keys.js';
 import { getEngineApi, getStoredEngineToken } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
+import { mountStatusPill } from './status-pill.js';
 import { ENGINE_PARAM, mountConnectionWizard } from './connection-wizard.js';
 import { mountBrainDock } from './brain-dock.js';
 import { describeUnreachableEngine, mountConnection } from './connection.js';
@@ -21,7 +22,7 @@ import { mountTemplates } from './templates.js';
 import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
 import { mountQuickSetup } from './quick-setup.js';
-import { clockTime, greetingFor, mountWorkforce } from './workforce.js';
+import { greetingFor, mountWorkforce } from './workforce.js';
 
 // view -> sidebar button id (its aria-controls names the view's panel). #studio / #create / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
 const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', create: 'mc-nav-create', blueprints: 'mc-nav-blueprints', roadmap: 'mc-nav-roadmap', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
@@ -182,18 +183,16 @@ export function setupTabs(doc, onSelect = () => {}) {
   return { select, getView: () => current, destroy() {} };
 }
 
-// Header: time-of-day greeting with the signed-in user's name, and the LIVE clock.
+// Header: time-of-day greeting with the signed-in user's name. (The ticking LIVE clock is gone: the status pill's popover
+// shows when the engine last answered, which is the time that matters.)
 function startHeader(doc) {
   const name = meta(doc, 'aether-user');
   const greeting = doc.getElementById('mc-greeting');
-  const clock = doc.getElementById('mc-clock');
   const tick = () => {
-    const now = new Date();
-    if (greeting) greeting.textContent = greetingFor(now) + (name ? ', ' + name : '');
-    if (clock) clock.textContent = clockTime(now);
+    if (greeting) greeting.textContent = greetingFor(new Date()) + (name ? ', ' + name : '');
   };
   tick();
-  const timer = setInterval(tick, 1000);
+  const timer = setInterval(tick, 60000);
   return () => clearInterval(timer);
 }
 
@@ -274,14 +273,31 @@ export async function mountMissionControl(doc = document, options = {}) {
 
   const connection = await mountConnection(byId('mc-connection'), { baseUrl: api.baseUrl, ...options.connection });
 
+  // One worded status in the header. Its popover hosts the breaker controls and the Elarion readiness row.
+  let workforce = null;
+  let stoppable = [];
+  // A 401 usually means the token expired or the portal can't mint one: try again, then show how we're connected.
+  const reconnect = async () => {
+    await connection.refresh();
+    connection.open();
+    breaker.refresh();
+  };
+  const statusPill = byId('mc-status') ? mountStatusPill(byId('mc-status'), {
+    onEngineAction: (state) => (state === 'AUTH' ? reconnect() : breaker.refresh()),
+  }) : null;
   const breaker = mountBreakerBar(byId('mc-breaker'), {
     api,
-    // A 401 usually means the token expired or the portal can't mint one: try again, then show how we're connected.
-    onAuthNeeded: async () => {
-      await connection.refresh();
-      connection.open();
-      breaker.refresh();
+    labels: {
+      trip: { long: 'Stop all agents', short: 'Stop', aria: 'Stop all agents' },
+      reset: { long: 'Resume Elarion', short: 'Resume', aria: 'Resume Elarion' },
+      confirmTitle: 'Stop all agents?',
+      confirmAction: 'Stop all agents',
+      confirmText: (agentId, others) => 'This stops Elarion' + (others.length ? ' and ' + others.length + ' other agent' + (others.length === 1 ? '' : 's') : '') + ' right now: running task loops stop at their next step, chat is refused and voice streams close. They stay stopped until you resume them. Resume Elarion from the status pill; resume other agents from their cards.',
     },
+    getTripTargets: () => stoppable,
+    onChange: (b) => statusPill && statusPill.update({ breaker: b }),
+    onStopped: () => workforce && workforce.refresh(),
+    onAuthNeeded: reconnect,
   });
 
   let blueprints = null;
@@ -328,6 +344,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     statusEl: byId('mc-operator-status'),
     onWaitingChange: (count) => {
       if (!operatorCount) return;
+      if (statusPill) statusPill.update({ waiting: count });
       operatorCount.hidden = count === 0;
       operatorCount.textContent = String(count);
     },
@@ -351,6 +368,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   const quickSetup = mountQuickSetup(byId('mc-quick-setup'), {
     api,
     badge: byId('mc-ready'),
+    onBadge: (b) => statusPill && statusPill.update({ elarion: b }),
     onOpenSettings: () => tabs && tabs.select('connect'),
     ...options.quickSetup,
   });
@@ -358,7 +376,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   const computeValue = byId('mc-compute-value');
   const computeSub = byId('mc-compute-sub');
   const computeBar = byId('mc-compute-bar');
-  const workforce = mountWorkforce(byId('mc-workforce'), {
+  workforce = mountWorkforce(byId('mc-workforce'), {
     api,
     portalFetch: options.portalFetch,
     onConnect: () => tabs.select('connect', true),
@@ -368,6 +386,8 @@ export async function mountMissionControl(doc = document, options = {}) {
     showNext: false,
     // Sidebar: agent count, and the compute card (tokens spent; the bar is the share of runs that completed).
     onAgentsChange: (agents, counts) => {
+      stoppable = agents.filter((a) => a.status !== 'tripped' && a.status !== 'paused').map((a) => a.agentId);
+      if (statusPill) statusPill.update({ agents: { working: agents.filter((a) => a.status === 'running').length, total: agents.length, stopped: agents.filter((a) => a.status === 'tripped' || a.status === 'paused').length } });
       if (agentBadge) agentBadge.textContent = String(agents.length);
       const tokens = agents.reduce((sum, a) => sum + a.tokens, 0);
       const runs = counts ? counts.running + counts.completed + counts.halted + counts.failed : 0;

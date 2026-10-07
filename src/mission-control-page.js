@@ -246,9 +246,6 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .surface-link { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     .surface-link:hover { background: var(--surface-soft); }
     .surface-link:active { transform: scale(0.98); }
-    .live-pill { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
-    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
-    .live-word { color: var(--ok); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; }
     .btn-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border: 1px solid var(--ink); border-radius: var(--radius-m); background: var(--ink); color: var(--on-ink); font-weight: 600; white-space: nowrap; cursor: pointer; }
     .btn-primary:hover { background: var(--ink-hover); }
     .mc-main { position: relative; z-index: 0; isolation: isolate; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 28px calc(40px + env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) 40px; }
@@ -490,6 +487,35 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .engine-trip-short { display: none; }
     .engine-reset { border-color: var(--switch-on); background: var(--switch-on); color: #fff; font-weight: 800; letter-spacing: 0.04em; }
     .engine-reset:disabled { opacity: 0.5; cursor: progress; }
+
+    /* ---------- Status pill (public/js/engine/status-pill.js): one worded state in the header, detail and the stop controls in its popover. */
+    .mc-status { position: relative; flex: none; }
+    .status-pill { appearance: none; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    .status-pill:active { transform: scale(0.98); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+    .status-pill[data-kind="running"] { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+    .status-pill[data-kind="running"] .status-dot { background: var(--ok-dot); }
+    .status-pill[data-kind="alert"] { background: var(--alert-bg); color: var(--alert); border-color: var(--alert-line); }
+    .status-pill[data-kind="alert"] .status-dot { background: var(--alert-dot); }
+    .status-pill[data-kind="halted"] { background: var(--danger); color: #fff; border-color: var(--danger); animation: engine-pulse 1.1s ease-in-out infinite; }
+    .status-pill[data-kind="halted"] .status-dot { background: #fff; }
+    .status-panel { position: fixed; z-index: 150; top: var(--status-top, 72px); right: calc(14px + env(safe-area-inset-right, 0px)); width: min(380px, calc(100vw - 28px)); max-height: calc(100vh - var(--status-top, 72px) - 16px); overflow-y: auto; box-sizing: border-box; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14); }
+    .status-panel:focus { outline: none; }
+    .status-title { margin: 0 0 12px; font-size: 15px; font-weight: 700; }
+    .status-rows { margin: 0 0 16px; }
+    .status-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; }
+    .status-row:first-child { border-top: 0; padding-top: 0; }
+    .status-row dt { color: var(--muted); }
+    .status-row dd { margin: 0; overflow-wrap: anywhere; }
+    .status-row:has(#mc-ready[hidden]) { display: none; }
+    .status-link { appearance: none; min-height: 44px; margin-left: 4px; padding: 0 8px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+    .status-panel .mc-breaker { flex-wrap: wrap; }
+    .status-panel .mc-breaker .engine-badge { display: none; }
+    .status-panel .mc-breaker .bar-btn { min-height: 44px; font-size: 13px; }
+    .status-panel .mc-breaker .engine-trip-long { display: inline; }
+    .status-panel .mc-breaker .engine-trip-short { display: none; }
+    .status-panel .ready-pill { width: auto; height: auto; min-height: 36px; padding: 0 12px; }
+    .status-help { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
     /* Dialogs */
     .modal-backdrop { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(24,24,27,0.45); }
@@ -1140,7 +1166,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .wfc-viewport { max-height: 70vh; }
     }
     @media (prefers-reduced-motion: reduce) {
-      .engine-badge[data-state="HALTED"] { animation: none; }
+      .engine-badge[data-state="HALTED"], .status-pill[data-kind="halted"] { animation: none; }
       .elaron-ring, .elaron-core { animation: none !important; }
       .elaron[data-mode="listening"] .elaron-ring, .elaron[data-mode="thinking"] .elaron-ring { opacity: 1; border-color: var(--accent); }
       .mc-progress-fill, .bar-fill, .switch, .switch-knob, .mc-rail { transition: none; }
@@ -1175,11 +1201,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .mc-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .bp-browser { grid-template-columns: minmax(0, 1fr); }
       .bp-list { max-height: 240px; }
-      .mc-breaker .engine-trip-long { display: none; }
-      .mc-breaker .engine-trip-short { display: inline; }
     }
     /* Phones: the rail is a menu tray that slides in from the left under ☰ (like Claude and Gemini), over a scrim
-       that closes it; the header keeps the breaker and drops the clock. */
+       that closes it; the header keeps the status pill. */
     @media (max-width: 680px) {
       body { flex-direction: column; }
       .mc-rail { position: fixed; z-index: 300; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); border-right: 1px solid var(--rail-line); }
@@ -1192,10 +1216,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .mc-greeting { font-size: 19px; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
       .mc-crumbs { font-size: 10.5px; }
       /* Only the header's New agent shrinks to an icon; other primary buttons (the Command Bar's Generate) keep their label. */
-      .live-pill, .mc-actions .btn-primary .btn-label { display: none; }
+      .mc-actions .btn-primary .btn-label { display: none; }
       .mc-actions .btn-primary { width: 42px; padding: 0; justify-content: center; }
-      .engine-badge:not([data-state="HALTED"]) .engine-badge-label { display: none; }
-      .mc-breaker:has(.engine-reset:not([hidden])) .engine-trip { display: none; }
       .mc-main { padding: 14px 12px 20px; }
       .wf-overview { padding: 18px 16px 0; }
       .metric, .metric + .metric { padding: 16px 12px 16px 0; }
@@ -1215,8 +1237,6 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .emergency { flex-wrap: wrap; padding: 16px; }
       .cw { padding: 8px 14px 14px; }
       .qs-form { padding: 8px 14px 16px; }
-      .ready-pill { width: 42px; padding: 0; justify-content: center; }
-      .ready-pill .ready-text { display: none; }
       .cw-modes { grid-template-columns: minmax(0, 1fr); }
       /* On a phone the QR code would be scanned by the phone itself; keep the address and buttons. */
       .cw-pair { grid-template-columns: minmax(0, 1fr); }
@@ -1269,9 +1289,23 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
         <h1 class="mc-greeting" id="mc-greeting">Mission Control</h1>
       </div>
       <div class="mc-actions">
-        <span class="live-pill" title="Local time"><span class="live-dot" aria-hidden="true"></span><span class="live-word">LIVE</span><span class="mono" id="mc-clock"></span></span>
-        <button type="button" class="ready-pill" id="mc-ready" data-kind="running" hidden><span class="ready-dot" aria-hidden="true"></span><span class="ready-text">Elarion Ready</span></button>
-        <div id="mc-breaker" class="mc-breaker" role="group" aria-label="Master circuit breaker (Elarion)"></div>
+        <div class="mc-status" id="mc-status">
+          <button type="button" class="status-pill" data-status="pill" data-kind="checking" aria-haspopup="dialog" aria-expanded="false" aria-controls="mc-status-panel" aria-label="Fleet status: Checking. Open details."><span class="status-dot" aria-hidden="true"></span><span class="status-text" data-status="text">Checking</span></button>
+          <span class="mc-visually-hidden" data-status="live" role="status" aria-live="polite"></span>
+          <span class="mc-visually-hidden" data-status="alert" role="alert"></span>
+          <div class="status-panel" id="mc-status-panel" data-status="panel" role="dialog" aria-labelledby="mc-status-title" tabindex="-1" hidden>
+            <h2 class="status-title" id="mc-status-title">Fleet status</h2>
+            <dl class="status-rows">
+              <div class="status-row"><dt>Engine</dt><dd><span data-status="engine">Checking the connection</span> <button type="button" class="status-link" data-status="engine-action" hidden>Retry</button></dd></div>
+              <div class="status-row"><dt>Elarion</dt><dd><button type="button" class="ready-pill" id="mc-ready" data-kind="running" hidden><span class="ready-dot" aria-hidden="true"></span><span class="ready-text">Elarion Ready</span></button></dd></div>
+              <div class="status-row"><dt>Agents</dt><dd data-status="agents">None yet</dd></div>
+              <div class="status-row"><dt>Waiting for you</dt><dd data-status="waiting">Nothing</dd></div>
+              <div class="status-row"><dt>Safety cutoff</dt><dd data-status="cutoff">Unknown until the engine answers.</dd></div>
+            </dl>
+            <div id="mc-breaker" class="mc-breaker" role="group" aria-label="Stop and resume agents"></div>
+            <p class="status-help">The safety cutoff stops agents at their next step. Stop all agents turns it on for Elarion and every agent below. Resume Elarion turns it off for Elarion; resume other agents from their cards.</p>
+          </div>
+        </div>
         <button type="button" class="btn-primary" id="mc-new-agent" aria-label="New agent: deploy a blueprint">${ICONS.plus}<span class="btn-label">New agent</span></button>
       </div>
     </header>
