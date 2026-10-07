@@ -59,7 +59,13 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
   // Phones shrink only the header's New agent to an icon, never the Command Bar's Generate button.
-  expect(html).toContain('.mc-actions .btn-primary { width: 42px;');
+  expect(html).toContain('.mc-actions .btn-primary { width: 44px;');
+  // Phone header budget (measured in a 375px browser: 69px calm, 90px with the greeting, 117px with an attention strip):
+  // one row of direct flex items, the eyebrow dropped, the greeting on its own line, attention states as a full-width strip.
+  expect(html).toContain('.mc-heading, .mc-actions { display: contents; }');
+  expect(html).toMatch(/\.mc-crumbs \{ display: none; \}/);
+  expect(html).toMatch(/\.mc-greeting \{ order: 10; flex: 0 0 100%;/);
+  expect(html).toContain('.mc-status:has(.status-pill[data-kind="alert"]), .mc-status:has(.status-pill[data-kind="halted"]) { order: 8; flex: 1 0 100%; }');
   expect(html).not.toMatch(/\n\s*\.btn-primary \{ width: 42px;/);
   expect(html).toMatch(/\.wfc-prompt \{[^}]*width: 100%;[^}]*min-width: 0;/);
   expect(html).toMatch(/\.wfc-prompt \{ flex: none; font-size: 16px;/);

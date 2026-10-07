@@ -1213,16 +1213,24 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .mc-rail { position: fixed; z-index: 300; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); border-right: 1px solid var(--rail-line); }
       body.rail-open .mc-rail { transform: none; }
       .mc-scrim { position: fixed; inset: 0; z-index: 290; border: 0; padding: 0; background: rgba(0,0,0,0.5); }
-      .mc-canvas { min-height: 0; }
-      .mc-top { gap: 8px 10px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
-      .mc-heading { flex: 1 1 150px; min-width: 0; }
-      /* Wraps to a second line rather than clipping the name on the narrowest phones. */
-      .mc-title { font-size: 19px; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-      .mc-greeting { font-size: 13px; }
-      .mc-crumbs { font-size: 10.5px; }
+        .mc-canvas { min-height: 0; }
+      /* Phone header budget: one row of 44px controls (menu, Space, page title, status pill, New agent), 68px tall, plus a
+         greeting line on Mission Control only. The heading and actions wrappers dissolve so each piece is a direct flex item;
+         the title takes the space left and wraps to two lines rather than clipping; the "Operations" eyebrow just repeats
+         the title here, so it is dropped on phones. */
+      .mc-top { gap: 4px 8px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
+      .mc-heading, .mc-actions { display: contents; }
+      .mc-crumbs { display: none; }
+      .mc-title { flex: 1 1 0; min-width: 0; margin: 0; font-size: 18px; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .mc-greeting { order: 10; flex: 0 0 100%; font-size: 13px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .status-pill { padding: 0 12px; font-size: 13px; }
+      /* Calm states stay a compact pill in the row. States that want attention (needs you, offline, halted) become a
+         full-width strip under the title, so their longer words never squeeze the page name. */
+      .mc-status:has(.status-pill[data-kind="alert"]), .mc-status:has(.status-pill[data-kind="halted"]) { order: 8; flex: 1 0 100%; }
+      .mc-status:has(.status-pill[data-kind="alert"]) .status-pill, .mc-status:has(.status-pill[data-kind="halted"]) .status-pill { width: 100%; justify-content: center; }
       /* Only the header's New agent shrinks to an icon; other primary buttons (the Command Bar's Generate) keep their label. */
       .mc-actions .btn-primary .btn-label { display: none; }
-      .mc-actions .btn-primary { width: 42px; padding: 0; justify-content: center; }
+      .mc-actions .btn-primary { width: 44px; height: 44px; padding: 0; justify-content: center; }
       .mc-main { padding: 14px 12px 20px; }
       .wf-overview { padding: 18px 16px 0; }
       .metric, .metric + .metric { padding: 16px 12px 16px 0; }
@@ -1254,6 +1262,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .brain-form { flex-wrap: wrap; padding: 10px 14px 4px; }
       .brain-input { flex-basis: 100%; }
       .brain-send { margin-left: auto; }
+    }
+    @media (max-width: 359.98px) {
+      .mc-top { flex-wrap: wrap; }
+      .mc-title { flex-basis: 100%; order: 5; }
     }
   </style>
 </head>
