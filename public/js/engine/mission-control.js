@@ -1,6 +1,7 @@
 // Mission Control entry (/mission-control, src/mission-control-page.js). Gets an engine token first (connection.js),
 // so the breaker, workforce overview, task monitor, blueprint dashboard and Elarion dock all start out authenticated,
 // then mounts them. The dark sidebar rail switches between the views.
+import '../shell-keys.js';
 import { getEngineApi, getStoredEngineToken } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';

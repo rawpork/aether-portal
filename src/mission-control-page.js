@@ -26,6 +26,7 @@ const ICONS = {
 	console: icon('<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9.5 3 2.5-3 2.5"/><path d="M12.5 15H17"/>'),
 	nodes: icon('<rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="3" y="15" width="6" height="5" rx="1.5"/><rect x="15" y="9.5" width="6" height="5" rx="1.5"/><path d="M9 6.5c3 0 3 5.5 6 5.5M9 17.5c3 0 3-5.5 6-5.5"/>'),
 	back: icon('<path d="M10 6 4 12l6 6"/><path d="M4 12h11a5 5 0 0 1 5 5v1"/>'),
+	space: icon('<circle cx="12" cy="12" r="2.6"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(-28 12 12)"/>'),
 	home: icon('<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>'),
 	gear: icon('<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/>'),
 	plus: icon('<path d="M12 5v14M5 12h14"/>', ' stroke-width="2.2"'),
@@ -242,9 +243,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     .menu-toggle:hover { background: var(--surface-soft); }
     .menu-toggle:active { transform: scale(0.98); }
-    .mobile-return-btn { display: none; flex: none; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); text-decoration: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-    .mobile-return-btn:hover { background: var(--surface-soft); }
-    .mobile-return-btn:active { transform: scale(0.96); }
+    .surface-link { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    .surface-link:hover { background: var(--surface-soft); }
+    .surface-link:active { transform: scale(0.98); }
     .live-pill { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok-dot); }
     .live-word { color: var(--ok); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; }
@@ -1162,7 +1163,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .wf-detail { position: static; }
     }
     @media (max-width: 767.98px) {
-      .mobile-return-btn { display: inline-flex; }
+      .surface-link { padding: 0; width: 44px; }
+      .surface-link-label { display: none; }
     }
     @media (max-width: 900px) {
       .mc-top { padding-left: 24px; padding-right: 24px; }
@@ -1230,9 +1232,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     }
   </style>
 </head>
-<body data-view="overview">
+<body data-view="overview" data-shell-surface="mission-control">
   <aside class="mc-rail" id="mc-rail" aria-label="Aether">
-    <a class="rail-brand" href="/" title="Back to the Aether Portal (3D space)"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
+    <a class="rail-brand" href="/" title="Space: the 3D graph (Alt+S)" aria-label="Aether Space (Alt+S)" aria-keyshortcuts="Alt+S"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
     <nav class="rail-nav" aria-label="Mission Control views">
       <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
@@ -1261,7 +1263,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <div class="mc-canvas">
     <header class="mc-top">
       <button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" title="Menu" aria-label="Menu">${ICONS.menu}</button>
-      <a class="mobile-return-btn" href="/" aria-label="Return to the Portal (3D space)" title="Return to the Portal (3D space)">${ICONS.back}</a>
+      <a class="surface-link" href="/" aria-label="Space" aria-keyshortcuts="Alt+S" title="Space: the 3D graph (Alt+S)">${ICONS.space}<span class="surface-link-label">Space</span></a>
       <div class="mc-heading">
         <p class="mc-crumbs">Operations / <span id="mc-crumb-view">Mission Control</span></p>
         <h1 class="mc-greeting" id="mc-greeting">Mission Control</h1>

@@ -46,6 +46,9 @@ describe('Mission Control routes', () => {
 		const html = await (await SELF.fetch('http://example.com/')).text();
 		expect(html).toContain('id="mission-control-tab"');
 		expect(html).toContain('href="/mission-control"');
+		// The same link also sits in the top bar's second slot, mirroring Space's link in Mission Control's header (WCAG 3.2.3).
+		expect(html).toMatch(/<a class="bar-btn mc-tab surface-link" id="topbar-mission-control" href="\/mission-control" aria-label="Mission Control" aria-keyshortcuts="Alt\+M"/);
+		expect(html).toContain('data-shell-surface="space"');
 		for (const gone of ['engine-bar', 'brain-dock', 'breaker-bar.js', 'engine-badge', 'aether.engine.jwt']) {
 			expect(html, gone).not.toContain(gone);
 		}
