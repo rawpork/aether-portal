@@ -9,8 +9,8 @@
 // at it, and what each finished step actually wrote, not just step titles.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
-import { ACTIVE_POLL_MS, IDLE_POLL_MS, describeTask, formatDuration } from './task-monitor.js';
-import { ELARION_AGENT_ID, taskTitle } from './labels.js';
+import { ACTIVE_POLL_MS, IDLE_POLL_MS, describeTask, formatAgo, formatDuration } from './task-monitor.js';
+import { ELARION_AGENT_ID, agentName, taskTitle } from './labels.js';
 
 export { ELARION_AGENT_ID };
 export const PAUSE_REASON = 'Paused from Mission Control';
@@ -22,8 +22,8 @@ export const DETAIL_TABS = ['activity', 'tasks', 'output', 'skills', 'bridge'];
 
 const PROFILES = { [ELARION_AGENT_ID]: { name: 'Elarion', role: 'Master Brain' } };
 const AVATAR_TONES = ['violet', 'blue', 'amber', 'teal', 'rose', 'slate'];
-const PILL_TEXT = { running: 'Running', 'needs-input': 'Needs input', paused: 'Paused', tripped: 'Tripped', idle: 'Idle', waiting: 'Waiting' };
-const PILL_KIND = { running: 'running', 'needs-input': 'alert', paused: 'queued', tripped: 'off', idle: 'queued', waiting: 'queued' };
+const PILL_TEXT = { running: 'Running', 'needs-input': 'Needs input', paused: 'Paused', tripped: 'Stopped', done: 'Done', idle: 'Idle', waiting: 'Waiting' };
+const PILL_KIND = { running: 'running', 'needs-input': 'alert', paused: 'queued', tripped: 'off', done: 'done', idle: 'queued', waiting: 'queued' };
 const EVENT_TEXT = {
   STARTED: 'Run started',
   STEP_STARTED: 'Step started',
@@ -86,6 +86,8 @@ export function summarizeAgent(agentId, tasks, agentState, now = Date.now()) {
   if (halted) status = reason === PAUSE_REASON ? 'paused' : 'tripped';
   else if (latest && latest.status === 'RUNNING') status = 'running';
   else if (latest && (latest.status === 'FAILED' || latest.status === 'HALTED')) status = 'needs-input';
+  // A finished run is Done, which reads differently from a run in progress or an agent that has not started.
+  else if (latest && latest.status === 'COMPLETED') status = 'done';
   else if (latest) status = 'idle';
 
   const total = latest ? latest.total_steps : 0;
@@ -134,6 +136,51 @@ export function summarizeAgent(agentId, tasks, agentState, now = Date.now()) {
   };
 }
 
+// Which breaker action an agent card may offer. Pause only while it is working, Resume only while it is stopped; an idle or
+// finished agent has nothing to pause (its API breaker switch is still there to stop it from taking new work).
+export function agentActions(agent) {
+  return { pause: !agent.halted && agent.status === 'running', resume: !!agent.halted };
+}
+
+// The "Right now" strip: what the system is doing, what needs the operator, what changed last, and what is new in Space.
+// tasks: GET /api/tasks summaries; space: { week, latest } from the portal graph or null.
+export function summarizeNow({ agents = [], tasks = [], error = null, now = Date.now(), space = null } = {}) {
+  if (error) {
+    return { focus: error.isUnauthorized ? 'The engine turned down this sign-in.' : 'The engine is not reachable.', working: null, waiting: 0, change: '', space };
+  }
+  const waitingTasks = tasks.filter((t) => t.status === 'RUNNING' && t.awaiting);
+  const running = agents.filter((a) => a.status === 'running');
+  const stopped = agents.filter((a) => a.halted);
+  let focus;
+  if (waitingTasks.length) {
+    const question = String(waitingTasks[0].awaiting.question || 'a decision');
+    focus = agentName(waitingTasks[0].agent_id) + ' is waiting for your answer: ' + (question.length > 120 ? question.slice(0, 120) + '…' : question);
+  } else if (running.length) {
+    const a = running[0];
+    focus = a.name + ' is on step ' + Math.min(a.done + 1, a.total) + ' of ' + a.total + ': ' + taskTitle(a.latest.task_id) + (running.length > 1 ? ' (' + (running.length - 1) + ' more working)' : '');
+  } else if (stopped.length) focus = stopped.length === 1 ? stopped[0].name + ' is stopped.' : stopped.length + ' agents are stopped.';
+  else if (agents.some((a) => a.latest)) focus = 'Nothing is running.';
+  else focus = 'Nothing has run yet.';
+
+  const newest = [...tasks].sort((a, b) => String(b.finished_at || b.started_at).localeCompare(String(a.finished_at || a.started_at)))[0];
+  const verbs = { COMPLETED: 'finished', FAILED: 'failed on', HALTED: 'was stopped during', RUNNING: 'started' };
+  const change = newest ? agentName(newest.agent_id) + ' ' + (verbs[newest.status] || 'updated') + ' ' + taskTitle(newest.task_id) + ' · ' + (formatAgo(newest.finished_at || newest.started_at, now) || 'just now') : '';
+  return { focus, working: { n: running.length, total: agents.length }, waiting: waitingTasks.length, change, space };
+}
+
+// New cards in Space: how many arrived in the last 7 days and the newest title, from the portal graph's nodes.
+// created_at is SQLite's "YYYY-MM-DD HH:MM:SS" in UTC, so it is read as UTC.
+const nodeTime = (node) => {
+  const raw = node && node.created_at ? String(node.created_at) : '';
+  return Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw.replace(' ', 'T') + 'Z');
+};
+export function summarizeSpace(nodes = [], now = Date.now()) {
+  const dated = nodes.filter((n) => !Number.isNaN(nodeTime(n)));
+  if (!dated.length) return null;
+  const newest = dated.reduce((a, b) => (nodeTime(b) > nodeTime(a) ? b : a));
+  return { total: nodes.length, week: dated.filter((n) => now - nodeTime(n) <= 7 * 86400000).length, latest: newest.title || '' };
+}
+
 // The four-metric operations summary across all agents.
 export function summarizeWorkforce(agents, counts, now = Date.now()) {
   const withRuns = agents.filter((a) => a.latest);
@@ -150,7 +197,7 @@ export function summarizeWorkforce(agents, counts, now = Date.now()) {
     completion = { value: sameDay ? 'Today' : 'Tomorrow', sub: 'at ' + at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) };
   } else if (running.length) completion = { value: 'Estimating', sub: running.length + ' running' };
   return [
-    { key: 'progress', label: 'Overall progress', value: steps ? Math.round((done / steps) * 100) + '%' : '0%', sub: done + ' of ' + steps + ' steps' },
+    { key: 'progress', label: 'Overall progress', value: steps ? Math.round((done / steps) * 100) + '%' : '0%', sub: done + ' of ' + steps + ' steps' + (running.length ? '' : ', none running') },
     { key: 'active', label: 'Active workers', value: String(running.length), sub: 'of ' + agents.length + ' assigned' },
     { key: 'completed', label: 'Tasks completed', value: String(c.completed), sub: 'of ' + totalRuns + ' total' },
     { key: 'eta', label: 'Est. completion', value: completion.value, sub: completion.sub },
@@ -281,6 +328,8 @@ export function mountWorkforce(container, options = {}) {
   const onNavigate = options.onNavigate || (() => {});
   // false when the page shows the banner itself (Mission Control's decision center does, on every view).
   const showNext = options.showNext !== false;
+  // The "In Space" row of the Right now strip reads the portal graph; tests and embedders can turn it off.
+  const showSpace = options.showSpace !== false;
   const storage = options.storage || (() => { try { return win.localStorage; } catch { return null; } })();
   const now = options.now || (() => Date.now());
 
@@ -323,7 +372,17 @@ export function mountWorkforce(container, options = {}) {
     cards,
   ]);
   const detail = el(doc, 'section', { class: 'surface wf-detail', 'aria-label': 'Selected agent' });
-  container.replaceChildren(banner, next, overview, el(doc, 'div', { class: 'wf-split' }, [workforce, detail]));
+  // "Right now": the operator's four questions answered first (is it healthy, what is it doing, what needs me, what changed),
+  // then the agents, then the project totals.
+  const nowFocus = el(doc, 'p', { class: 'wf-focus' });
+  const nowFacts = el(doc, 'dl', { class: 'wf-facts' });
+  const now_ = el(doc, 'section', { class: 'surface wf-now', 'aria-labelledby': 'wf-now-title' }, [
+    el(doc, 'h2', { id: 'wf-now-title', class: 'wf-now-title', text: 'Right now' }),
+    nowFocus,
+    nowFacts,
+  ]);
+  container.replaceChildren(banner, next, now_, el(doc, 'div', { class: 'wf-split' }, [workforce, detail]), overview);
+  let space = null;
 
   // --- engine calls
   async function act(agentId, fn) {
@@ -463,6 +522,9 @@ export function mountWorkforce(container, options = {}) {
   }
 
   function pauseButton(agent, focusKey, long = false) {
+    const actions = agentActions(agent);
+    // Nothing to pause on an idle or finished agent, nothing to resume on a running one.
+    if (!actions.pause && !actions.resume) return null;
     const halted = agent.halted;
     const b = el(doc, 'button', { type: 'button', class: 'btn btn-small' + (long ? ' btn-pause' : ''), 'data-focus': focusKey, disabled: busy.has(agent.agentId) }, [
       el(doc, 'span', { class: 'btn-icon', 'aria-hidden': 'true', text: halted ? '▶' : '❚❚' }),
@@ -486,8 +548,9 @@ export function mountWorkforce(container, options = {}) {
     if (!changed('overview', [summary, error ? 'err' : 'ok'])) return;
     const anyRunning = agents.some((a) => a.status === 'running');
     const anyHalted = agents.some((a) => a.halted);
-    projectPill.replaceChildren(el(doc, 'span', { class: 'pill-dot', 'aria-hidden': 'true' }), error ? 'Offline' : anyHalted ? 'Breaker tripped' : anyRunning ? 'Running' : 'Idle');
-    projectPill.dataset.kind = error ? 'alert' : anyHalted ? 'off' : anyRunning ? 'running' : 'queued';
+    const allDone = agents.some((a) => a.status === 'done') && agents.every((a) => a.status === 'done' || !a.latest);
+    projectPill.replaceChildren(el(doc, 'span', { class: 'pill-dot', 'aria-hidden': 'true' }), error ? 'Offline' : anyHalted ? 'Stopped' : anyRunning ? 'Running' : allDone ? 'All done' : 'Idle');
+    projectPill.dataset.kind = error ? 'alert' : anyHalted ? 'off' : anyRunning ? 'running' : allDone ? 'done' : 'queued';
     metrics.replaceChildren(
       ...summary.map((m) =>
         el(doc, 'div', { class: 'metric', 'data-key': m.key }, [
@@ -496,6 +559,40 @@ export function mountWorkforce(container, options = {}) {
         ]),
       ),
     );
+  }
+
+  function renderNow() {
+    const summary = summarizeNow({ agents, tasks: allTasks, error, now: now(), space });
+    if (!changed('now', summary)) return;
+    nowFocus.textContent = summary.focus;
+    const fact = (label, ...value) => el(doc, 'div', { class: 'wf-fact' }, [el(doc, 'dt', { text: label }), el(doc, 'dd', {}, value)]);
+    const rows = [];
+    if (summary.working) rows.push(fact('Working', summary.working.n + ' of ' + summary.working.total + ' agent' + (summary.working.total === 1 ? '' : 's')));
+    if (summary.working) {
+      if (summary.waiting) {
+        const answer = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: 'Answer now', 'data-focus': 'now-answer' });
+        answer.addEventListener('click', () => onNavigate('operator'));
+        rows.push(fact('Needs you', summary.waiting + ' choice' + (summary.waiting === 1 ? '' : 's') + ' waiting ', answer));
+      } else rows.push(fact('Needs you', 'Nothing'));
+    }
+    if (summary.change) rows.push(fact('Last change', summary.change));
+    if (summary.space) {
+      const latest = summary.space.latest.length > 36 ? summary.space.latest.slice(0, 36).trimEnd() + '…' : summary.space.latest;
+      rows.push(fact('In Space', summary.space.week + ' new this week' + (latest ? ' · latest: ' + latest : '')));
+    }
+    withFocus(() => nowFacts.replaceChildren(...rows));
+  }
+
+  async function loadSpace() {
+    try {
+      const res = await portalFetch('/api/graph', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!res.ok) return;
+      const graph = await res.json();
+      space = summarizeSpace(Array.isArray(graph.nodes) ? graph.nodes : [], now());
+      renderNow();
+    } catch {
+      // Space is a nice-to-have on this strip; without it the row is simply left out.
+    }
   }
 
   function renderCards() {
@@ -863,6 +960,7 @@ export function mountWorkforce(container, options = {}) {
 
   function render() {
     renderNext();
+    renderNow();
     renderOverview();
     renderCards();
     renderDetail();
@@ -877,7 +975,10 @@ export function mountWorkforce(container, options = {}) {
     if (since) since.textContent = formatClock(now() - new Date(since.getAttribute('data-pulse-since')).getTime());
   }, 1000);
 
-  refreshBtn.addEventListener('click', () => refresh());
+  refreshBtn.addEventListener('click', () => {
+    refresh();
+    if (showSpace) loadSpace();
+  });
   // Trips and resets from anywhere on the page (header breaker, Elarion) refresh the cards. State reads are skipped:
   // refresh() makes them itself.
   const offState = onEngineState((detail) => {
@@ -892,6 +993,7 @@ export function mountWorkforce(container, options = {}) {
 
   render();
   refresh();
+  if (showSpace) loadSpace();
 
   return {
     refresh,

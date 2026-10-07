@@ -269,6 +269,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .pill[data-kind="running"] .pill-dot { background: var(--ok-dot); }
     .pill[data-kind="alert"] { background: var(--alert-bg); color: var(--alert); }
     .pill[data-kind="alert"] .pill-dot { background: var(--alert-dot); }
+    .pill[data-kind="done"] { background: var(--accent-soft); color: var(--accent); }
+    .pill[data-kind="done"] .pill-dot { background: var(--accent); }
     .pill[data-kind="off"] { background: var(--off-bg); color: var(--off); }
     .pill[data-kind="off"] .pill-dot { background: var(--off-dot); }
     .btn { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-weight: 600; white-space: nowrap; cursor: pointer; }
@@ -352,6 +354,13 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .pulse-text { margin: 6px 0 0; padding: 10px 12px; max-height: 320px; overflow: auto; border-radius: var(--radius-s); background: var(--surface); color: var(--text-2); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
     .tl-more { margin-top: 4px; }
     .wf-banner[data-kind="error"] { border-color: var(--danger-line); background: var(--danger-soft); color: var(--off); }
+    .wf-now { padding: 18px 24px 8px; }
+    .wf-now-title { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+    .wf-focus { margin: 0 0 12px; font-size: 18px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+    .wf-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 0 32px; margin: 0; }
+    .wf-fact { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 2px 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.4; }
+    .wf-fact dt { color: var(--muted); font-size: 13px; }
+    .wf-fact dd { margin: 0; overflow-wrap: anywhere; }
     .wf-overview { padding: 24px 28px 4px; }
     .wf-overview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
     .wf-project-name { margin-top: 10px; font-size: 21px; font-weight: 500; }
@@ -1232,6 +1241,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .mc-actions .btn-primary .btn-label { display: none; }
       .mc-actions .btn-primary { width: 44px; height: 44px; padding: 0; justify-content: center; }
       .mc-main { padding: 14px 12px 20px; }
+      .wf-now { padding: 14px 16px 6px; }
+      .wf-focus { font-size: 16px; }
+      .wf-fact { grid-template-columns: 96px minmax(0, 1fr); }
       .wf-overview { padding: 18px 16px 0; }
       .metric, .metric + .metric { padding: 16px 12px 16px 0; }
       .metric:nth-child(even) { padding-left: 14px; }
@@ -1283,9 +1295,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label" data-short="Runs">Run history</span></button>
       <span class="rail-spacer"></span>
       <div class="rail-compute">
-        <div class="rail-compute-head"><span>Compute</span><strong id="mc-compute-value" title="Tokens used by task runs">0</strong></div>
-        <div class="rail-compute-bar" aria-hidden="true"><span id="mc-compute-bar"></span></div>
-        <div class="rail-compute-sub" id="mc-compute-sub">tokens · 0 / 0 runs done</div>
+        <div class="rail-compute-head"><span>Compute</span><strong id="mc-compute-value" title="Tokens used by task runs">0 tokens</strong></div>
+        <div class="rail-compute-bar" aria-hidden="true" title="Share of runs completed"><span id="mc-compute-bar"></span></div>
+        <div class="rail-compute-sub" id="mc-compute-sub">0 of 0 runs done</div>
       </div>
       <a class="rail-item" id="mc-nav-engine" href="#" title="Engine State: the Aether Engine's own status page">${ICONS.engine}<span class="rail-label" data-short="Engine">Engine State</span></a>
       <button type="button" class="rail-item" id="mc-nav-connect" aria-controls="mc-view-connect" title="Settings">${ICONS.gear}<span class="rail-label">Settings</span></button>

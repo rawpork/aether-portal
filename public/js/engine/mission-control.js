@@ -407,8 +407,9 @@ export async function mountMissionControl(doc = document, options = {}) {
       if (agentBadge) agentBadge.textContent = String(agents.length);
       const tokens = agents.reduce((sum, a) => sum + a.tokens, 0);
       const runs = counts ? counts.running + counts.completed + counts.halted + counts.failed : 0;
-      if (computeValue) computeValue.textContent = tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'k' : String(tokens);
-      if (computeSub) computeSub.textContent = 'tokens · ' + (counts ? counts.completed : 0) + ' / ' + runs + ' runs done';
+      // The number is tokens spent; the bar and the line under it are runs completed, so each says what it measures.
+      if (computeValue) computeValue.textContent = (tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'k' : String(tokens)) + ' tokens';
+      if (computeSub) computeSub.textContent = (counts ? counts.completed : 0) + ' of ' + runs + ' runs done';
       if (computeBar) computeBar.style.width = (runs ? Math.round((counts.completed / runs) * 100) : 0) + '%';
     },
   });

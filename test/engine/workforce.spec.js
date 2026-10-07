@@ -6,11 +6,14 @@ import {
   EMERGENCY_REASON,
   PAUSE_REASON,
   activityItems,
+  agentActions,
   nextAction,
   runPulse,
   mountWorkforce,
   outputLines,
   summarizeAgent,
+  summarizeNow,
+  summarizeSpace,
   summarizeWorkforce,
   taskRows,
 } from '../../public/js/engine/workforce.js';
@@ -64,6 +67,57 @@ describe('view models', () => {
     expect(summarizeAgent('atlas', [runningTask], { state: 'HALTED', reason: 'loop' }, NOW)).toMatchObject({ status: 'tripped', pillKind: 'off' });
     expect(summarizeAgent('atlas', [{ ...runningTask, status: 'FAILED' }], { state: 'ACTIVE' }, NOW)).toMatchObject({ status: 'needs-input', eta: 'Blocked' });
     expect(summarizeAgent('master-brain', [], { state: 'ACTIVE' }, NOW)).toMatchObject({ name: 'Elarion', role: 'Master Brain', status: 'waiting', progress: 0 });
+  });
+
+  it('calls a finished run Done, apart from running, idle and needs-input', () => {
+    const finished = { ...runningTask, status: 'COMPLETED', completed_steps: 4, finished_at: iso(1000) };
+    expect(summarizeAgent('atlas', [finished], { state: 'ACTIVE' }, NOW)).toMatchObject({ status: 'done', pill: 'Done', pillKind: 'done', eta: 'Done', progress: 100 });
+    expect(summarizeAgent('atlas', [runningTask], { state: 'HALTED', reason: 'loop' }, NOW).pill).toBe('Stopped');
+  });
+
+  it('offers Pause only to a working agent and Resume only to a stopped one', () => {
+    const agent = (tasks, state) => summarizeAgent('atlas', tasks, state, NOW);
+    const finished = { ...runningTask, status: 'COMPLETED', completed_steps: 4, finished_at: iso(1000) };
+    expect(agentActions(agent([runningTask], { state: 'ACTIVE' }))).toEqual({ pause: true, resume: false });
+    expect(agentActions(agent([finished], { state: 'ACTIVE' }))).toEqual({ pause: false, resume: false });
+    expect(agentActions(agent([], { state: 'ACTIVE' }))).toEqual({ pause: false, resume: false });
+    expect(agentActions(agent([{ ...runningTask, status: 'FAILED' }], { state: 'ACTIVE' }))).toEqual({ pause: false, resume: false });
+    expect(agentActions(agent([runningTask], { state: 'HALTED', reason: PAUSE_REASON }))).toEqual({ pause: false, resume: true });
+    expect(agentActions(agent([finished], { state: 'HALTED', reason: 'loop' }))).toEqual({ pause: false, resume: true });
+  });
+
+  it('answers what is happening, what needs me and what changed, for the Right now strip', () => {
+    const atlas = summarizeAgent('atlas', [runningTask], { state: 'ACTIVE' }, NOW);
+    const elarion = summarizeAgent('master-brain', [], { state: 'ACTIVE' }, NOW);
+    const working = summarizeNow({ agents: [atlas, elarion], tasks: [runningTask], now: NOW });
+    expect(working.focus).toBe('Atlas is on step 3 of 4: Customer migration');
+    expect(working).toMatchObject({ working: { n: 1, total: 2 }, waiting: 0, change: 'Atlas started Customer migration · 2m ago' });
+
+    const asking = { ...runningTask, awaiting: { question: 'Which deploy target?', options: ['Staging', 'Production'] } };
+    const waiting = summarizeNow({ agents: [atlas, elarion], tasks: [asking], now: NOW });
+    expect(waiting.focus).toBe('Atlas is waiting for your answer: Which deploy target?');
+    expect(waiting.waiting).toBe(1);
+
+    const finished = { ...runningTask, status: 'COMPLETED', completed_steps: 4, finished_at: iso(3 * 3600000) };
+    const idle = summarizeNow({ agents: [summarizeAgent('atlas', [finished], { state: 'ACTIVE' }, NOW), elarion], tasks: [finished], now: NOW });
+    expect(idle.focus).toBe('Nothing is running.');
+    expect(idle.change).toBe('Atlas finished Customer migration · 3h ago');
+
+    expect(summarizeNow({ agents: [elarion], tasks: [], now: NOW }).focus).toBe('Nothing has run yet.');
+    const stopped = summarizeAgent('atlas', [runningTask], { state: 'HALTED', reason: 'loop' }, NOW);
+    expect(summarizeNow({ agents: [stopped, elarion], tasks: [], now: NOW }).focus).toBe('Atlas is stopped.');
+    expect(summarizeNow({ error: { isUnreachable: true }, now: NOW }).focus).toBe('The engine is not reachable.');
+  });
+
+  it('counts what is new in Space this week from the graph nodes', () => {
+    const nodes = [
+      { title: 'Old idea', created_at: '2026-09-01 10:00:00' },
+      { title: 'Fresh link', created_at: '2026-10-01 09:00:00' },
+      { title: 'Newest note', created_at: '2026-10-02 08:30:00' },
+      { title: 'No date', created_at: null },
+    ];
+    expect(summarizeSpace(nodes, NOW)).toEqual({ total: 4, week: 2, latest: 'Newest note' });
+    expect(summarizeSpace([], NOW)).toBe(null);
   });
 
   it('builds the four summary metrics', () => {
@@ -184,7 +238,7 @@ describe('mounted overview', () => {
     // Skills tab: AEPS playbooks from the portal.
     wf.setTab('skills');
     await settle();
-    expect(skillsRequests).toEqual(['/api/skills/aeps']);
+    expect(skillsRequests.filter((u) => u !== '/api/graph')).toEqual(['/api/skills/aeps']);
     expect(container.querySelector('.skill-name').textContent).toBe('Lead triage');
     expect(container.querySelector('.skill-path').textContent).toBe('.aether/skills/AEPS/triage/SKILL.md');
 
@@ -196,7 +250,7 @@ describe('mounted overview', () => {
     container.querySelector('.emergency .btn-danger').click();
     await settle();
     expect(posts.at(-1).body).toEqual({ agent_id: 'atlas', reason: EMERGENCY_REASON });
-    expect(container.querySelector('.agent-card .pill').textContent).toBe('Tripped');
+    expect(container.querySelector('.agent-card .pill').textContent).toBe('Stopped');
     expect(container.querySelector('.emergency .btn-danger').textContent).toBe('Restart');
 
     // Selecting Elarion switches the detail panel.

@@ -117,7 +117,13 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   const card = document.querySelector('#mc-workforce .agent-card');
   expect(card.querySelector('.card-name').textContent).toBe('Elarion');
   expect(card.querySelector('.switch[role="switch"]').getAttribute('aria-checked')).toBe('true');
-  expect(card.querySelector('.btn-small').textContent).toContain('Pause');
+  // Elarion has run nothing, so there is nothing to pause: no Pause button, but the API breaker switch is still there.
+  expect(card.querySelector('.btn-small')).toBe(null);
+  expect(card.querySelector('.pill').textContent).toBe('Waiting');
+  // The first screen answers the operator's questions before the totals: Right now, then the agents, then the overview.
+  const order = [...document.querySelectorAll('#mc-workforce > *')].map((c) => (c.classList.contains('wf-now') ? 'now' : c.classList.contains('wf-split') ? 'agents' : c.classList.contains('wf-overview') ? 'overview' : ''));
+  expect(order.filter(Boolean)).toEqual(['now', 'agents', 'overview']);
+  expect(document.querySelector('.wf-now .wf-focus').textContent).toBe('Nothing has run yet.');
   expect(document.querySelector('.wf-detail h2').textContent).toBe('Elarion');
   expect([...document.querySelectorAll('.wf-detail .subtabs [role="tab"]')].map((t) => t.textContent)).toEqual(['Activity', 'Tasks0', 'Output', 'Skills', 'API Bridge']);
   expect(document.getElementById('mc-agent-count').textContent).toBe('1');
@@ -224,7 +230,7 @@ it('loads an outcome blueprint from the portal into the Blueprints editor (?outc
   const requested = [];
   try {
     await mountPage({ portalFetch: async (url) => (requested.push(url), new Response(JSON.stringify(outcome), { status: 200 })) });
-    expect(requested).toEqual(['/api/outcome/node_42/blueprint']);
+    expect(requested.filter((u) => u !== '/api/graph')).toEqual(['/api/outcome/node_42/blueprint']);
     expect(mc.tabs.getView()).toBe('blueprints');
     expect(window.location.search).toBe('');
     expect(window.location.hash).toBe('#blueprints');
