@@ -100,6 +100,30 @@ Deliverables are proven to build before anyone sees them, staged on a free URL, 
 - [x] Viability scanner rules (2026-10-05): sample values in .env.example / .dev.vars.example, a "..." in Markdown and prose like "Retrieving your API key…" no longer count as placeholders. Miserly.io re-scored in the sandbox: 58 → 88 ("Ready to launch", 9/9 tests, staged `/` answers 200); the remaining points are its four secrets still to set
 - [ ] Paste referral links as AFFILIATE_VERCEL_URL / AFFILIATE_NETLIFY_URL / AFFILIATE_SUPABASE_URL in the engine .env when the affiliate accounts exist.
 
+## Phase 7: Memory Anchors, Design Audit & Model Policy (2026-10-07)
+Numbered 7-9 here because Phases 1-6 above are already taken; they are the "Phase 1-3" of the 2026-10-07 plan.
+- [x] Global model policy: `"model": "sonnet"` in `~/.claude/settings.json` for standard work; Opus only for heavy multi-step orchestration, via a single-session flag or an inline `/model` switch
+- [x] `AGENT_CORE.md` (owner profile plus the 10-persona roster: Elarion, Forge, Ledger, Prism, Echo, Vanguard, Pixel, Director, Sculptor, Courier), `registry/connectors.json` (miserly, portal, huggingface, design_audit, engine) and `CLAUDE.md` (read AGENT_CORE.md on startup, check the registry first, zero-context-loss handoffs). Human names supplied so far: Prism = Elena Rostova, Echo = Siddharth Patel, Vanguard = Maya Lin, Director = Jordan Blake, Sculptor = Nate Rodriguez, Courier = Claire Moreau; the rest are TBD in `AGENT_CORE.md`, as is the owner profile beyond name and role
+- [x] `design-audit` skill (`Aether_Engine/skills/design-audit`): Playwright capture runner (`node capture.mjs`), views in `views.json`, signs in through the local dev operator
+- [x] Prism run on the portal at desktop 1440x900 and mobile 375x812 (10 views each, 20 PNGs), exported to `screenshots-designer-export.zip`
+- [ ] Hand the zip to the US designer and head developer
+
+## Phase 8: Miserly.io Revenue Engine & Enterprise Governance (planned)
+- [ ] AI Cost Suite and dynamic rate sync: live pricing fetch for Claude, ElevenLabs, Vapi and Stripe Invoicing APIs
+- [ ] White-labeled Good/Better/Best proposal generator with 60%-80% agency margin locks
+- [ ] Hugging Face open-weights provider (`Aether_Engine/providers/huggingface/index.ts`): serverless and dedicated Inference Endpoints, local Transformers.js execution
+- [ ] Dedicated GPU cost calculator: hourly node hosting (Nvidia A10G, A100, H100) vs. commercial API token spend
+- [ ] Rolling Baseline Tracker: 7-day average token and dollar velocity per task type in Cloudflare D1
+- [ ] Model Misallocation and Context Bloat alerts: Opus on routine file edits, context windows over 100k un-cleared tokens
+- [ ] Multi-User Attribution Telemetry: Culprit Index of token burn rate, model mix and context hygiene per developer or department
+- [ ] Executive PDF audits: transmittal reports through Courier (Claire Moreau) on token efficiency and wastage
+
+## Phase 9: Programmatic Growth & Media Pipelines (planned)
+- [ ] Programmatic SEO (Echo, Siddharth Patel): edge SEO routing, schema markup, high-ranking landers
+- [ ] Paid acquisition and outbound funnels (Vanguard, Maya Lin): multi-channel ad copy, outbound email sequences, affiliate tracking
+- [ ] Video content engine (Director, Jordan Blake): CapCut template batch rendering and ElevenLabs audio for Miserly.io and Witt Bits campaigns
+- [ ] Physical fabrication and CAD (Sculptor, Nate Rodriguez): parametric FreeCAD scripts and OrcaSlicer profile automation for 3D printed products
+
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev
 - **Environment:** Cloudflare Workers + D1 (aether_context_db) + static assets (public/) + Gemini 3.x API, optional Anthropic API (Claude Sonnet share tier)

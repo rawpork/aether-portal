@@ -1,0 +1,31 @@
+{
+  "$comment": "Path index. Look here before searching the disk. Paths are relative to D:/TitainSolutions_MD/AI_Projects/Proprietary.",
+  "root": "D:/TitainSolutions_MD/AI_Projects/Proprietary",
+  "connectors": {
+    "portal": {
+      "path": "Aether_Portal",
+      "roadmap": "Aether_Portal/ROADMAP.md",
+      "dev": "npm run dev (wrangler dev, http://localhost:8787, DEV_AUTH_BYPASS in .dev.vars)",
+      "production": "https://lingering-water-de49.klo377.workers.dev"
+    },
+    "engine": {
+      "path": "Aether_Engine",
+      "api": "http://localhost:3333",
+      "skills": "Aether_Engine/skills"
+    },
+    "miserly": {
+      "path": "Miserly.io",
+      "staging": "https://staging.aether-miserly-io.pages.dev"
+    },
+    "huggingface": {
+      "path": "Aether_Engine/providers/huggingface/index.ts",
+      "status": "planned (roadmap Phase 8)"
+    },
+    "design_audit": {
+      "path": "Aether_Engine/skills/design-audit",
+      "persona": "Prism (Elena Rostova)",
+      "run": "node Aether_Engine/skills/design-audit/capture.mjs",
+      "export": "Aether_Portal/screenshots-designer-export.zip"
+    }
+  }
+}
