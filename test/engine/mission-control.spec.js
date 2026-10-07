@@ -298,3 +298,67 @@ it('has one H1 and a heading outline that never skips a level, and keeps one inp
   expect(document.getElementById('mc-command-input').getAttribute('placeholder')).toBe('Ask Elarion…');
   expect(document.getElementById('mc-command-input').getAttribute('aria-describedby')).toBe('mc-command-hint');
 });
+
+// The banner follows the engine's key state across the real page: asks for the key instead of a first project, stays off
+// pages where it is not actionable, and steps aside on Settings itself.
+async function mountWithConfig(config) {
+  // Selecting a view writes it to the URL hash; start each of these from the overview.
+  window.history.replaceState(null, '', '/');
+  const html = renderMissionControlPage({ assetVersion: 'test' });
+  document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  const reply = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+  const engineFetch = async (url) => {
+    const { pathname } = new URL(url);
+    if (pathname === '/api/agents/master-brain/state') return reply({ agent_id: 'master-brain', state: 'ACTIVE' });
+    if (pathname === '/api/tasks') return reply({ tasks: [], counts: { running: 0, completed: 0, halted: 0, failed: 0 } });
+    if (pathname === '/api/artifacts') return reply({ success: true, count: 0, artifacts: [] });
+    if (pathname === '/api/engine/config') return config ? reply(config) : reply({ error: 'not found' }, 404);
+    return new Response('{}', { status: 404 });
+  };
+  const store = { getToken: () => null, setToken() {} };
+  mc = await mountMissionControl(document, {
+    api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engineFetch, getToken: store.getToken }),
+    connection: { fetch: async () => new Response('{}', { status: 404 }), ...store },
+    dock: { storage: { get: () => null, set() {} }, Recognition: null, synth: null },
+  });
+  await new Promise((r) => setTimeout(r, 40));
+}
+const bannerTitle = () => document.querySelector('#mc-next .wf-next-title')?.textContent;
+
+it('with no Miserly key the banner asks for it, only where it helps, and never suggests a first project', async () => {
+  await mountWithConfig({ miserly_key_configured: false, miserly_key_hint: null, miserly_key_status: 'missing', miserly_key_detail: 'No key', public_url: null, elarion_ready: false });
+  const next = document.getElementById('mc-next');
+  expect(next.hidden).toBe(false);
+  expect(bannerTitle()).toBe('Add your Miserly key');
+  expect(next.textContent).not.toContain('Start your first project');
+  // Settings shows the form itself, so the banner steps aside there; other pages still get the blocker.
+  mc.tabs.select('connect');
+  expect(next.hidden).toBe(true);
+  mc.tabs.select('blueprints');
+  expect(next.hidden).toBe(false);
+  expect(bannerTitle()).toBe('Add your Miserly key');
+  mc.tabs.select('monitor');
+  expect(next.hidden).toBe(false);
+  // The Settings checklist already reflects it: reachable, authorized, key still to do.
+  expect([...document.querySelectorAll('.qs-step')].map((li) => li.dataset.state)).toEqual(['ok', 'ok', 'fail']);
+  // The status pill agrees something needs attention.
+  expect(document.querySelector('[data-status="pill"]').textContent.trim()).toBe('Setup needed');
+});
+
+it('with a verified key the first-project suggestion shows on the overview only', async () => {
+  await mountWithConfig({ miserly_key_configured: true, miserly_key_hint: '…abcd', miserly_key_status: 'verified', miserly_key_detail: 'ok', public_url: null, elarion_ready: true });
+  const next = document.getElementById('mc-next');
+  expect(bannerTitle()).toBe('Start your first project');
+  expect(next.hidden).toBe(false);
+  for (const view of ['studio', 'create', 'blueprints', 'roadmap', 'operator', 'monitor', 'connect']) {
+    mc.tabs.select(view);
+    expect(next.hidden, view).toBe(true);
+  }
+  mc.tabs.select('overview');
+  expect(next.hidden).toBe(false);
+});
+
+it('an engine too old to report its key does not block the banner', async () => {
+  await mountWithConfig(null);
+  expect(bannerTitle()).toBe('Start your first project');
+});

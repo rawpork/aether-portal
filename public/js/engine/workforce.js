@@ -11,6 +11,7 @@ import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, describeTask, formatAgo, formatDuration } from './task-monitor.js';
 import { ELARION_AGENT_ID, agentName, taskTitle } from './labels.js';
+import { keyProblem } from './quick-setup.js';
 
 export { ELARION_AGENT_ID };
 export const PAUSE_REASON = 'Paused from Mission Control';
@@ -273,10 +274,14 @@ export function runPulse(record) {
   return { ...base, state: 'done' };
 }
 
+// What is wrong with Elarion's key, from the engine's setup summary (GET /api/engine/config): null when it is fine, sandboxed
+// or not known yet (an older engine, or the engine did not answer), else { kind: missing | invalid | unverified, detail }.
+export const setupIssue = keyProblem;
+
 // The one thing to do next, for the banner on top of Mission Control. tasks: GET /api/tasks summaries; runs: the
 // Outcomes list's stored project runs (website drafts, Space cards). Returns { kind, title, text, action?: { label,
 // view } } with view one of connect | operator | blueprints | activity.
-export function nextAction({ error = null, tasks = [], runs = {} } = {}) {
+export function nextAction({ error = null, tasks = [], runs = {}, setup = null } = {}) {
   if (error) {
     return error.isUnauthorized
       ? { kind: 'warn', title: 'Reconnect to the engine', text: 'The engine turned down this session’s sign-in. Open Settings to reconnect.', action: { label: 'Open Settings', view: 'connect' } }
@@ -286,6 +291,14 @@ export function nextAction({ error = null, tasks = [], runs = {} } = {}) {
   if (waiting) return { kind: 'alert', title: 'Elarion is waiting for your answer', text: (waiting.awaiting.question || 'A run needs a decision') + ' · ' + taskTitle(waiting.task_id), action: { label: 'Answer now', view: 'operator' } };
   const running = tasks.find((t) => t.status === 'RUNNING');
   if (running) return { kind: 'live', title: 'A run is in progress', text: taskTitle(running.task_id) + ' · step ' + Math.min(running.completed_steps + 1, running.total_steps) + ' of ' + running.total_steps + '. Watch the work live below; nothing is needed from you until it finishes.', action: { label: 'Watch live', view: 'activity' } };
+  // Nothing below can work without a key, so say so before suggesting a project (or reporting one as failed).
+  const keyIssue = setupIssue(setup);
+  if (keyIssue) {
+    const go = { label: 'Open Settings', view: 'connect' };
+    if (keyIssue.kind === 'missing') return { kind: 'warn', title: 'Add your Miserly key', text: 'Elarion cannot plan or run a project until the engine has a key. Paste one in Settings, or try Free Sandbox Mode (no key, no cost).', action: go };
+    if (keyIssue.kind === 'unverified') return { kind: 'warn', title: 'Could not check your Miserly key', text: keyIssue.detail + ' Open Settings to try again.', action: go };
+    return { kind: 'warn', title: 'Your Miserly key was not accepted', text: keyIssue.detail + ' Open Settings to replace it.', action: go };
+  }
   const latest = tasks.filter((t) => String(t.task_id).startsWith('deploy-')).sort((a, b) => String(b.finished_at || b.started_at).localeCompare(String(a.finished_at || a.started_at)))[0];
   const run = latest ? runs[latest.task_id] || {} : {};
   if (latest && latest.status === 'FAILED') return { kind: 'warn', title: 'The last project run failed', text: taskTitle(latest.task_id) + '. See why under Studio → Engine activity (click the red step), then run it again from Projects.', action: { label: 'Open Projects', view: 'blueprints' } };

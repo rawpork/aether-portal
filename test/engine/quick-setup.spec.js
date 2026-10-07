@@ -1,7 +1,7 @@
 // Quick Setup: Test & Pair Engine checks /health, sends the Miserly key to POST /api/engine/config, and drives the
 // header's Elarion Ready badge.
 import { afterEach, describe, expect, it } from 'vitest';
-import { badgeState, mountQuickSetup, publicUrlFor } from '../../public/js/engine/quick-setup.js';
+import { badgeState, keyProblem, mountQuickSetup, publicUrlFor } from '../../public/js/engine/quick-setup.js';
 
 const READY = { miserly_key_configured: true, miserly_key_hint: '…abcd', miserly_key_status: 'verified', miserly_key_detail: 'ok', public_url: null, elarion_ready: true };
 const MISSING = { miserly_key_configured: false, miserly_key_hint: null, miserly_key_status: 'missing', miserly_key_detail: 'No key', public_url: null, elarion_ready: false };
@@ -109,6 +109,46 @@ describe('quick setup', () => {
     expect(publicUrlFor('https://abc-def.trycloudflare.com')).toBeNull();
     expect(publicUrlFor('http://localhost:3333')).toBeNull();
     expect(publicUrlFor('https://engine.example.com/x')).toBe('https://engine.example.com');
+  });
+});
+
+describe('key problems', () => {
+  it('judges the key by its status, so a ready flag cannot hide a missing key from the badge', () => {
+    expect(keyProblem(READY)).toBe(null);
+    expect(keyProblem(MISSING)).toMatchObject({ kind: 'missing' });
+    expect(keyProblem({ ...MISSING, elarion_ready: true })).toMatchObject({ kind: 'missing' });
+    expect(badgeState({ ...MISSING, elarion_ready: true })).toMatchObject({ hidden: false, kind: 'alert', text: 'Set up Elarion', title: 'No Miserly client key on the engine' });
+    expect(keyProblem({ ...READY, miserly_key_status: 'invalid', miserly_key_detail: 'Rejected (401)' })).toEqual({ kind: 'invalid', detail: 'Rejected (401)' });
+    expect(keyProblem({ ...READY, miserly_key_status: 'unreachable' })).toMatchObject({ kind: 'unverified' });
+    expect(keyProblem({ miserly_key_status: 'sandbox', execution_mode: 'miserly-free', elarion_ready: true })).toBe(null);
+    expect(keyProblem(null)).toBe(null);
+  });
+});
+
+describe('key state reaches the rest of the page', () => {
+  const steps = () => [...document.querySelectorAll('.qs-step')].map((li) => li.dataset.state);
+
+  it('reports the engine summary to the page, and null when the engine cannot answer', async () => {
+    const seen = [];
+    mount(fakeApi({ config: MISSING }), { onSummary: (s) => seen.push(s) });
+    await flush();
+    expect(seen).toEqual([MISSING]);
+    seen.length = 0;
+    qs.destroy();
+    mount(fakeApi({ config: apiError(0, 'unreachable') }), { onSummary: (s) => seen.push(s) });
+    await flush();
+    expect(seen).toEqual([null]);
+  });
+
+  it('fills the checklist from what the engine already says, instead of three empty circles', async () => {
+    mount(fakeApi({ config: MISSING }));
+    expect(steps()).toEqual(['idle', 'idle', 'idle']);
+    await flush();
+    expect(steps()).toEqual(['ok', 'ok', 'fail']);
+    qs.destroy();
+    mount(fakeApi({ config: READY }));
+    await flush();
+    expect(steps()).toEqual(['ok', 'ok', 'ok']);
   });
 });
 

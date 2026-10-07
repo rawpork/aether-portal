@@ -1,7 +1,7 @@
 // Decision center: banner on every view, numbered choice popups, and the skill ingestion flow.
 import { afterEach, describe, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { mountDecisionCenter, skillCommandSource, snapshot, taskEvents } from '../../public/js/engine/decision-center.js';
+import { bannerVisibleOn, mountDecisionCenter, skillCommandSource, snapshot, taskEvents } from '../../public/js/engine/decision-center.js';
 
 const settle = async (n = 10) => {
 	for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 0));
@@ -21,6 +21,34 @@ afterEach(() => {
 });
 
 const task = (over) => ({ task_id: 'deploy-bp_1', agent_id: 'master-brain', run_id: 'r1', status: 'RUNNING', completed_steps: 1, total_steps: 4, started_at: 't', finished_at: null, ...over });
+
+describe('where the banner belongs', () => {
+	const go = { kind: 'go', title: 'Start your first project', action: { label: 'Open Projects', view: 'blueprints' } };
+	const live = { kind: 'live', title: 'A run is in progress', action: { label: 'Watch', view: 'activity' } };
+	const keyWarn = { kind: 'warn', title: 'Add your Miserly key', action: { label: 'Open Settings', view: 'connect' } };
+	const alertOp = { kind: 'alert', title: 'Elarion is waiting', action: { label: 'Answer now', view: 'operator' } };
+
+	it('always shows on the overview, when there is something to say', () => {
+		for (const action of [go, live, keyWarn, alertOp]) expect(bannerVisibleOn(action, 'overview')).toBe(true);
+		expect(bannerVisibleOn(null, 'overview')).toBe(false);
+	});
+
+	it('keeps suggestions and progress notes to the overview', () => {
+		for (const view of ['studio', 'elaron', 'create', 'blueprints', 'roadmap', 'operator', 'monitor', 'connect']) {
+			expect(bannerVisibleOn(go, view), 'go on ' + view).toBe(false);
+			expect(bannerVisibleOn(live, view), 'live on ' + view).toBe(false);
+		}
+	});
+
+	it('shows urgent blockers elsewhere, but not on the page they point to', () => {
+		expect(bannerVisibleOn(keyWarn, 'blueprints')).toBe(true);
+		expect(bannerVisibleOn(keyWarn, 'studio')).toBe(true);
+		expect(bannerVisibleOn(keyWarn, 'connect')).toBe(false);
+		expect(bannerVisibleOn(alertOp, 'monitor')).toBe(true);
+		expect(bannerVisibleOn(alertOp, 'operator')).toBe(false);
+		expect(bannerVisibleOn({ kind: 'warn', title: 'No button' }, 'studio')).toBe(false);
+	});
+});
 
 describe('helpers', () => {
 	it('reads skill commands', () => {
@@ -63,6 +91,36 @@ describe('mountDecisionCenter', () => {
 		center = mountDecisionCenter(document, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), slot, pollMs: 100000, onNavigate: (v) => navigated.push(v), storage: { getItem: () => null } });
 		return { calls, navigated, setTasks: (t) => { tasks = t; } };
 	};
+
+	it('asks for the key, not a first project, while the engine has no key, and follows the view', async () => {
+		let summary = { elarion_ready: false, miserly_key_status: 'missing', miserly_key_detail: 'No key' };
+		slot = document.createElement('section');
+		document.body.append(slot);
+		const navigated = [];
+		const engine = async (url) => (new URL(url).pathname === '/api/tasks' ? json({ tasks: [], counts: {} }) : json({ ok: true }));
+		center = mountDecisionCenter(document, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), slot, pollMs: 100000, getSetup: () => summary, onNavigate: (v) => navigated.push(v), storage: { getItem: () => null, setItem() {} } });
+		await settle();
+		expect(slot.hidden).toBe(false);
+		expect(slot.querySelector('.wf-next-title').textContent).toBe('Add your Miserly key');
+		expect(slot.textContent).not.toContain('Start your first project');
+		slot.querySelector('.wf-next-go').click();
+		expect(navigated).toEqual(['connect']);
+
+		// On Settings the banner steps aside (the form is right there); on Projects the blocker still shows.
+		center.setView('connect');
+		expect(slot.hidden).toBe(true);
+		center.setView('blueprints');
+		expect(slot.hidden).toBe(false);
+		expect(slot.querySelector('.wf-next-title').textContent).toBe('Add your Miserly key');
+
+		// Once the key is verified the banner turns into the first-project suggestion, which only belongs on the overview.
+		summary = { elarion_ready: true, miserly_key_status: 'verified', miserly_key_detail: 'ok' };
+		center.refreshBanner();
+		expect(slot.hidden).toBe(true);
+		center.setView('overview');
+		expect(slot.hidden).toBe(false);
+		expect(slot.querySelector('.wf-next-title').textContent).toBe('Start your first project');
+	});
 
 	it('shows the Do this next banner and its button navigates', async () => {
 		const { navigated } = setup({ tasks: [] });

@@ -10,6 +10,7 @@ import {
   nextAction,
   runPulse,
   mountWorkforce,
+  setupIssue,
   outputLines,
   summarizeAgent,
   summarizeNow,
@@ -272,6 +273,53 @@ describe('mounted overview', () => {
     banner.querySelector('button').click();
     expect(connectOpened).toBe(1);
     expect(container.querySelector('.metric-value').textContent).toBe('—');
+  });
+});
+
+describe('engine key state and the next action', () => {
+  const READY = { elarion_ready: true, miserly_key_status: 'verified', miserly_key_detail: 'ok' };
+  const SANDBOX = { elarion_ready: true, miserly_key_status: 'sandbox', execution_mode: 'miserly-free', miserly_key_detail: 'sandbox' };
+  const MISSING = { elarion_ready: false, miserly_key_status: 'missing', miserly_key_detail: 'No key' };
+  const REJECTED = { elarion_ready: false, miserly_key_status: 'rejected', miserly_key_detail: 'Miserly.io rejected the key (401).' };
+
+  it('names the key problem, and stays quiet when the key is fine, sandboxed or not known yet', () => {
+    expect(setupIssue(MISSING)).toEqual({ kind: 'missing', detail: 'No Miserly key is saved on the engine.' });
+    expect(setupIssue(REJECTED)).toEqual({ kind: 'invalid', detail: 'Miserly.io rejected the key (401).' });
+    expect(setupIssue({ miserly_key_status: 'invalid', miserly_key_detail: '401 from Miserly.io', elarion_ready: true })).toEqual({ kind: 'invalid', detail: '401 from Miserly.io' });
+    expect(setupIssue({ miserly_key_status: 'unreachable', miserly_key_detail: 'Miserly.io timed out', elarion_ready: false })).toEqual({ kind: 'unverified', detail: 'Miserly.io timed out' });
+    // A real engine has said elarion_ready while reporting no key; the key's own status decides.
+    expect(setupIssue({ miserly_key_status: 'missing', miserly_key_detail: 'No key', elarion_ready: true })).toEqual({ kind: 'missing', detail: 'No Miserly key is saved on the engine.' });
+    // An engine too old to report a key status is not blocked unless it says it is not ready.
+    expect(setupIssue({ elarion_ready: true })).toBe(null);
+    expect(setupIssue(READY)).toBe(null);
+    expect(setupIssue(SANDBOX)).toBe(null);
+    expect(setupIssue(null)).toBe(null);
+    expect(setupIssue(undefined)).toBe(null);
+  });
+
+  it('never says Start your first project while the key is missing or rejected', () => {
+    const missing = nextAction({ tasks: [], setup: MISSING });
+    expect(missing).toMatchObject({ kind: 'warn', title: 'Add your Miserly key', action: { label: 'Open Settings', view: 'connect' } });
+    expect(missing.text).toContain('Free Sandbox Mode');
+    const rejected = nextAction({ tasks: [], setup: REJECTED });
+    expect(rejected).toMatchObject({ kind: 'warn', title: 'Your Miserly key was not accepted', action: { view: 'connect' } });
+    expect(rejected.text).toContain('rejected the key');
+    const unverified = nextAction({ tasks: [], setup: { miserly_key_status: 'unreachable', miserly_key_detail: 'Miserly.io timed out', elarion_ready: false } });
+    expect(unverified).toMatchObject({ title: 'Could not check your Miserly key', action: { view: 'connect' } });
+    // elarion_ready alone does not hide a missing key.
+    expect(nextAction({ tasks: [], setup: { miserly_key_status: 'missing', elarion_ready: true } }).title).toBe('Add your Miserly key');
+    // With a working key (or Free Sandbox Mode, or an engine too old to say) the usual first step returns.
+    for (const setup of [READY, SANDBOX, null, undefined]) expect(nextAction({ tasks: [], setup }).title).toBe('Start your first project');
+  });
+
+  it('keeps the connection, a waiting question and a running task ahead of the key, and the key ahead of project advice', () => {
+    expect(nextAction({ error: { isUnreachable: true }, setup: MISSING }).title).toBe('Start the engine');
+    expect(nextAction({ error: { isUnauthorized: true }, setup: MISSING }).title).toBe('Reconnect to the engine');
+    expect(nextAction({ tasks: [{ ...runningTask, awaiting: { question: 'Which?', options: [] } }], setup: MISSING }).title).toBe('Elarion is waiting for your answer');
+    expect(nextAction({ tasks: [runningTask], setup: MISSING }).title).toBe('A run is in progress');
+    const failedDeploy = { ...runningTask, task_id: 'deploy-bp_1', status: 'FAILED', finished_at: iso(1000) };
+    expect(nextAction({ tasks: [failedDeploy], setup: MISSING }).title).toBe('Add your Miserly key');
+    expect(nextAction({ tasks: [failedDeploy], setup: READY }).title).toBe('The last project run failed');
   });
 });
 

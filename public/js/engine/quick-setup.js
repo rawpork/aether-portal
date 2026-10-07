@@ -10,6 +10,19 @@ export const SANDBOX_KEY = 'miserly_free_sandbox';
 export const SANDBOX_TEXT = 'Free Sandbox Mode Active';
 export const isSandbox = (summary) => Boolean(summary) && (summary.execution_mode === 'miserly-free' || summary.miserly_key_status === 'sandbox');
 
+// What is wrong with Elarion's key, judged from the key's own status and not from the engine's elarion_ready flag: a real
+// engine has reported elarion_ready while saying it had no key. null when the key is fine, sandboxed, or the engine is too
+// old to report it. kind: missing | invalid | unverified.
+export function keyProblem(summary) {
+  if (!summary || isSandbox(summary)) return null;
+  const status = summary.miserly_key_status;
+  if (status === 'verified') return null;
+  if (status === 'missing') return { kind: 'missing', detail: 'No Miserly key is saved on the engine.' };
+  if (status === 'invalid') return { kind: 'invalid', detail: summary.miserly_key_detail || 'Miserly.io did not accept the key.' };
+  if (status === 'unreachable') return { kind: 'unverified', detail: summary.miserly_key_detail || 'Miserly.io could not be reached to check the key.' };
+  return summary.elarion_ready === false ? { kind: 'invalid', detail: summary.miserly_key_detail || 'The engine could not verify the Miserly key.' } : null;
+}
+
 export const STEPS = [
   ['reach', 'Engine reachable'],
   ['auth', 'Mission Control authorized'],
@@ -52,6 +65,8 @@ export function publicUrlFor(url) {
 // Header badge: green "Elarion Ready", amber "Set up Elarion" (opens Settings), or hidden when the engine can't say.
 export function badgeState(summary) {
   if (!summary) return { hidden: true };
+  const problem = keyProblem(summary);
+  if (problem) return { hidden: false, kind: 'alert', text: 'Set up Elarion', title: problem.kind === 'missing' ? 'No Miserly client key on the engine' : problem.detail };
   if (summary.elarion_ready && isSandbox(summary)) return { hidden: false, kind: 'running', text: 'Elarion Ready · Sandbox', title: SANDBOX_TEXT + ': Elarion answers with local mock replies and never calls Miserly.io' };
   if (summary.elarion_ready) return { hidden: false, kind: 'running', text: 'Elarion Ready', title: 'Engine paired and Miserly key ' + (summary.miserly_key_hint || '') + ' verified' };
   const why = summary.miserly_key_status === 'missing' ? 'No Miserly client key on the engine' : summary.miserly_key_detail || 'Miserly key not verified';
@@ -125,8 +140,17 @@ export function mountQuickSetup(container, options = {}) {
     message.dataset.kind = kind;
   }
 
+  // The key step of the checklist, from what the engine reports about its Miserly key.
+  function keyStep(summary, typedKey = '') {
+    if (isSandbox(summary)) setStep('key', 'ok', SANDBOX_TEXT + ' (execution mode miserly-free)');
+    else if (summary.miserly_key_status === 'verified') setStep('key', 'ok', 'Key ' + summary.miserly_key_hint + (typedKey ? ' saved on the engine' : ' already on the engine'));
+    else if (summary.miserly_key_status === 'missing') setStep('key', 'fail', 'Paste your Miserly client key above.');
+    else setStep('key', 'fail', summary.miserly_key_detail);
+  }
+
   function showSummary(summary) {
     const b = badgeState(summary);
+    if (options.onSummary) options.onSummary(summary);
     if (options.onBadge) options.onBadge(b);
     if (badge) {
       badge.hidden = b.hidden;
@@ -138,6 +162,12 @@ export function mountQuickSetup(container, options = {}) {
       }
     }
     if (!summary) return;
+    // Opening Settings already shows where things stand, instead of three empty circles until Test & Pair is pressed.
+    if (!busy) {
+      setStep('reach', 'ok');
+      setStep('auth', 'ok');
+      keyStep(summary);
+    }
     if (isSandbox(summary)) {
       keyHint.textContent = SANDBOX_TEXT + ': Elarion replies locally with mock answers and spends nothing. Paste a real Miserly key to go live.';
       keyHint.dataset.kind = 'ok';
@@ -221,10 +251,7 @@ export function mountQuickSetup(container, options = {}) {
       }
       setStep('auth', 'ok');
       key.value = '';
-      if (isSandbox(summary)) setStep('key', 'ok', SANDBOX_TEXT + ' (execution mode miserly-free)');
-      else if (summary.miserly_key_status === 'verified') setStep('key', 'ok', 'Key ' + summary.miserly_key_hint + (typedKey ? ' saved on the engine' : ' already on the engine'));
-      else if (summary.miserly_key_status === 'missing') setStep('key', 'fail', 'Paste your Miserly client key above.');
-      else setStep('key', 'fail', summary.miserly_key_detail);
+      keyStep(summary, typedKey);
 
       if (checked.url !== api.baseUrl) {
         if (!persistEngineUrl(checked.url, storage)) {

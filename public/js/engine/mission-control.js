@@ -292,6 +292,9 @@ export async function mountMissionControl(doc = document, options = {}) {
   // One worded status in the header. Its popover hosts the breaker controls and the Elarion readiness row.
   let workforce = null;
   let stoppable = [];
+  // The engine's key state (from Quick Setup) and the banner that reacts to it; both arrive after the views are mounted.
+  let setupSummary;
+  let decisions = null;
   // A 401 usually means the token expired or the portal can't mint one: try again, then show how we're connected.
   const reconnect = async () => {
     await connection.refresh();
@@ -385,6 +388,10 @@ export async function mountMissionControl(doc = document, options = {}) {
     api,
     badge: byId('mc-ready'),
     onBadge: (b) => statusPill && statusPill.update({ elarion: b }),
+    onSummary: (summary) => {
+      setupSummary = summary || undefined;
+      if (decisions) decisions.refreshBanner();
+    },
     onOpenSettings: () => tabs && tabs.select('connect'),
     ...options.quickSetup,
   });
@@ -425,6 +432,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     if (studio) studio.setActive(shown && pane === 'activity');
   }
   tabs = setupTabs(doc, (view) => {
+    if (decisions) decisions.setView(view);
     if (view === 'blueprints') blueprints.refresh();
     if (view === 'overview') workforce.refresh();
     if (view === 'roadmap' && roadmap) {
@@ -466,11 +474,14 @@ export async function mountMissionControl(doc = document, options = {}) {
   }) : null;
   const stopHeader = startHeader(doc);
   const skillButton = byId('mc-command-skill');
-  // The "Do this next" banner on every view, and numbered choice popups for decisions, finished runs and skills.
-  const decisions = options.decisions === false ? null : mountDecisionCenter(doc, {
+  // The "Do this next" banner (on the overview, and elsewhere only when something urgent blocks the work), and numbered
+  // choice popups for decisions, finished runs and skills.
+  decisions = options.decisions === false ? null : mountDecisionCenter(doc, {
     api,
     slot: byId('mc-next'),
     storage: options.storage,
+    getSetup: () => setupSummary,
+    view: tabs.getView(),
     onNavigate: (view) => {
       if (view === 'activity') {
         tabs.select('overview', true);

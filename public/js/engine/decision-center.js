@@ -59,11 +59,23 @@ export function snapshot(tasks) {
   return new Map(tasks.map((t) => [t.agent_id + '/' + t.task_id, { status: t.status, run_id: t.run_id, awaitingKey: t.awaiting ? t.run_id + ':' + t.awaiting.step_index : null }]));
 }
 
+// Where the "Do this next" banner belongs. The overview always shows it. Anywhere else it shows only when something urgent
+// blocks the work (the engine, the key, a question waiting) and the button leads somewhere other than the page you are
+// already on; suggestions to start or review a project belong on the overview alone.
+export function bannerVisibleOn(action, view) {
+  if (!action) return false;
+  if (view === 'overview') return true;
+  return (action.kind === 'warn' || action.kind === 'alert') && Boolean(action.action) && action.action.view !== view;
+}
+
 export function mountDecisionCenter(doc, options = {}) {
   const win = doc.defaultView || globalThis;
   const api = options.api || getEngineApi();
   const slot = options.slot || null;
   const onNavigate = options.onNavigate || (() => {});
+  // The engine's setup summary (key state), read each time the banner is drawn; undefined until it is known.
+  const getSetup = options.getSetup || (() => undefined);
+  let view = options.view || 'overview';
   const pollMs = options.pollMs ?? POLL_MS;
   const storage = options.storage || (() => { try { return win.localStorage; } catch { return null; } })();
   let destroyed = false;
@@ -364,12 +376,13 @@ export function mountDecisionCenter(doc, options = {}) {
     try {
       runs = JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {};
     } catch { /* no run hints */ }
-    const action = nextAction({ error, tasks, runs });
-    const sig = JSON.stringify(action);
+    const action = nextAction({ error, tasks, runs, setup: getSetup() });
+    const visible = bannerVisibleOn(action, view);
+    const sig = JSON.stringify([action, visible]);
     if (sig === lastBanner) return;
     lastBanner = sig;
-    slot.hidden = !action;
-    if (!action) return;
+    slot.hidden = !visible;
+    if (!visible) return;
     slot.className = 'wf-next';
     slot.dataset.kind = action.kind;
     const children = [el(doc, 'div', { class: 'wf-next-text' }, [el(doc, 'p', { class: 'eyebrow', text: 'Do this next' }), el(doc, 'p', { class: 'wf-next-title', text: action.title }), el(doc, 'p', { class: 'wf-next-sub', text: action.text })])];
@@ -399,6 +412,12 @@ export function mountDecisionCenter(doc, options = {}) {
 
   poll();
   return {
+    // Mission Control tells the banner which view is open; it can then stay off pages where it is not actionable.
+    setView(next) {
+      view = next;
+      renderBanner();
+    },
+    refreshBanner: renderBanner,
     choose,
     learn,
     askSource,
