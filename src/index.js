@@ -12,6 +12,7 @@ import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName 
 import { seedOnboardingGraph } from "./onboarding.js";
 import { handleSitesApi, serveSite } from "./sites.js";
 import { graphEventFor, publishGraphEvent, subscribeGraphEvents } from "./graph-events.js";
+import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from "../public/js/shell-surfaces.js";
 
 // The live sync Durable Object (wrangler.jsonc durable_objects).
 export { GraphEvents } from "./graph-events.js";
@@ -3041,6 +3042,12 @@ export default {
     @media (max-width: 900px) {
       .mc-tab .bar-label { display: none; }
     }
+    /* The shared Space / Mission Control switch (public/js/shell-surfaces.js), in this page's colours. */
+    #topbar .shell-switch { --shell-h: 30px; --shell-line: rgba(255, 255, 255, 0.08); --shell-bg: var(--bg-raised); --shell-fg: var(--text); --shell-radius: var(--radius-s); --shell-font: 12px; --shell-active-bg: var(--accent-soft); --shell-active-line: var(--accent-line); --shell-active-fg: var(--accent); }
+${SHELL_SWITCH_CSS}
+    @media (max-width: 600px) {
+      #topbar .shell-item[aria-current="page"] { display: none; }
+    }
   </style>
   <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
   <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
@@ -3050,7 +3057,7 @@ export default {
 <body data-shell-surface="space">
   <header id="topbar">
     <button type="button" class="bar-btn" id="menu-toggle" aria-controls="portal-tray" aria-expanded="false" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-    <a class="bar-btn mc-tab surface-link" id="topbar-mission-control" href="/mission-control" aria-label="Mission Control" aria-keyshortcuts="Alt+M" title="Mission Control: agents, tasks and the circuit breaker (Alt+M)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="bar-label">Mission Control</span></a>
+    ${renderSurfaceSwitch('space')}
     <span class="brand">Aether</span>
     <input type="text" id="search-input" placeholder="🔍 Search nodes...">
     <div class="scope-chip-wrap">

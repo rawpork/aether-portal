@@ -47,7 +47,7 @@ describe('Mission Control routes', () => {
 		expect(html).toContain('id="mission-control-tab"');
 		expect(html).toContain('href="/mission-control"');
 		// The same link also sits in the top bar's second slot, mirroring Space's link in Mission Control's header (WCAG 3.2.3).
-		expect(html).toMatch(/<a class="bar-btn mc-tab surface-link" id="topbar-mission-control" href="\/mission-control" aria-label="Mission Control" aria-keyshortcuts="Alt\+M"/);
+		expect(html).toMatch(/<nav class="shell-switch" aria-label="Aether"><a class="shell-item" data-surface="space" href="\/" aria-current="page"[^>]*>[\s\S]*?<a class="shell-item" data-surface="mission-control" href="\/mission-control" aria-label="Mission Control" aria-keyshortcuts="Alt\+M"/);
 		expect(html).toContain('data-shell-surface="space"');
 		for (const gone of ['engine-bar', 'brain-dock', 'breaker-bar.js', 'engine-badge', 'aether.engine.jwt']) {
 			expect(html, gone).not.toContain(gone);
@@ -120,6 +120,34 @@ describe('missing static files', () => {
 			expect(res.status, path).toBe(404);
 			expect(res.headers.get('content-type'), path).toContain('text/plain');
 			expect(await res.text(), path).toContain('Not found: ' + path);
+		}
+	});
+});
+
+describe('one header switch across both surfaces', () => {
+	const switchOf = (html) => /<nav class="shell-switch"[\s\S]*?<\/nav>/.exec(html)[0];
+
+	it('renders the same switch in the same slot on Space and Mission Control, flipping only the current marker', async () => {
+		const space = await (await SELF.fetch('http://example.com/')).text();
+		const mission = renderMissionControlPage({ assetVersion: 'v1' });
+		const strip = (nav) => nav.replace(' aria-current="page"', '');
+		expect(strip(switchOf(space))).toBe(strip(switchOf(mission)));
+		expect(switchOf(space)).toMatch(/data-surface="space"[^>]*aria-current="page"/);
+		expect(switchOf(mission)).toMatch(/data-surface="mission-control"[^>]*aria-current="page"/);
+		expect(switchOf(space).match(/aria-current="page"/g)).toHaveLength(1);
+		expect(switchOf(mission).match(/aria-current="page"/g)).toHaveLength(1);
+		// Right after the menu button in both headers, so the slot never moves (WCAG 3.2.3).
+		expect(space).toMatch(/id="menu-toggle"[^>]*>[\s\S]*?<\/button>\s*<nav class="shell-switch"/);
+		expect(mission).toMatch(/id="mc-menu-toggle"[^>]*>[\s\S]*?<\/button>\s*<nav class="shell-switch"/);
+		// Each page marks its own surface for the shortcuts, loads the shared keys through its entry module, and has no leftover single link.
+		expect(space).toContain('data-shell-surface="space"');
+		expect(mission).toContain('data-shell-surface="mission-control"');
+		for (const html of [space, mission]) {
+			expect(html).not.toContain('surface-link');
+			expect(html).not.toContain('topbar-mission-control');
+			expect(html).toContain('@view-transition { navigation: auto; }');
+			expect(html).toContain('view-transition-name: shell-switch');
+			expect(html).toMatch(/prefers-reduced-motion: reduce\) \{\s*::view-transition-group/);
 		}
 	});
 });

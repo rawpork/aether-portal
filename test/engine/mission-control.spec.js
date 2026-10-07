@@ -71,7 +71,11 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toMatch(/\.wfc-prompt \{ flex: none; font-size: 16px;/);
   // The header opens with the ☰ menu tray, then the link to Space at every width (same slot as Space's link back here,
   // WCAG 3.2.3). The rail has no separate Portal item: its star logo is the way back on desktop, and says so.
-  expect(html).toMatch(/<header class="mc-top">\s*<button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail"[^>]*>[\s\S]*?<\/button>\s*<a class="surface-link" href="\/" aria-label="Space" aria-keyshortcuts="Alt\+S"/);
+  expect(html).toMatch(/<header class="mc-top">\s*<button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail"[^>]*>[\s\S]*?<\/button>\s*<nav class="shell-switch" aria-label="Aether"><a class="shell-item" data-surface="space" href="\/" aria-label="Space" aria-keyshortcuts="Alt\+S"/);
+  // Mission Control is the current surface in the shared switch; the other item leads back to Space.
+  expect(html).toContain('<a class="shell-item" data-surface="mission-control" href="/mission-control" aria-current="page"');
+  expect(html).toContain('.shell-item[aria-current="page"] { display: none; }');
+  expect(html).toContain('@view-transition { navigation: auto; }');
   expect(html).not.toContain('rail-portal');
   expect(html).not.toContain('mobile-return-btn');
   expect(html).toMatch(/<a class="rail-brand" href="\/" title="Space: the 3D graph \(Alt\+S\)" aria-label="Aether Space \(Alt\+S\)" aria-keyshortcuts="Alt\+S">/);

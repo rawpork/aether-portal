@@ -6,6 +6,7 @@
 // this template is markup and styles only, so it carries no inline script (and, being a template literal, avoids
 // backslashes). The user's name, tier and the optional upgrade URL reach the script as meta tags.
 
+import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from '../public/js/shell-surfaces.js';
 const escapeAttr = (value) => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const icon = (paths, extra = '') =>
@@ -245,9 +246,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     .menu-toggle:hover { background: var(--surface-soft); }
     .menu-toggle:active { transform: scale(0.98); }
-    .surface-link { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 600; text-decoration: none; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-    .surface-link:hover { background: var(--surface-soft); }
-    .surface-link:active { transform: scale(0.98); }
+    /* The shared Space / Mission Control switch (public/js/shell-surfaces.js), in this page's colours. */
+    .shell-switch { --shell-h: 44px; --shell-line: var(--line); --shell-bg: var(--surface); --shell-fg: var(--text); --shell-radius: var(--radius-m); --shell-active-bg: var(--accent-soft); --shell-active-line: var(--accent-line); --shell-active-fg: var(--accent-strong, var(--accent)); }
+${SHELL_SWITCH_CSS}
     .btn-primary { appearance: none; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border: 1px solid var(--ink); border-radius: var(--radius-m); background: var(--ink); color: var(--on-ink); font-weight: 600; white-space: nowrap; cursor: pointer; }
     .btn-primary:hover { background: var(--ink-hover); }
     .mc-main { position: relative; z-index: 0; isolation: isolate; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 28px calc(40px + env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) 40px; }
@@ -1202,8 +1203,6 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .wf-detail { position: static; }
     }
     @media (max-width: 767.98px) {
-      .surface-link { padding: 0; width: 44px; }
-      .surface-link-label { display: none; }
     }
     @media (max-width: 900px) {
       .mc-top { padding-left: 24px; padding-right: 24px; }
@@ -1229,6 +1228,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
          the title here, so it is dropped on phones. */
       .mc-top { gap: 4px 8px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
       .mc-heading, .mc-actions { display: contents; }
+      .shell-item[aria-current="page"] { display: none; }
       .mc-crumbs { display: none; }
       .mc-title { flex: 1 1 0; min-width: 0; margin: 0; font-size: 18px; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
       .mc-greeting { order: 10; flex: 0 0 100%; font-size: 13px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1312,7 +1312,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <div class="mc-canvas">
     <header class="mc-top">
       <button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" title="Menu" aria-label="Menu">${ICONS.menu}</button>
-      <a class="surface-link" href="/" aria-label="Space" aria-keyshortcuts="Alt+S" title="Space: the 3D graph (Alt+S)">${ICONS.space}<span class="surface-link-label">Space</span></a>
+      ${renderSurfaceSwitch('mission-control')}
       <div class="mc-heading">
         <p class="mc-crumbs">Operations</p>
         <h1 class="mc-title" id="mc-title">Mission Control</h1>
