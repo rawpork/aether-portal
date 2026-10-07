@@ -111,6 +111,13 @@ export default {
   async route(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Real static files are answered by the assets binding before this Worker runs, so a script, stylesheet or vendor
+    // path that reaches here does not exist. Say so with a plain 404: falling through to the portal page below would
+    // return it as 200 text/html, which a browser reports as a module MIME-type error and which hides the missing file.
+    if (/^\/(js|vendor|icons)\//.test(url.pathname) || /\.(?:m?js|css|map)$/.test(url.pathname)) {
+      return new Response("Not found: " + url.pathname, { status: 404, headers: { "Content-Type": "text/plain;charset=UTF-8", "Cache-Control": "no-store" } });
+    }
+
     // Endpoint 0: Session auth (HttpOnly cookie) and admin-managed accounts
     if (url.pathname.startsWith("/api/auth/")) {
       return handleAuthRoute(request, env, url);

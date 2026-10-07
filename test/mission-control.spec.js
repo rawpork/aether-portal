@@ -112,3 +112,14 @@ describe('Mission Control routes', () => {
 		expect(html).toContain('id="outcome-mission-control"');
 	});
 });
+
+describe('missing static files', () => {
+	it('answer 404 as plain text instead of the portal page, so a missing module is not reported as a MIME-type error', async () => {
+		for (const path of ['/js/engine/status_pill.js', '/js/nope.js', '/vendor/missing.min.js', '/styles/old.css', '/js/engine/x.js.map']) {
+			const res = await SELF.fetch('http://example.com' + path);
+			expect(res.status, path).toBe(404);
+			expect(res.headers.get('content-type'), path).toContain('text/plain');
+			expect(await res.text(), path).toContain('Not found: ' + path);
+		}
+	});
+});
