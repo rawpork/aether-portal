@@ -1,5 +1,5 @@
 {
-  "$comment": "Path index. Look here before searching the disk. Paths are relative to D:/TitainSolutions_MD/AI_Projects/Proprietary.",
+  "$comment": "Path index. Look here before searching the disk. Paths are relative to root (D:/TitainSolutions_MD/AI_Projects/Proprietary), except entries that start with Aether_Portal or are noted otherwise.",
   "root": "D:/TitainSolutions_MD/AI_Projects/Proprietary",
   "connectors": {
     "portal": {
@@ -22,10 +22,32 @@
       "status": "planned (roadmap Phase 8)"
     },
     "design_audit": {
-      "path": "Aether_Engine/skills/design-audit",
+      "path": "skills/TS_Skills/design-audit",
+      "entry": "skills/TS_Skills/design-audit/capture.mjs",
       "persona": "Prism (Elena Rostova)",
-      "run": "node Aether_Engine/skills/design-audit/capture.mjs",
-      "export": "Aether_Portal/screenshots-designer-export.zip"
+      "run": "node skills/TS_Skills/design-audit/capture.mjs --url http://localhost:8787 --zip Aether_Portal/screenshots-designer-export.zip",
+      "export": "Aether_Portal/screenshots-designer-export.zip",
+      "note": "The requested index.ts does not exist; the runner is capture.mjs."
+    },
+    "skills_vault": {
+      "path": "skills",
+      "community": "skills/community",
+      "note": "Central skills vault. TS_Skills holds every skill Titain Solutions creates (primary IP); community holds read-only third-party skills (do not edit them). Look up skills via the registry before searching the disk. The engine's own recipe skills stay in Aether_Engine/skills (the engine loads and writes them there); the portal's AEPS playbooks stay in Aether_Portal/.aether/skills/AEPS (read by scripts/build-skills-index.mjs).",
+      "ts_skills": "skills/TS_Skills"
+    },
+    "scroll_craft": {
+      "path": "skills/community/scroll-craft",
+      "skill_md": "skills/community/scroll-craft/plugins/nateherk-design/skills/scroll-craft/SKILL.md",
+      "source": "https://github.com/nateherkai/scroll-craft.git",
+      "license": "MIT",
+      "note": "Third-party community skill, cloned (shallow). Read it, do not run its scripts without the owner's approval."
+    },
+    "website_builder": {
+      "path": "skills/TS_Skills/website-builder",
+      "entry": "skills/TS_Skills/website-builder/index.ts",
+      "manifest": "skills/TS_Skills/website-builder/SKILL.md",
+      "run": "node skills/TS_Skills/website-builder/index.ts \"<brief>\"",
+      "status": "starter (returns a validated file set; does not write files or build)"
     }
   }
 }

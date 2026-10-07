@@ -104,7 +104,7 @@ Deliverables are proven to build before anyone sees them, staged on a free URL, 
 Numbered 7-9 here because Phases 1-6 above are already taken; they are the "Phase 1-3" of the 2026-10-07 plan.
 - [x] Global model policy: `"model": "sonnet"` in `~/.claude/settings.json` for standard work; Opus only for heavy multi-step orchestration, via a single-session flag or an inline `/model` switch
 - [x] `AGENT_CORE.md` (owner profile plus the 10-persona roster: Elarion, Forge, Ledger, Prism, Echo, Vanguard, Pixel, Director, Sculptor, Courier), `registry/connectors.json` (miserly, portal, huggingface, design_audit, engine) and `CLAUDE.md` (read AGENT_CORE.md on startup, check the registry first, zero-context-loss handoffs). Human names supplied so far: Prism = Elena Rostova, Echo = Siddharth Patel, Vanguard = Maya Lin, Director = Jordan Blake, Sculptor = Nate Rodriguez, Courier = Claire Moreau; the rest are TBD in `AGENT_CORE.md`, as is the owner profile beyond name and role
-- [x] `design-audit` skill (`Aether_Engine/skills/design-audit`): Playwright capture runner (`node capture.mjs`), views in `views.json`, signs in through the local dev operator
+- [x] `design-audit` skill (moved 2026-10-07 to the central vault `proprietary/skills/TS_Skills/design-audit`; third-party skills such as `scroll-craft` are read-only under `proprietary/skills/community/`): Playwright capture runner (`node capture.mjs`), views in `views.json`, signs in through the local dev operator
 - [x] Prism run on the portal at desktop 1440x900 and mobile 375x812 (10 views each, 20 PNGs), exported to `screenshots-designer-export.zip`
 - [ ] Hand the zip to the US designer and head developer
 
