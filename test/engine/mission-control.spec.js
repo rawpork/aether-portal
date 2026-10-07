@@ -71,7 +71,7 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toMatch(/<a class="rail-brand" href="\/" title="Space: the 3D graph \(Alt\+S\)" aria-label="Aether Space \(Alt\+S\)" aria-keyshortcuts="Alt\+S">/);
   expect(html).toContain('data-shell-surface="mission-control"');
   document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
-  document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('');
+  document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('') + '<title>Mission Control - Aether Portal</title>';
 
   let token = null;
   const engineCalls = [];
@@ -96,7 +96,9 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
 
   // Header: breadcrumbs, greeting with the user's name, master breaker and New agent.
   const header = document.querySelector('header.mc-top');
-  expect(header.querySelector('.mc-crumbs').textContent).toBe('Operations / Mission Control');
+  expect(header.querySelector('.mc-crumbs').textContent).toBe('Operations');
+  expect(header.querySelector('h1').textContent).toBe('Mission Control');
+  expect(document.title).toBe('Mission Control - Aether Portal');
   expect(document.getElementById('mc-greeting').textContent).toMatch(/^Good (morning|afternoon|evening), Alex$/);
   expect(document.getElementById('mc-clock')).toBe(null);
   expect(document.querySelector('#mc-status .status-pill [data-status="text"]').textContent).toBe('All idle');
@@ -113,6 +115,13 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(document.querySelector('.wf-detail h2').textContent).toBe('Elarion');
   expect([...document.querySelectorAll('.wf-detail .subtabs [role="tab"]')].map((t) => t.textContent)).toEqual(['Activity', 'Tasks0', 'Output', 'Skills', 'API Bridge']);
   expect(document.getElementById('mc-agent-count').textContent).toBe('1');
+
+  // Heading outline across every mounted view: a single H1, and no level skipped on the way down.
+  const outline = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((h) => ({ level: Number(h.tagName[1]), text: h.textContent.trim().slice(0, 30) }));
+  expect(outline.filter((h) => h.level === 1)).toHaveLength(1);
+  outline.forEach((h, i) => {
+    if (i > 0) expect(h.level, '"' + h.text + '" (h' + h.level + ') follows "' + outline[i - 1].text + '" (h' + outline[i - 1].level + ')').toBeLessThanOrEqual(outline[i - 1].level + 1);
+  });
 
   // The other modules are mounted in their views.
   expect(document.querySelectorAll('#mc-monitor .mc-stat')).toHaveLength(5);
@@ -136,7 +145,25 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(overviewNav.hasAttribute('aria-current')).toBe(false);
   expect(document.getElementById('mc-view-blueprints').hidden).toBe(false);
   expect(document.getElementById('mc-view-overview').hidden).toBe(true);
-  expect(document.getElementById('mc-crumb-view').textContent).toBe('Projects');
+  expect(document.getElementById('mc-title').textContent).toBe('Projects');
+  expect(document.title).toBe('Projects - Mission Control - Aether Portal');
+  expect(document.getElementById('mc-route').textContent).toBe('Projects');
+
+  // One input per page: the command bar is gone on Projects, and focus that was in it moves to the page title, not nowhere.
+  const composerInput = document.getElementById('mc-command-input');
+  mc.tabs.select('overview');
+  composerInput.focus();
+  expect(document.activeElement).toBe(composerInput);
+  mc.tabs.select('studio');
+  expect(document.body.dataset.view).toBe('studio');
+  expect(document.activeElement).toBe(document.getElementById('mc-title'));
+  // Sending from the command bar opens Elarion and keeps the cursor in Elarion's own box.
+  mc.tabs.select('overview');
+  composerInput.value = 'status?';
+  document.getElementById('mc-command').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  expect(document.getElementById('mc-view-elaron').hidden).toBe(false);
+  expect(document.activeElement).toBe(mc.dock.elements.input);
+  mc.tabs.select('blueprints');
   expect(window.location.hash).toBe('#blueprints');
   expect(document.querySelector('#mc-blueprints .bp-ingest')).not.toBe(null);
   expect(document.querySelector('#mc-blueprints .bp-tier').textContent).toBe('Pro Engine');
@@ -155,7 +182,7 @@ it('Create / Templates: a template and its brief become a blueprint opened under
   await mountPage();
   document.getElementById('mc-nav-create').click();
   expect(document.getElementById('mc-view-create').hidden).toBe(false);
-  expect(document.getElementById('mc-crumb-view').textContent).toBe('Create / Templates');
+  expect(document.getElementById('mc-title').textContent).toBe('Create / Templates');
   expect(window.location.hash).toBe('#create');
   document.querySelector('#mc-templates [data-template="landing-waitlist"]').click();
   document.querySelector('.tp-brief input[name="domain"]').value = 'waitlist.example.com';
@@ -242,4 +269,20 @@ it('Studio opens on the Workflow console and switches to Engine activity, each p
   expect(document.getElementById('mc-studio-activity').hidden).toBe(false);
   expect(calls).toContain('/api/canvas/graph');
   expect(mc.workflowConsole.getState().workflow).toBe(null);
+});
+
+it('has one H1 and a heading outline that never skips a level, and keeps one input per page', async () => {
+  const html = renderMissionControlPage({ assetVersion: 'v1', userName: 'Alex' });
+  document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  const levels = [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].map((h) => Number(h.tagName[1]));
+  expect(levels.filter((l) => l === 1)).toHaveLength(1);
+  expect(levels[0]).toBe(1);
+  levels.forEach((level, i) => {
+    if (i > 0) expect(level, 'heading #' + i + ' follows an h' + levels[i - 1]).toBeLessThanOrEqual(levels[i - 1] + 1);
+  });
+  // Hidden for the pages that own an input; the style rule lives in the page template.
+  expect(html).toMatch(/body\[data-view="elaron"\] \.mc-command, body\[data-view="studio"\] \.mc-command, body\[data-view="blueprints"\] \.mc-command \{ display: none; \}/);
+  expect(document.querySelector('label[for="mc-command-input"]').textContent).toBe('Ask Elarion');
+  expect(document.getElementById('mc-command-input').getAttribute('placeholder')).toBe('Ask Elarion…');
+  expect(document.getElementById('mc-command-input').getAttribute('aria-describedby')).toBe('mc-command-hint');
 });

@@ -192,7 +192,7 @@ Make the page name the H1. Keep "Good afternoon, Kenneth" on Mission Control onl
 **M6. One composer, correctly labelled, never covering focus. [A 2.4.11][A labels][P]**
 - Hide the global composer on pages that own an input (Elarion, Studio, Projects).
 - The composer input needs a real `<label>` (can be visually hidden). Placeholder-only labelling is an anti-pattern in `frontend-a11y`.
-- Focus Not Obscured (WCAG 2.2 SC 2.4.11): the fixed bottom bar covers the lower content and the Projects Artifacts list. Reserve bottom padding equal to the bar height and use `scroll-padding-bottom` so tabbed focus is never hidden. (Note: the `accessibility` skill labels 2.4.11 "Focus Appearance". In the standard that name belongs to 2.4.13, AAA. 2.4.11 is Focus Not Obscured, AA.)
+- Focus Not Obscured (WCAG 2.2 SC 2.4.11): **checked in code during M6 and not a defect.** The command bar is a flex row below `.mc-main`, which scrolls inside its own box, so it never overlays content or focused controls. The screenshots made it look cut off only because the page scrolls above the bar. No padding change was needed. (Note: the `accessibility` skill labels 2.4.11 "Focus Appearance". In the standard that name belongs to 2.4.13, AAA. 2.4.11 is Focus Not Obscured, AA.)
 - Fix the mobile placeholder truncation ("Ask Elarion, or a").
 
 **M7. Mobile chrome budget. [P][DS]**
@@ -274,7 +274,7 @@ The v1 checklist said things like "squint test" and "reads well". `loop-design-c
 | A5 | Labels | Zero axe violations for `label`, `button-name`, `aria-*`, `heading-order`, `color-contrast` |
 | A6 | Contrast | Body text 4.5:1, large text and control boundaries 3:1, measured on the render including Space labels and the active nav item |
 | A7 | Target size | Every interactive element has a hit area of at least 44x44 CSS px in the shell (project rule), never below 24x24 |
-| A8 | Focus not obscured | Tabbing through each page never leaves the focused element fully under the fixed composer |
+| A8 | Focus not obscured | Tabbing through each page never leaves the focused element fully under the command bar or sticky header (true by layout today; keep it true) |
 | A9 | Status pill | The pill has text (not only colour), `role="status"`, popover opens on click and `Enter`, closes on `Escape`, focus returns, the master breaker is inside it with a confirm step |
 | A10 | Reduced motion | With `prefers-reduced-motion: reduce`, computed `transition-duration` and `animation-duration` on app chrome are `0s` and the dock swaps instantly |
 | A11 | Motion properties | Animated properties in the dock and chrome are only `transform` and `opacity`, no `transition: all` |

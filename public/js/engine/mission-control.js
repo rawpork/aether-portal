@@ -151,12 +151,18 @@ export function setupStudioTabs(doc, onChange = () => {}) {
   return { select, getTab: () => current };
 }
 
+// Views whose page has its own input, so the shared command bar is hidden there (mirrors the CSS in mission-control-page.js).
+const composerHiddenFor = (view) => view === 'elaron' || view === 'studio' || view === 'blueprints';
+
 // Sidebar views: each rail button shows its view and is marked aria-current="page" while it is open.
 export function setupTabs(doc, onSelect = () => {}) {
   const win = doc.defaultView;
   const all = Object.entries(VIEWS).map(([view, id]) => ({ view, tab: doc.getElementById(id) })).filter((t) => t.tab);
-  const crumb = doc.getElementById('mc-crumb-view');
+  const title = doc.getElementById('mc-title');
+  const announce = doc.getElementById('mc-route');
+  const baseTitle = doc.title;
   let current = 'overview';
+  let started = false;
 
   function select(view, focus = false) {
     if (!(view in VIEWS)) view = 'overview';
@@ -168,8 +174,18 @@ export function setupTabs(doc, onSelect = () => {}) {
       doc.getElementById(t.tab.getAttribute('aria-controls')).hidden = !active;
       if (active && focus) t.tab.focus();
     }
-    if (crumb) crumb.textContent = VIEW_TITLES[view];
+    // The page name is the H1, the tab title follows it, and a screen reader hears the change (not on first load).
+    if (title) title.textContent = VIEW_TITLES[view];
+    doc.title = view === 'overview' ? baseTitle : VIEW_TITLES[view] + ' - ' + baseTitle;
+    if (announce && started) announce.textContent = VIEW_TITLES[view];
+    started = true;
     doc.body.dataset.view = view;
+    // The command bar hides on pages that own an input. If focus was in it, hand focus to the page title instead of losing it.
+    const composer = doc.getElementById('mc-command');
+    if (composer && composer.contains(doc.activeElement) && composerHiddenFor(view) && title) {
+      title.setAttribute('tabindex', '-1');
+      title.focus();
+    }
     if (win && win.history && win.location) {
       const hash = view === 'overview' ? '' : '#' + view;
       if (win.location.hash !== hash) win.history.replaceState(null, '', win.location.pathname + win.location.search + hash);
@@ -442,11 +458,9 @@ export async function mountMissionControl(doc = document, options = {}) {
         return;
       }
       tabs.select('elaron');
-      if (!dock.send(text)) {
-        // Busy or halted: leave the text in the dock's own box so it isn't lost.
-        dock.elements.input.value = text;
-        dock.elements.input.focus();
-      }
+      // Busy or halted: leave the text in the dock's own box so it isn't lost. Either way, keep typing there.
+      if (!dock.send(text)) dock.elements.input.value = text;
+      dock.elements.input.focus();
     },
   }) : null;
   const stopHeader = startHeader(doc);

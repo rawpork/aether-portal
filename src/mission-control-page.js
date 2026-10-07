@@ -237,7 +237,9 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
        row instead of squeezing the greeting or spilling past the edge. */
     .mc-heading { flex: 1 1 260px; min-width: min(220px, 100%); display: flex; flex-direction: column; gap: 6px; }
     .mc-crumbs { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-    .mc-greeting { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mc-title { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mc-greeting { margin: 0; color: var(--muted); font-size: 14px; }
+    .mc-greeting:empty, body:not([data-view="overview"]) .mc-greeting { display: none; }
     .mc-actions { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin-left: auto; }
     /* Phones and small tablets: the rail's Portal link is hidden there, so the header carries the way back. */
     .menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
@@ -737,7 +739,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .ad-system[data-tone="ok"] { color: var(--ok); }
     /* Command bar (public/js/engine/command-bar.js): ask Elarion from any view; the mic types by voice. */
     .mc-command { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px calc(40px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) 40px; border-top: 1px solid var(--line); background: var(--surface); }
-    body[data-view="elaron"] .mc-command { display: none; }
+    /* Elarion has its own message box, Studio its command bar and Projects its blueprint editor: one input per page. */
+    body[data-view="elaron"] .mc-command, body[data-view="studio"] .mc-command, body[data-view="blueprints"] .mc-command { display: none; }
     .mc-command input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--canvas); color: var(--text); font: inherit; font-size: 16px; }
     .mc-command input:focus { outline: none; border-color: var(--accent-line); }
     .mc-command .mc-command-skill { color: var(--accent); border-color: var(--accent-line); white-space: nowrap; }
@@ -1214,7 +1217,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       .mc-top { gap: 8px 10px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
       .mc-heading { flex: 1 1 150px; min-width: 0; }
       /* Wraps to a second line rather than clipping the name on the narrowest phones. */
-      .mc-greeting { font-size: 19px; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .mc-title { font-size: 19px; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .mc-greeting { font-size: 13px; }
       .mc-crumbs { font-size: 10.5px; }
       /* Only the header's New agent shrinks to an icon; other primary buttons (the Command Bar's Generate) keep their label. */
       .mc-actions .btn-primary .btn-label { display: none; }
@@ -1286,8 +1290,10 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
       <button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" title="Menu" aria-label="Menu">${ICONS.menu}</button>
       <a class="surface-link" href="/" aria-label="Space" aria-keyshortcuts="Alt+S" title="Space: the 3D graph (Alt+S)">${ICONS.space}<span class="surface-link-label">Space</span></a>
       <div class="mc-heading">
-        <p class="mc-crumbs">Operations / <span id="mc-crumb-view">Mission Control</span></p>
-        <h1 class="mc-greeting" id="mc-greeting">Mission Control</h1>
+        <p class="mc-crumbs">Operations</p>
+        <h1 class="mc-title" id="mc-title">Mission Control</h1>
+        <p class="mc-greeting" id="mc-greeting"></p>
+        <span class="mc-visually-hidden" id="mc-route" role="status" aria-live="polite"></span>
       </div>
       <div class="mc-actions">
         <div class="mc-status" id="mc-status">
@@ -1360,7 +1366,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     <form class="mc-command" id="mc-command" autocomplete="off" aria-label="Command bar">
       <button type="button" class="mc-command-skill" id="mc-command-skill" title="Learn a skill from a repo, a page or text">+ Skill</button>
       <label class="mc-visually-hidden" for="mc-command-input">Ask Elarion</label>
-      <input id="mc-command-input" type="text" enterkeyhint="send" placeholder="Ask Elarion, or add repo <link> to learn a skill…" maxlength="4000">
+      <input id="mc-command-input" type="text" enterkeyhint="send" placeholder="Ask Elarion…" aria-describedby="mc-command-hint" maxlength="4000">
+      <span class="mc-visually-hidden" id="mc-command-hint">Or paste a repo link to learn a skill.</span>
       <button type="button" class="mic" id="mc-command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone">${ICONS.mic}</button>
       <button type="submit">Send</button>
     </form>
