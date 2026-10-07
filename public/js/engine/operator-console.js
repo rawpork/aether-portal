@@ -9,6 +9,7 @@
 // step history.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
+import { agentName, taskTitle } from './labels.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 5000;
@@ -54,7 +55,7 @@ export function outputSnippet(output) {
 // The log lines one task record contributes, each with a stable key so a poll only appends what is new.
 // { key, at, kind, text }.
 export function recordLines(record) {
-  const who = record.agent_id + ' / ' + record.task_id;
+  const who = agentName(record.agent_id) + ' / ' + taskTitle(record.task_id);
   const run = record.run_id;
   const resultByIndex = new Map((record.results || []).map((r) => [r.step_index, r]));
   const lines = [];
@@ -183,7 +184,7 @@ export function mountOperatorConsole(container, options = {}) {
         chips.append(chip);
       });
       card.append(
-        el(doc, 'p', { class: 'oc-prompt-who', text: task.agent_id + ' / ' + task.task_id }),
+        el(doc, 'p', { class: 'oc-prompt-who', text: agentName(task.agent_id) + ' / ' + taskTitle(task.task_id) }),
         el(doc, 'p', { class: 'oc-prompt-question', text: task.awaiting.question }),
         chips,
         message

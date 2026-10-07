@@ -102,9 +102,9 @@ describe('task monitor', () => {
     await flush();
 
     expect(rowTexts()).toEqual([
-      'RUNNING | build-2 · builder | 1/4 stepsRunning step 2: draft',
-      'HALTED | build-3 · builder | 1/3 stepsHalted before step 2: Operator manual trip from Portal UI',
-      'COMPLETED | build-1 · builder | 2/2 stepsAll 2 steps done110 in / 42 out',
+      'RUNNING | Build 2 · Builder | 1/4 stepsRunning step 2: draft',
+      'HALTED | Build 3 · Builder | 1/3 stepsHalted before step 2: Operator manual trip from Portal UI',
+      'COMPLETED | Build 1 · Builder | 2/2 stepsAll 2 steps done110 in / 42 out',
     ]);
     expect([stat('running'), stat('completed'), stat('halted'), stat('failed'), stat('tokens')]).toEqual(['1', '1', '1', '0', '152']);
     const bar = container.querySelector('.mc-task[data-status="RUNNING"] .mc-progress');
@@ -127,7 +127,7 @@ describe('task monitor', () => {
     record.finished_at = iso(1500);
     await vi.advanceTimersByTimeAsync(2000);
     expect(polls()).toBe(2);
-    expect(rowTexts()[0]).toBe('COMPLETED | t · a | 2/2 stepsAll 2 steps done');
+    expect(rowTexts()[0]).toBe('COMPLETED | T · A | 2/2 stepsAll 2 steps done');
 
     // Nothing running: back to the 5s idle cadence.
     await vi.advanceTimersByTimeAsync(4999);
@@ -158,7 +158,7 @@ describe('task monitor', () => {
     mount();
     await flush();
     const projects = [...container.querySelectorAll('.mc-project')].map((li) => li.textContent);
-    expect(projects).toEqual(['NewerAPPROVED_FOR_EXECUTIONbp_b · compiled 1m ago', 'OlderDRAFTbp_a · compiled 2d ago']);
+    expect(projects).toEqual(['NewerApprovedCompiled 1m ago', 'OlderDraftCompiled 2d ago']);
   });
 
   it('reports an offline engine and recovers', async () => {

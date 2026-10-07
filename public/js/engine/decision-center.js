@@ -11,6 +11,7 @@
 import { getEngineApi } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
 import { nextAction } from './workforce.js';
+import { taskTitle } from './labels.js';
 
 export const POLL_MS = 4000;
 export const SKILL_COMMAND = /^\s*(?:add\s+(?:repo|skill)|learn)\s+([\s\S]+)$/i;
@@ -224,7 +225,7 @@ export function mountDecisionCenter(doc, options = {}) {
       const options = task.awaiting.options || [];
       const pick = await choose({
         title: 'Elarion needs your decision',
-        body: task.awaiting.question + ' · ' + task.task_id,
+        body: task.awaiting.question + ' · ' + taskName(task),
         options: [...options.map((o) => ({ label: o })), { label: 'Decide later', hint: 'It waits in Operator' }],
         kind: 'alert',
       });
@@ -250,7 +251,7 @@ export function mountDecisionCenter(doc, options = {}) {
       }
       const pick = await choose({
         title: 'Project finished',
-        body: task.task_id + ' · ' + task.completed_steps + ' of ' + task.total_steps + ' steps. Its files, any website draft and the Space card are under Projects.',
+        body: taskName(task) + ' · ' + task.completed_steps + ' of ' + task.total_steps + ' steps. Its files, any website draft and the Space card are under Projects.',
         options: [{ label: 'See deliverables', hint: 'Files, website preview, Approve & publish' }, { label: 'Watch what each step wrote', hint: 'Live activity' }, { label: 'Start another project' }, { label: 'Stay here' }],
         kind: 'go',
       });
@@ -266,7 +267,7 @@ export function mountDecisionCenter(doc, options = {}) {
     if (type === 'failed') {
       const pick = await choose({
         title: 'A project run failed',
-        body: task.task_id + (detail ? ': ' + detail : ''),
+        body: taskName(task) + (detail ? ': ' + detail : ''),
         options: [{ label: 'See the failed step', hint: 'Studio → Engine activity' }, { label: 'Run it again', hint: 'Projects → Deploy & Execute' }, { label: 'Close' }],
         kind: 'warn',
       });
@@ -276,7 +277,7 @@ export function mountDecisionCenter(doc, options = {}) {
     }
     const pick = await choose({
       title: 'A run was stopped by the breaker',
-      body: task.task_id + (detail ? ': ' + detail : ''),
+      body: taskName(task) + (detail ? ': ' + detail : ''),
       options: [{ label: 'Reset the agent', hint: 'Lets it run again' }, { label: 'Leave it stopped' }],
       kind: 'warn',
     });
@@ -285,6 +286,8 @@ export function mountDecisionCenter(doc, options = {}) {
 
   // ---- launch
 
+  // A task's readable name: the project it deploys when we remember the run, else a plain title.
+  const taskName = (task) => taskTitle(task.task_id, () => (runsStore()[task.task_id] || {}).project || '');
   const runsStore = () => {
     try { return JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {}; } catch { return {}; }
   };
@@ -300,7 +303,7 @@ export function mountDecisionCenter(doc, options = {}) {
     const staging = output.staging && output.staging.url ? output.staging : null;
     const v = output.viability;
     const body = el(doc, 'div', {}, [
-      el(doc, 'p', { class: 'dc-body', text: task.task_id + ' built cleanly in the sandbox and scored ' + v.score + '/100 (' + v.verdict + ').' + (staging ? ' It is live on free staging now.' : '') }),
+      el(doc, 'p', { class: 'dc-body', text: taskName(task) + ' built cleanly in the sandbox and scored ' + v.score + '/100 (' + v.verdict + ').' + (staging ? ' It is live on free staging now.' : '') }),
       staging ? el(doc, 'p', { class: 'dc-body' }, [el(doc, 'a', { href: staging.url, target: '_blank', rel: 'noopener', text: '↗ ' + staging.url })]) : null,
       v.settings_needed && v.settings_needed.length ? el(doc, 'p', { class: 'dc-warn', text: 'Before real users: set ' + v.settings_needed.join(', ') + ' on the host you choose.' }) : null,
     ]);

@@ -174,9 +174,15 @@ describe('blueprint ingestion', () => {
     const call = engine.calls.find((c) => c.pathname === '/api/blueprint/compile');
     expect(call.method).toBe('POST');
     expect(call.body).toEqual(EXAMPLE_SPEC);
-    expect(feedbackText()).toBe('Compiled bp_00000001_1790000000001. Opened below.');
+    expect(feedbackText()).toBe('Compiled Aether Knowledge Sync. Opened below.');
     expect(ws.elements.list.querySelector('[aria-current="true"]').dataset.id).toBe('bp_00000001_1790000000001');
     expect(ws.elements.viewer.querySelector('h3').textContent).toBe('Aether Knowledge Sync');
+    // Readable, not machine names: a worded status, no blueprint id on screen, the id behind a Copy id button.
+    expect(ws.elements.list.querySelector('.mc-chip').textContent).toBe('Approved');
+    expect(ws.elements.viewer.querySelector('.mc-chip').textContent).toBe('Approved');
+    expect(ws.elements.list.textContent).not.toMatch(/bp_[0-9a-z]|APPROVED_FOR_EXECUTION/);
+    expect(ws.elements.viewer.querySelector('.bp-viewer-head').textContent).not.toMatch(/bp_[0-9a-z]|APPROVED_FOR_EXECUTION/);
+    expect(ws.elements.viewer.querySelector('.copy-id').textContent).toBe('Copy id');
   });
 
   it('shows the engine’s own validation errors on a 400', async () => {

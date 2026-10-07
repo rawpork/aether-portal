@@ -101,10 +101,10 @@ describe('recordLines and outputSnippet', () => {
 		const record = waitingRecord();
 		record.choices = [{ step_id: 'ask', question: 'Which deploy target?', option: 2, choice: 'Production', at: iso(30) }];
 		expect(recordLines(record).map((l) => l.kind + ': ' + l.text)).toEqual([
-			'start: shipper / deploy-1 started · 2 step(s)',
-			'step: shipper / deploy-1 · step 1 (ask) running',
-			'ask: shipper / deploy-1 asks: Which deploy target?',
-			'answer: You chose [2] Production for shipper / deploy-1',
+			'start: Shipper / Deploy 1 started · 2 step(s)',
+			'step: Shipper / Deploy 1 · step 1 (ask) running',
+			'ask: Shipper / Deploy 1 asks: Which deploy target?',
+			'answer: You chose [2] Production for Shipper / Deploy 1',
 		]);
 	});
 
@@ -135,7 +135,7 @@ describe('operator console', () => {
 		expect(chips().map((c) => c.textContent)).toEqual(['[1] Staging', '[2] Production', '[3] Skip']);
 		expect(waiting).toBe(1);
 		expect(consoleView.elements.promptCount.textContent).toBe('1');
-		expect(logTexts()).toContain('shipper / deploy-1 asks: Which deploy target?');
+		expect(logTexts()).toContain('Shipper / Deploy 1 asks: Which deploy target?');
 		expect(statusEl.textContent).toBe('Live');
 	});
 
@@ -150,8 +150,8 @@ describe('operator console', () => {
 		await vi.advanceTimersByTimeAsync(700);
 		expect(container.querySelectorAll('.oc-prompt').length).toBe(0);
 		expect(waiting).toBe(0);
-		expect(logTexts()).toContain('You chose [2] Production for shipper / deploy-1');
-		expect(logTexts()).toContain('shipper / deploy-1 · step 1 (ask) done: chose [2] Production');
+		expect(logTexts()).toContain('You chose [2] Production for Shipper / Deploy 1');
+		expect(logTexts()).toContain('Shipper / Deploy 1 · step 1 (ask) done: chose [2] Production');
 	});
 
 	it('answers with a number key while the pane has focus', async () => {
@@ -187,7 +187,7 @@ describe('operator console', () => {
 		record.finished_at = iso(40);
 		record.awaiting = null;
 		await vi.advanceTimersByTimeAsync(2100);
-		expect(logTexts().at(-1)).toBe('shipper / deploy-1 halted at step 1 (ask): Operator manual trip');
+		expect(logTexts().at(-1)).toBe('Shipper / Deploy 1 halted at step 1 (ask): Operator manual trip');
 		expect(container.querySelectorAll('.oc-prompt').length).toBe(0);
 	});
 });

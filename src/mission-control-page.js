@@ -374,7 +374,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .card-select { appearance: none; flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: none; background: none; text-align: left; cursor: pointer; }
     .card-title { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .card-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .card-code { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
+    .card-code { color: var(--faint); font-size: 12px; }
     .card-head .btn-small { height: 28px; padding: 0 10px; }
     .card-objective { color: var(--text-2); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .card-progress { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
@@ -776,7 +776,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-task-agent { color: var(--muted); font-weight: 400; }
     .mc-task-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .mc-task-line { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; }
-    .mc-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; background: var(--queued-bg); color: var(--queued); }
+    .mc-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 11px; font-size: 12px; font-weight: 700; background: var(--queued-bg); color: var(--queued); }
     .mc-chip[data-status="RUNNING"], .mc-chip[data-status="EXECUTING"] { background: var(--ok-bg); color: var(--ok); }
     .mc-chip[data-status="COMPLETED"], .mc-chip[data-status="APPROVED_FOR_EXECUTION"] { background: var(--accent-soft); color: var(--accent); }
     .mc-chip[data-status="HALTED"], .mc-chip[data-status="FAILED"] { background: var(--off-bg); color: var(--off); }
@@ -794,6 +794,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-step-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mc-project { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .mc-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .copy-id { appearance: none; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
     .mc-project-meta { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
     .mc-project.mc-project-link { appearance: none; width: 100%; text-align: left; cursor: pointer; }
     .mc-project.mc-project-link:hover { border-color: var(--accent-line); }

@@ -6,6 +6,7 @@
 // Studio workflow runs (agent `workflow:<id>`) are labelled with the workflow's own agent and checkpoint names.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
+import { agentName, taskTitle } from './labels.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 6000;
@@ -116,7 +117,7 @@ export function mountAgentDialogue(container, options = {}) {
   const renderPicker = () => {
     const current = picker.value;
     picker.replaceChildren(...tasks.map((t) => {
-      const option = el(doc, 'option', { value: keyOf(t), text: (t.status === 'RUNNING' ? '● ' : '') + t.task_id + ' · ' + t.agent_id });
+      const option = el(doc, 'option', { value: keyOf(t), text: (t.status === 'RUNNING' ? '● ' : '') + taskTitle(t.task_id) + ' · ' + agentName(t.agent_id) });
       return option;
     }));
     picker.value = selected || current;

@@ -4,6 +4,7 @@
 // (GET /api/agents/:agentId/tasks/:taskId), refreshed while it runs.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
+import { agentName, createCopyIdButton, projectTitle, statusLabel, taskTitle } from './labels.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 5000;
@@ -56,7 +57,7 @@ export function describeTask(task) {
     case 'FAILED':
       return 'Failed at step ' + ((task.failure ? task.failure.step_index : task.completed_steps) + 1) + (task.failure ? ': ' + task.failure.error : '');
     default:
-      return task.status;
+      return statusLabel(task.status);
   }
 }
 
@@ -128,6 +129,9 @@ export function mountTaskMonitor(container, options = {}) {
 
   // --- tasks
   const keyOf = (task) => task.agent_id + '/' + task.task_id;
+  // Project names by blueprint id, from the last artifacts list, so a deploy task reads "Deploy: <project>".
+  let projectNames = new Map();
+  const projectNameFor = (id) => projectNames.get(id) || '';
 
   function createRow(key, task) {
     const chip = el(doc, 'span', { class: 'mc-chip' });
@@ -146,7 +150,7 @@ export function mountTaskMonitor(container, options = {}) {
       progress,
       el(doc, 'span', { class: 'mc-task-line' }, [counts, where, tokens]),
     ]);
-    const steps = el(doc, 'ol', { class: 'mc-steps', hidden: true, 'aria-label': 'Steps of ' + task.task_id });
+    const steps = el(doc, 'ol', { class: 'mc-steps', hidden: true, 'aria-label': 'Steps of ' + taskTitle(task.task_id, projectNameFor) });
     const item = el(doc, 'li', { class: 'mc-task' }, [head, steps]);
     const refs = { chip, name, time, progress, fill, where, counts, tokens, head, steps };
     head.addEventListener('click', () => toggleDetail(key, rows.get(key).task));
@@ -158,8 +162,9 @@ export function mountTaskMonitor(container, options = {}) {
     row.task = task;
     row.item.dataset.status = task.status;
     refs.chip.dataset.status = task.status;
-    refs.chip.textContent = task.status;
-    refs.name.replaceChildren(doc.createTextNode(task.task_id + ' '), el(doc, 'span', { class: 'mc-task-agent', text: '· ' + task.agent_id }));
+    refs.chip.textContent = statusLabel(task.status);
+    refs.name.replaceChildren(doc.createTextNode(taskTitle(task.task_id, projectNameFor) + ' '), el(doc, 'span', { class: 'mc-task-agent', text: '· ' + agentName(task.agent_id) }));
+    refs.name.title = task.agent_id + '/' + task.task_id;
     refs.time.textContent =
       task.status === 'RUNNING' ? 'started ' + formatAgo(task.started_at, now()) : formatDuration(new Date(task.finished_at).getTime() - new Date(task.started_at).getTime());
     refs.time.title = 'Started ' + new Date(task.started_at).toLocaleString();
@@ -256,14 +261,15 @@ export function mountTaskMonitor(container, options = {}) {
 
   // --- projects
   function renderProjects(artifacts) {
+    projectNames = new Map(artifacts.filter((a) => a.project_name).map((a) => [a.blueprint_id, a.project_name]));
     const latest = [...artifacts].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, MAX_PROJECTS);
     projectEmpty.hidden = latest.length > 0;
     projectList.replaceChildren(
       ...latest.map((a) => {
         const parts = [
-          el(doc, 'span', { class: 'mc-project-name', text: a.project_name || a.blueprint_id }),
-          el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: a.status }),
-          el(doc, 'span', { class: 'mc-project-meta', text: a.blueprint_id + (a.created_at ? ' · compiled ' + formatAgo(a.created_at, now()) : '') }),
+          el(doc, 'span', { class: 'mc-project-name', text: projectTitle(a) }),
+          el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: statusLabel(a.status) }),
+          el(doc, 'span', { class: 'mc-project-meta', text: a.created_at ? 'Compiled ' + formatAgo(a.created_at, now()) : '' }),
         ];
         if (!onOpenProject) return el(doc, 'li', { class: 'mc-project' }, parts);
         const button = el(doc, 'button', { type: 'button', class: 'mc-project mc-project-link', title: 'Open in Blueprints' }, parts);

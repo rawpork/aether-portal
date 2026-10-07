@@ -249,7 +249,7 @@ describe('finger on the pulse', () => {
     const done = { task_id: 'deploy-bp_1', status: 'COMPLETED', completed_steps: 5, total_steps: 5, finished_at: '2026-10-05T01:00:00Z' };
     expect(nextAction({ error: { isUnreachable: true } })).toMatchObject({ title: 'Start the engine', action: { view: 'connect' } });
     expect(nextAction({ tasks: [{ ...runningTask, awaiting: { question: 'Ship?' } }] })).toMatchObject({ title: 'Elarion is waiting for your answer', action: { view: 'operator' } });
-    expect(nextAction({ tasks: [runningTask] }).text).toMatch(/^customer-migration · step 3 of 4\./);
+    expect(nextAction({ tasks: [runningTask] }).text).toMatch(/^Customer migration · step 3 of 4\./);
     expect(nextAction({ tasks: [done], runs: { 'deploy-bp_1': { siteSlug: 'kit', nodeId: 'n' } } })).toMatchObject({ title: 'Your website draft is ready', action: { view: 'blueprints' } });
     expect(nextAction({ tasks: [done], runs: {} }).title).toBe('Your project finished');
     expect(nextAction({ tasks: [{ ...done, status: 'FAILED' }] }).title).toBe('The last project run failed');

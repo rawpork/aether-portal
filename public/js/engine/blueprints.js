@@ -8,6 +8,7 @@
 import { getEngineApi } from '../engine-api.bundle.js';
 import { EXAMPLE_SPEC, blueprintToTaskSteps, isProTier, parseBlueprintSpec, routeMatrix } from './blueprint-spec.js';
 import { describeAuthError } from './connection.js';
+import { createCopyIdButton, projectTitle, statusLabel } from './labels.js';
 import { runPreflight } from './outcomes.js';
 
 export const EXECUTE_AGENT_ID = 'master-brain';
@@ -129,7 +130,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
     compileButton.textContent = 'Compiling…';
     try {
       const compiled = await api.compileBlueprint(result.spec);
-      showFeedback('ok', 'Compiled ' + compiled.blueprint_id + (compiled.logged ? '' : ' (the engine could not write its forensic log)') + '. Opened below.');
+      showFeedback('ok', 'Compiled ' + ((compiled.blueprint && compiled.blueprint.project_name) || 'your project') + (compiled.logged ? '' : ' (the engine could not write its forensic log)') + '. Opened below.');
       await refresh();
       await select(compiled.blueprint_id, compiled.blueprint);
     } catch (error) {
@@ -228,8 +229,8 @@ export function mountBlueprintWorkspace(container, options = {}) {
       ...artifacts.map((a) => {
         const meta = [formatWhen(a.created_at), a.phases != null ? a.phases + ' phases' : '', a.sources != null ? a.sources + ' sources' : ''].filter(Boolean).join(' · ');
         const button = el(doc, 'button', { type: 'button', class: 'bp-list-item', 'data-id': a.blueprint_id }, [
-          el(doc, 'span', { class: 'bp-list-name', text: a.project_name || a.blueprint_id }),
-          el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: a.status }),
+          el(doc, 'span', { class: 'bp-list-name', text: projectTitle(a) }),
+          el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: statusLabel(a.status) }),
           el(doc, 'span', { class: 'bp-list-meta', text: meta }),
         ]);
         if (a.blueprint_id === selectedId) button.setAttribute('aria-current', 'true');
@@ -343,9 +344,10 @@ export function mountBlueprintWorkspace(container, options = {}) {
       el(doc, 'header', { class: 'bp-viewer-head' }, [
         el(doc, 'div', {}, [
           el(doc, 'h3', { text: bp.project_name }),
-          el(doc, 'p', { class: 'mc-muted', text: [bp.blueprint_id, formatWhen(meta.created_at), 'by ' + (meta.creator || 'unknown'), 'LOD ' + (meta.lod_spatial_level || '?')].filter(Boolean).join(' · ') }),
+          el(doc, 'p', { class: 'mc-muted', text: [formatWhen(meta.created_at), 'by ' + (meta.creator || 'unknown'), 'LOD ' + (meta.lod_spatial_level || '?')].filter(Boolean).join(' · ') }),
         ]),
-        el(doc, 'span', { class: 'mc-chip', 'data-status': bp.status, text: bp.status }),
+        el(doc, 'span', { class: 'mc-chip', 'data-status': bp.status, text: statusLabel(bp.status) }),
+        createCopyIdButton(doc, bp.blueprint_id),
       ]),
       el(doc, 'div', { class: 'bp-facts' }, [
         fact('Sources', String((bp.sources || []).length)),

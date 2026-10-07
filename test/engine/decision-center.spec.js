@@ -105,7 +105,7 @@ describe('mountDecisionCenter', () => {
 		setTasks([task({ run_id: 'r2', status: 'FAILED' })]);
 		await center.poll();
 		await settle();
-		expect(modal().querySelector('.dc-body').textContent).toContain('deploy-bp_1');
+		expect(modal().querySelector('.dc-body').textContent).toContain('Deploy project');
 		key('Escape');
 		expect(modal()).toBeNull();
 	});
@@ -117,7 +117,7 @@ describe('mountDecisionCenter', () => {
 		await center.poll();
 		await settle();
 		expect(modal().querySelector('.dc-title').textContent).toBe('A project run failed');
-		expect(modal().querySelector('.dc-body').textContent).toBe('deploy-bp_1: HTTP 503: overloaded');
+		expect(modal().querySelector('.dc-body').textContent).toBe('Deploy project: HTTP 503: overloaded');
 	});
 
 	it('learn: reads the source, shows the SKILL.md draft, edits it and saves it', async () => {

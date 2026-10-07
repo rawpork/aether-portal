@@ -14,6 +14,7 @@
 //   operator presses Approve & publish.
 import { getEngineApi, isRelayUrl, onEngineState } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
+import { statusLabel, taskTitle } from './labels.js';
 
 export const PROJECT_PAYLOAD_KEY = 'aether.projectPayload';
 export const PROJECT_RUNS_KEY = 'aether.projectRuns';
@@ -416,8 +417,8 @@ export function mountOutcomesList(container, options = {}) {
       : doc.createTextNode('');
     return el(doc, 'li', { class: 'oc-run', 'data-status': record.status }, [
       el(doc, 'div', { class: 'oc-run-head' }, [
-        el(doc, 'strong', { text: run.project || record.task_id }),
-        el(doc, 'span', { class: 'mc-chip', 'data-status': record.status, text: record.status }),
+        el(doc, 'strong', { text: run.project || taskTitle(record.task_id) }),
+        el(doc, 'span', { class: 'mc-chip', 'data-status': record.status, text: statusLabel(record.status) }),
       ]),
       el(doc, 'p', { class: 'mc-muted oc-run-meta', text: record.completed_steps + '/' + record.total_steps + ' steps · ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString() + ' tokens · ' + String(record.finished_at || record.started_at).slice(0, 16).replace('T', ' ') }),
       linkRow,

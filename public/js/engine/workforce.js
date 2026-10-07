@@ -10,8 +10,9 @@
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, describeTask, formatDuration } from './task-monitor.js';
+import { ELARION_AGENT_ID, taskTitle } from './labels.js';
 
-export const ELARION_AGENT_ID = 'master-brain';
+export { ELARION_AGENT_ID };
 export const PAUSE_REASON = 'Paused from Mission Control';
 export const BREAKER_OFF_REASON = 'API breaker switched off from Mission Control';
 export const EMERGENCY_REASON = 'Emergency shutdown from Mission Control';
@@ -235,12 +236,12 @@ export function nextAction({ error = null, tasks = [], runs = {} } = {}) {
       : { kind: 'warn', title: 'Start the engine', text: 'Mission Control can’t reach the Aether Engine. Say “Start Engine” to Claude Code on your computer, then reload this page.', action: { label: 'Connection settings', view: 'connect' } };
   }
   const waiting = tasks.find((t) => t.status === 'RUNNING' && t.awaiting);
-  if (waiting) return { kind: 'alert', title: 'Elarion is waiting for your answer', text: (waiting.awaiting.question || 'A run needs a decision') + ' · ' + waiting.task_id, action: { label: 'Answer now', view: 'operator' } };
+  if (waiting) return { kind: 'alert', title: 'Elarion is waiting for your answer', text: (waiting.awaiting.question || 'A run needs a decision') + ' · ' + taskTitle(waiting.task_id), action: { label: 'Answer now', view: 'operator' } };
   const running = tasks.find((t) => t.status === 'RUNNING');
-  if (running) return { kind: 'live', title: 'A run is in progress', text: running.task_id + ' · step ' + Math.min(running.completed_steps + 1, running.total_steps) + ' of ' + running.total_steps + '. Watch the work live below; nothing is needed from you until it finishes.', action: { label: 'Watch live', view: 'activity' } };
+  if (running) return { kind: 'live', title: 'A run is in progress', text: taskTitle(running.task_id) + ' · step ' + Math.min(running.completed_steps + 1, running.total_steps) + ' of ' + running.total_steps + '. Watch the work live below; nothing is needed from you until it finishes.', action: { label: 'Watch live', view: 'activity' } };
   const latest = tasks.filter((t) => String(t.task_id).startsWith('deploy-')).sort((a, b) => String(b.finished_at || b.started_at).localeCompare(String(a.finished_at || a.started_at)))[0];
   const run = latest ? runs[latest.task_id] || {} : {};
-  if (latest && latest.status === 'FAILED') return { kind: 'warn', title: 'The last project run failed', text: latest.task_id + '. See why under Studio → Engine activity (click the red step), then run it again from Projects.', action: { label: 'Open Projects', view: 'blueprints' } };
+  if (latest && latest.status === 'FAILED') return { kind: 'warn', title: 'The last project run failed', text: taskTitle(latest.task_id) + '. See why under Studio → Engine activity (click the red step), then run it again from Projects.', action: { label: 'Open Projects', view: 'blueprints' } };
   if (latest && latest.status === 'COMPLETED' && run.siteSlug && !run.sitePublished) return { kind: 'go', title: 'Your website draft is ready', text: 'Preview /s/' + run.siteSlug + ', then press Approve & publish when you’re happy with it.', action: { label: 'Review the website', view: 'blueprints' } };
   if (latest && latest.status === 'COMPLETED' && !run.nodeId) return { kind: 'go', title: 'Your project finished', text: 'Look over the deliverables and add the result to Space.', action: { label: 'See deliverables', view: 'blueprints' } };
   if (!latest) return { kind: 'go', title: 'Start your first project', text: 'Open a card in Space and tap Make it a project, or paste links under Projects. Elarion plans the work and runs it.', action: { label: 'Open Projects', view: 'blueprints' } };
@@ -511,7 +512,7 @@ export function mountWorkforce(container, options = {}) {
           const selected = a.agentId === selectedId;
           const select = el(doc, 'button', { type: 'button', class: 'card-select', 'aria-pressed': String(selected), 'data-focus': 'select:' + a.agentId }, [
             avatar(a),
-            el(doc, 'span', { class: 'card-title' }, [el(doc, 'span', { class: 'card-name', text: a.name }), el(doc, 'span', { class: 'card-code', text: a.code })]),
+            el(doc, 'span', { class: 'card-title' }, [el(doc, 'span', { class: 'card-name', text: a.name }), el(doc, 'span', { class: 'card-code', text: a.role })]),
           ]);
           select.addEventListener('click', () => selectAgent(a.agentId));
           const card = el(doc, 'article', { class: 'agent-card', role: 'listitem', 'data-status': a.status, 'data-selected': String(selected) }, [
@@ -818,7 +819,7 @@ export function mountWorkforce(container, options = {}) {
           avatar(agent, 'avatar-lg'),
           el(doc, 'div', { class: 'detail-title' }, [
             el(doc, 'div', { class: 'detail-name-row' }, [el(doc, 'h2', { text: agent.name }), pill(agent.pillKind, agent.pill)]),
-            el(doc, 'span', { class: 'detail-sub', text: agent.code + ' · ' + agent.role }),
+            el(doc, 'span', { class: 'detail-sub', text: agent.role }),
           ]),
         ]),
         el(doc, 'div', { class: 'objective' }, [
