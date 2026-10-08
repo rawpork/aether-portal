@@ -29,6 +29,22 @@ export const agentName = (agentId) => (agentId === ELARION_AGENT_ID ? 'Elarion' 
 
 export const projectTitle = (artifact) => (artifact && artifact.project_name) || 'Untitled project';
 
+// Groups consecutive items that share a key (newest first, as the engine lists them): [{ key, lead, rest }]. The lead is the
+// first of a run of identical items and `rest` the repeats after it, so a long list of the same thing reads once, not five times.
+export function groupConsecutive(items, keyOf) {
+  const groups = [];
+  for (const item of items) {
+    const key = keyOf(item);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.rest.push(item);
+    else groups.push({ key, lead: item, rest: [] });
+  }
+  return groups;
+}
+
+// "3 earlier runs with the same name" and so on; one noun, singular or plural by count.
+export const repeatsText = (count, noun) => count + ' earlier ' + (count === 1 ? noun : noun + 's') + ' with the same name';
+
 // A task's display title. A deploy task is "deploy-<blueprint id>": name the project when it is known.
 // `projectNameFor(blueprintId)` returns the project name or ''.
 export function taskTitle(taskId, projectNameFor = () => '') {

@@ -372,3 +372,33 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
     expect(executed).toEqual(['HALTED']);
   });
 });
+
+describe('Projects page structure', () => {
+  it('leads with the project list, then the blueprint editor, and the New blueprint button jumps to the editor', async () => {
+    await mount();
+    const order = [...container.children].map((c) => (c.classList.contains('bp-artifacts') ? 'projects' : c.classList.contains('bp-ingest') ? 'editor' : c.className));
+    expect(order).toEqual(['projects', 'editor']);
+    // A screen reader meets the project list heading before the editor's.
+    const headings = [...container.querySelectorAll('h2')].map((h) => h.textContent);
+    expect(headings[0]).toBe('Your projects');
+    expect(headings[1]).toBe('Blueprint ingestion');
+    expect(ws.elements.listEmpty.textContent).toBe('No projects yet. Paste a blueprint below and compile it.');
+    container.querySelector('.bp-new').click();
+    expect(document.activeElement).toBe(ws.elements.editor);
+  });
+
+  it('folds projects with the same name and outcome under the newest, and keeps the folded one open when it is selected', async () => {
+    engine.stored.push(compiledFrom(EXAMPLE_SPEC, 1), compiledFrom(EXAMPLE_SPEC, 2), compiledFrom(EXAMPLE_SPEC, 3));
+    await mount();
+    const rows = [...ws.elements.list.querySelectorAll(':scope > li > .bp-list-item')];
+    expect(rows).toHaveLength(1);
+    const group = ws.elements.list.querySelector('.bp-list-group');
+    expect(group.querySelector('summary').textContent).toBe('2 earlier versions with the same name');
+    expect(group.querySelectorAll('.bp-list-sub .bp-list-item')).toHaveLength(2);
+    expect(group.querySelector('details').open).toBe(false);
+    // Selecting an earlier version opens the fold so the selection stays visible.
+    await ws.select(group.querySelector('.bp-list-item').dataset.id);
+    expect(ws.elements.list.querySelector('.bp-list-group details').open).toBe(true);
+    expect(ws.elements.list.querySelector('.bp-list-group [aria-current="true"]')).not.toBe(null);
+  });
+});

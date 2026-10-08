@@ -8,7 +8,7 @@
 import { getEngineApi } from '../engine-api.bundle.js';
 import { EXAMPLE_SPEC, blueprintToTaskSteps, isProTier, parseBlueprintSpec, routeMatrix } from './blueprint-spec.js';
 import { describeAuthError } from './connection.js';
-import { createCopyIdButton, projectTitle, statusLabel } from './labels.js';
+import { createCopyIdButton, groupConsecutive, projectTitle, repeatsText, statusLabel } from './labels.js';
 import { runPreflight } from './outcomes.js';
 
 export const EXECUTE_AGENT_ID = 'master-brain';
@@ -187,10 +187,12 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const listStatus = el(doc, 'span', { class: 'mc-muted', 'aria-live': 'polite' });
   const refreshButton = el(doc, 'button', { type: 'button', class: 'toggle-button bp-refresh', text: 'Refresh' });
   const list = el(doc, 'ul', { class: 'bp-list', 'aria-label': 'Compiled blueprints' });
-  const listEmpty = el(doc, 'p', { class: 'mc-empty', text: 'No compiled blueprints yet. Compile a spec above.' });
+  const listEmpty = el(doc, 'p', { class: 'mc-empty', text: 'No projects yet. Paste a blueprint below and compile it.' });
+  // The project list leads the page, so the editor (a long field) comes after it; this jumps straight there.
+  const newBlueprintButton = el(doc, 'button', { type: 'button', class: 'toggle-button bp-new', text: 'New blueprint' });
   const viewer = el(doc, 'article', { class: 'bp-viewer', 'aria-label': 'Blueprint viewer' });
   const artifactsCard = el(doc, 'section', { class: 'bp-card bp-artifacts', 'aria-labelledby': 'bp-artifacts-title' }, [
-    el(doc, 'div', { class: 'bp-card-head' }, [el(doc, 'h2', { id: 'bp-artifacts-title', text: 'Artifacts' }), listStatus, el(doc, 'span', { class: 'mc-spacer' }), refreshButton]),
+    el(doc, 'div', { class: 'bp-card-head' }, [el(doc, 'h2', { id: 'bp-artifacts-title', text: 'Your projects' }), listStatus, el(doc, 'span', { class: 'mc-spacer' }), newBlueprintButton, refreshButton]),
     el(doc, 'div', { class: 'bp-browser' }, [el(doc, 'div', { class: 'bp-list-wrap' }, [listEmpty, list]), viewer]),
   ]);
 
@@ -226,16 +228,26 @@ export function mountBlueprintWorkspace(container, options = {}) {
   function renderList() {
     listEmpty.hidden = artifacts.length > 0;
     list.replaceChildren(
-      ...artifacts.map((a) => {
-        const meta = [formatWhen(a.created_at), a.phases != null ? a.phases + ' phases' : '', a.sources != null ? a.sources + ' sources' : ''].filter(Boolean).join(' · ');
-        const button = el(doc, 'button', { type: 'button', class: 'bp-list-item', 'data-id': a.blueprint_id }, [
-          el(doc, 'span', { class: 'bp-list-name', text: projectTitle(a) }),
-          el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: statusLabel(a.status) }),
-          el(doc, 'span', { class: 'bp-list-meta', text: meta }),
-        ]);
-        if (a.blueprint_id === selectedId) button.setAttribute('aria-current', 'true');
-        button.addEventListener('click', () => select(a.blueprint_id));
-        return el(doc, 'li', {}, [button]);
+      ...groupConsecutive(artifacts, (a) => projectTitle(a) + '|' + a.status).flatMap((group) => {
+        const item = (a) => {
+          const meta = [formatWhen(a.created_at), a.phases != null ? a.phases + ' phases' : '', a.sources != null ? a.sources + ' sources' : ''].filter(Boolean).join(' · ');
+          const button = el(doc, 'button', { type: 'button', class: 'bp-list-item', 'data-id': a.blueprint_id }, [
+            el(doc, 'span', { class: 'bp-list-name', text: projectTitle(a) }),
+            el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: statusLabel(a.status) }),
+            el(doc, 'span', { class: 'bp-list-meta', text: meta }),
+          ]);
+          if (a.blueprint_id === selectedId) button.setAttribute('aria-current', 'true');
+          button.addEventListener('click', () => select(a.blueprint_id));
+          return el(doc, 'li', {}, [button]);
+        };
+        const rows = [item(group.lead)];
+        if (group.rest.length) {
+          // The repeats stay reachable, folded under one line, instead of the same name and status read out again and again.
+          const details = el(doc, 'details', { class: 'bp-repeats' }, [el(doc, 'summary', { text: repeatsText(group.rest.length, 'version') }), el(doc, 'ul', { class: 'bp-list-sub' }, group.rest.map(item))]);
+          if (group.rest.some((a) => a.blueprint_id === selectedId)) details.open = true;
+          rows.push(el(doc, 'li', { class: 'bp-list-group' }, [details]));
+        }
+        return rows;
       }),
     );
   }
@@ -464,7 +476,11 @@ export function mountBlueprintWorkspace(container, options = {}) {
 
   refreshButton.addEventListener('click', refresh);
 
-  container.replaceChildren(form, artifactsCard);
+  container.replaceChildren(artifactsCard, form);
+  newBlueprintButton.addEventListener('click', () => {
+    form.scrollIntoView({ block: 'start' });
+    editor.focus();
+  });
   renderViewer();
   refresh();
 

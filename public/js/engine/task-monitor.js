@@ -4,7 +4,7 @@
 // (GET /api/agents/:agentId/tasks/:taskId), refreshed while it runs.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
-import { agentName, createCopyIdButton, projectTitle, statusLabel, taskTitle } from './labels.js';
+import { agentName, groupConsecutive, projectTitle, repeatsText, statusLabel, taskTitle } from './labels.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 5000;
@@ -86,6 +86,19 @@ export function buildStepRows(record) {
   return rows;
 }
 
+// Consecutive identical step rows read once with a count: "echo · echo ×3".
+export function collapseRepeats(rows) {
+  const out = [];
+  for (const row of rows) {
+    const last = out[out.length - 1];
+    if (last && last.state === row.state && last.baseName === row.name && last.detail === row.detail) {
+      last.count += 1;
+      last.name = last.baseName + ' ×' + last.count;
+    } else out.push({ ...row, baseName: row.name, count: 1 });
+  }
+  return out.map(({ baseName, count, ...row }) => row);
+}
+
 const STEP_MARKS = { done: '✓', running: '●', halted: '⏸', failed: '✕', queued: '○' };
 
 export function mountTaskMonitor(container, options = {}) {
@@ -129,6 +142,8 @@ export function mountTaskMonitor(container, options = {}) {
 
   // --- tasks
   const keyOf = (task) => task.agent_id + '/' + task.task_id;
+  // Folded groups of repeated runs the operator opened, so a poll's rebuild keeps them open.
+  const openGroups = new Set();
   // Project names by blueprint id, from the last artifacts list, so a deploy task reads "Deploy: <project>".
   let projectNames = new Map();
   const projectNameFor = (id) => projectNames.get(id) || '';
@@ -165,8 +180,10 @@ export function mountTaskMonitor(container, options = {}) {
     refs.chip.textContent = statusLabel(task.status);
     refs.name.replaceChildren(doc.createTextNode(taskTitle(task.task_id, projectNameFor) + ' '), el(doc, 'span', { class: 'mc-task-agent', text: '· ' + agentName(task.agent_id) }));
     refs.name.title = task.agent_id + '/' + task.task_id;
+    // How long it took and how long ago, in words: "14ms · 2d ago", not a clock time to work out.
+    const ago = formatAgo(task.status === 'RUNNING' ? task.started_at : task.finished_at || task.started_at, now());
     refs.time.textContent =
-      task.status === 'RUNNING' ? 'started ' + formatAgo(task.started_at, now()) : formatDuration(new Date(task.finished_at).getTime() - new Date(task.started_at).getTime());
+      task.status === 'RUNNING' ? 'started ' + ago : formatDuration(new Date(task.finished_at).getTime() - new Date(task.started_at).getTime()) + (ago ? ' · ' + ago : '');
     refs.time.title = 'Started ' + new Date(task.started_at).toLocaleString();
     const pct = task.total_steps ? Math.round((task.completed_steps / task.total_steps) * 100) : 0;
     refs.fill.style.width = pct + '%';
@@ -182,6 +199,8 @@ export function mountTaskMonitor(container, options = {}) {
     tasks = list;
     taskEmpty.hidden = list.length > 0;
     const seen = new Set();
+    // Last render's folded groups come apart first; the rows inside them are put back below, in order.
+    for (const group of taskList.querySelectorAll('.mc-task-group')) group.remove();
     for (const task of list) {
       const key = keyOf(task);
       seen.add(key);
@@ -191,8 +210,19 @@ export function mountTaskMonitor(container, options = {}) {
         rows.set(key, row);
       }
       updateRow(row, task);
+    }
+    // Runs of identical tasks (same name, agent, outcome and step count) show their newest one, with the repeats folded under it.
+    const sameRun = (t) => [taskTitle(t.task_id, projectNameFor), t.agent_id, t.status, t.total_steps, t.completed_steps].join('|');
+    for (const group of groupConsecutive(list, sameRun)) {
       // Appending an existing node moves it, which keeps rows in the engine's newest-first order.
-      taskList.append(row.item);
+      taskList.append(rows.get(keyOf(group.lead)).item);
+      if (!group.rest.length) continue;
+      const leadKey = keyOf(group.lead);
+      const inner = el(doc, 'ul', { class: 'mc-task-sub' }, group.rest.map((t) => rows.get(keyOf(t)).item));
+      const details = el(doc, 'details', { class: 'mc-repeats' }, [el(doc, 'summary', { text: repeatsText(group.rest.length, 'run') }), inner]);
+      if (openGroups.has(leadKey)) details.open = true;
+      details.addEventListener('toggle', () => (details.open ? openGroups.add(leadKey) : openGroups.delete(leadKey)));
+      taskList.append(el(doc, 'li', { class: 'mc-task-group' }, [details]));
     }
     for (const [key, row] of rows) {
       if (seen.has(key)) continue;
@@ -228,7 +258,7 @@ export function mountTaskMonitor(container, options = {}) {
       return;
     }
     steps.replaceChildren(
-      ...buildStepRows(record).map((s) =>
+      ...collapseRepeats(buildStepRows(record)).map((s) =>
         el(doc, 'li', { class: 'mc-step', 'data-state': s.state }, [
           el(doc, 'span', { class: 'mc-step-mark', 'aria-hidden': 'true', text: STEP_MARKS[s.state] }),
           el(doc, 'span', { class: 'mc-step-name', text: s.name }),
@@ -264,17 +294,26 @@ export function mountTaskMonitor(container, options = {}) {
     projectNames = new Map(artifacts.filter((a) => a.project_name).map((a) => [a.blueprint_id, a.project_name]));
     const latest = [...artifacts].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).slice(0, MAX_PROJECTS);
     projectEmpty.hidden = latest.length > 0;
+    const projectItem = (a) => {
+      const parts = [
+        el(doc, 'span', { class: 'mc-project-name', text: projectTitle(a) }),
+        el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: statusLabel(a.status) }),
+        el(doc, 'span', { class: 'mc-project-meta', text: a.created_at ? 'Compiled ' + formatAgo(a.created_at, now()) : '' }),
+      ];
+      if (!onOpenProject) return el(doc, 'li', { class: 'mc-project' }, parts);
+      const button = el(doc, 'button', { type: 'button', class: 'mc-project mc-project-link', title: 'Open in Blueprints' }, parts);
+      button.addEventListener('click', () => onOpenProject(a.blueprint_id));
+      return el(doc, 'li', {}, [button]);
+    };
+    // Five compiles of the same blueprint are one project with earlier versions, not five identical rows.
     projectList.replaceChildren(
-      ...latest.map((a) => {
-        const parts = [
-          el(doc, 'span', { class: 'mc-project-name', text: projectTitle(a) }),
-          el(doc, 'span', { class: 'mc-chip', 'data-status': a.status, text: statusLabel(a.status) }),
-          el(doc, 'span', { class: 'mc-project-meta', text: a.created_at ? 'Compiled ' + formatAgo(a.created_at, now()) : '' }),
-        ];
-        if (!onOpenProject) return el(doc, 'li', { class: 'mc-project' }, parts);
-        const button = el(doc, 'button', { type: 'button', class: 'mc-project mc-project-link', title: 'Open in Blueprints' }, parts);
-        button.addEventListener('click', () => onOpenProject(a.blueprint_id));
-        return el(doc, 'li', {}, [button]);
+      ...groupConsecutive(latest, (a) => projectTitle(a) + '|' + a.status).flatMap((group) => {
+        const rowsOut = [projectItem(group.lead)];
+        if (group.rest.length) {
+          const details = el(doc, 'details', { class: 'mc-repeats' }, [el(doc, 'summary', { text: repeatsText(group.rest.length, 'version') }), el(doc, 'ul', { class: 'mc-project-sub' }, group.rest.map(projectItem))]);
+          rowsOut.push(el(doc, 'li', { class: 'mc-project-group' }, [details]));
+        }
+        return rowsOut;
       }),
     );
   }

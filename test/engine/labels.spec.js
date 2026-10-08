@@ -1,6 +1,6 @@
 // Human-readable labels for statuses, ids, agents and tasks (public/js/engine/labels.js).
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { agentName, createCopyIdButton, humanize, projectTitle, statusLabel, taskTitle } from '../../public/js/engine/labels.js';
+import { agentName, createCopyIdButton, groupConsecutive, humanize, projectTitle, repeatsText, statusLabel, taskTitle } from '../../public/js/engine/labels.js';
 
 describe('humanize', () => {
   it('turns machine names into sentence-case words', () => {
@@ -75,5 +75,25 @@ describe('copy id button', () => {
     button.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(button.textContent).toBe('bp_x');
+  });
+});
+
+describe('groupConsecutive', () => {
+  it('folds a run of identical neighbours under the first, in order', () => {
+    const items = [{ n: 'a' }, { n: 'a' }, { n: 'a' }, { n: 'b' }, { n: 'a' }];
+    const groups = groupConsecutive(items, (i) => i.n);
+    expect(groups.map((g) => [g.key, g.rest.length])).toEqual([['a', 2], ['b', 0], ['a', 0]]);
+    expect(groups[0].lead).toBe(items[0]);
+    expect(groups[0].rest).toEqual([items[1], items[2]]);
+  });
+
+  it('keeps a list with no repeats as it is, and handles an empty one', () => {
+    expect(groupConsecutive([{ n: 1 }, { n: 2 }], (i) => i.n).every((g) => g.rest.length === 0)).toBe(true);
+    expect(groupConsecutive([], (i) => i)).toEqual([]);
+  });
+
+  it('words the fold in the singular and the plural', () => {
+    expect(repeatsText(1, 'run')).toBe('1 earlier run with the same name');
+    expect(repeatsText(4, 'version')).toBe('4 earlier versions with the same name');
   });
 });

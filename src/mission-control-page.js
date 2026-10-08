@@ -818,6 +818,12 @@ ${SHELL_SWITCH_CSS}
     .mc-step-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mc-project { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .mc-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    /* Folded repeats (identical runs, projects and versions): a plain 44px summary line, the repeats listed beneath it. */
+    .mc-repeats > summary, .bp-repeats > summary { display: flex; align-items: center; min-height: 44px; padding: 0 14px; color: var(--muted); font-size: 13px; cursor: pointer; }
+    .mc-repeats > summary:hover, .bp-repeats > summary:hover { color: var(--text); }
+    .mc-task-sub, .mc-project-sub, .bp-list-sub { margin: 0; padding: 0 0 0 14px; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .mc-task-group, .mc-project-group, .bp-list-group { list-style: none; }
+    .bp-new { margin-right: 8px; }
     .copy-id { appearance: none; min-height: 44px; padding: 0 10px; border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
     .mc-project-meta { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
     .mc-project.mc-project-link { appearance: none; width: 100%; text-align: left; cursor: pointer; }

@@ -1,7 +1,7 @@
 // Task loop monitor against the real client bundle, with a simulated engine task registry.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { buildStepRows, describeTask, formatDuration, mountTaskMonitor } from '../../public/js/engine/task-monitor.js';
+import { buildStepRows, collapseRepeats, describeTask, formatDuration, mountTaskMonitor } from '../../public/js/engine/task-monitor.js';
 
 const T0 = Date.parse('2026-10-01T12:00:00.000Z');
 const iso = (offsetMs) => new Date(T0 + offsetMs).toISOString();
@@ -180,5 +180,71 @@ describe('formatting helpers', () => {
       'running:first',
       'queued:2 more steps queued',
     ]);
+  });
+});
+
+describe('repeated rows read once', () => {
+  const finished = (id, over = {}) => ({ task_id: id, agent_id: 'builder', status: 'COMPLETED', total_steps: 2, results: [result(0, 'plan'), result(1, 'ask')], history: [], started_at: iso(0), finished_at: iso(30_000), ...over });
+
+  it('collapses consecutive identical step rows to one with a count, and leaves different ones alone', () => {
+    const rows = [
+      { state: 'done', name: 'echo · echo', detail: '1s' },
+      { state: 'done', name: 'echo · echo', detail: '1s' },
+      { state: 'done', name: 'echo · echo', detail: '1s' },
+      { state: 'done', name: 'echo · echo', detail: '2s' },
+      { state: 'failed', name: 'echo · echo', detail: '2s' },
+    ];
+    expect(collapseRepeats(rows)).toEqual([
+      { state: 'done', name: 'echo · echo ×3', detail: '1s' },
+      { state: 'done', name: 'echo · echo', detail: '2s' },
+      { state: 'failed', name: 'echo · echo', detail: '2s' },
+    ]);
+    expect(collapseRepeats([])).toEqual([]);
+  });
+
+  it('folds identical runs under the newest, keeps different runs in the list, and says how long ago in words', async () => {
+    // Three deploys that read the same (same title, agent, outcome, step count) and one that differs.
+    engine.add(finished('deploy-bp_1'));
+    engine.add(finished('deploy-bp_2'));
+    engine.add(finished('deploy-bp_3'));
+    engine.add(finished('deploy-bp_4', { status: 'FAILED', completed_steps: 1 }));
+    mount();
+    await flush();
+    const top = [...container.querySelectorAll('[aria-label="Task runs"] > .mc-task, [aria-label="Task runs"] > .mc-task-group')];
+    const groups = container.querySelectorAll('.mc-task-group');
+    expect(groups).toHaveLength(1);
+    expect(groups[0].querySelector('summary').textContent).toBe('2 earlier runs with the same name');
+    expect(groups[0].querySelectorAll('.mc-task-sub > .mc-task')).toHaveLength(2);
+    // Two rows stand on their own in the list: the newest of the identical runs, and the failed one.
+    expect(top.filter((n) => n.classList.contains('mc-task'))).toHaveLength(2);
+    expect(container.querySelectorAll('.mc-task')).toHaveLength(4);
+    // Time reads "duration · how long ago", not a clock time.
+    expect(container.querySelector('.mc-task-time').textContent).toMatch(/^[\d.]+(ms|s|m)( \d+s)? · (just now|\d+[mhd] ago)$/);
+  });
+
+  it('keeps a folded group open across polls once the operator opened it', async () => {
+    engine.add(finished('deploy-bp_1'));
+    engine.add(finished('deploy-bp_2'));
+    mount();
+    await flush();
+    const details = () => container.querySelector('.mc-task-group details');
+    details().open = true;
+    details().dispatchEvent(new Event('toggle'));
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(details().open).toBe(true);
+  });
+
+  it('lists five compiles of the same blueprint as one project with four earlier versions, and does not fold different outcomes', async () => {
+    const same = (n) => ({ filename: n + '.json', blueprint_id: 'bp_' + n, project_name: 'AI-Powered Micro SaaS', created_at: iso(-n * 3600_000), status: 'APPROVED_FOR_EXECUTION' });
+    engine.artifacts = [same(1), same(2), same(3), same(4), { ...same(5), status: 'DRAFT' }, { ...same(6), project_name: 'Other' }];
+    mount();
+    await flush();
+    const top = [...container.querySelectorAll('[aria-label="Projects"] > li')];
+    // Three entries: the grouped project (newest first) with its fold, the draft, and the other project.
+    expect(container.querySelectorAll('[aria-label="Projects"] > li.mc-project')).toHaveLength(3);
+    const group = container.querySelector('.mc-project-group');
+    expect(group.querySelector('summary').textContent).toBe('3 earlier versions with the same name');
+    expect(group.querySelectorAll('.mc-project-sub > li.mc-project')).toHaveLength(3);
+    expect(top.length).toBe(4);
   });
 });
