@@ -2,7 +2,7 @@
 // simulated portal token endpoint and a simulated engine that records the Authorization header it receives.
 import { afterEach, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { mountMissionControl } from '../../public/js/engine/mission-control.js';
+import { mountMissionControl, takeSpaceHandoff } from '../../public/js/engine/mission-control.js';
 import { renderMissionControlPage } from '../../src/mission-control-page.js';
 
 const b64url = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -412,4 +412,20 @@ it('with a verified key the first-project suggestion shows on the overview only'
 it('an engine too old to report its key does not block the banner', async () => {
   await mountWithConfig(null);
   expect(bannerTitle()).toBe('Start your first project');
+});
+
+it("a message from Space's composer opens the Elarion drawer and is sent once", async () => {
+  sessionStorage.setItem('aether.pendingAsk', JSON.stringify({ text: 'what changed in my graph?', from: 'Space', at: Date.now() }));
+  await mountPage();
+  expect(mc.drawer.isOpen()).toBe(true);
+  expect(document.querySelector('#mc-elaron .brain-user').textContent).toContain('what changed in my graph?');
+  expect(sessionStorage.getItem('aether.pendingAsk')).toBe(null);
+});
+
+it('ignores a stale or empty Space message', () => {
+  const win = { sessionStorage: { getItem: () => JSON.stringify({ text: 'old', at: 1000 }), removeItem() {} } };
+  expect(takeSpaceHandoff(win, 1000 + 121000)).toBe(null);
+  expect(takeSpaceHandoff(win, 1000 + 5000)).toBe('old');
+  expect(takeSpaceHandoff({ sessionStorage: { getItem: () => JSON.stringify({ text: '  ', at: 1000 }), removeItem() {} } }, 2000)).toBe(null);
+  expect(takeSpaceHandoff({})).toBe(null);
 });

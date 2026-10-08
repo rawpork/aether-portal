@@ -181,6 +181,18 @@ export function setupStudioTabs(doc, onChange = () => {}) {
 }
 
 // Views whose page has its own input, so the shared command bar is hidden there (mirrors the CSS in mission-control-page.js).
+export const SPACE_HANDOFF_KEY = 'aether.pendingAsk';
+const SPACE_HANDOFF_MAX_AGE_MS = 120000;
+// The message Space's composer left for Elarion, or null. Read once: it is removed whether or not it is used.
+export function takeSpaceHandoff(win, now = Date.now()) {
+  try {
+    const raw = win.sessionStorage.getItem(SPACE_HANDOFF_KEY);
+    win.sessionStorage.removeItem(SPACE_HANDOFF_KEY);
+    const note = raw ? JSON.parse(raw) : null;
+    if (note && typeof note.text === 'string' && note.text.trim() && now - Number(note.at) >= 0 && now - Number(note.at) < SPACE_HANDOFF_MAX_AGE_MS) return note.text.trim().slice(0, 4000);
+  } catch { /* no storage, nothing handed over */ }
+  return null;
+}
 const composerHiddenFor = () => false; // the composer is docked on every page
 
 // Pages: each rail button opens its page and is marked aria-current="page" while it (or a sub-page under it) is open. The small
@@ -578,6 +590,13 @@ export async function mountMissionControl(doc = document, options = {}) {
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
   tabs.openFromHash();
+  // Space's composer hands a message over (index.js handOffToElarion): open the drawer and send it, once, if it is fresh.
+  const handoff = takeSpaceHandoff(doc.defaultView || globalThis);
+  if (handoff && drawer) {
+    drawer.open();
+    if (!dock.send(handoff)) dock.elements.input.value = handoff;
+  }
+
   if (skillButton && decisions) skillButton.addEventListener('click', () => decisions.askSource());
   // Agent spec (the rail): define an agent's role and what it may do. It writes a spec and starts nothing: agents run when a
   // project that uses them is deployed.

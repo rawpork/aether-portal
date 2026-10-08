@@ -1746,6 +1746,8 @@ export default {
     #command-mic[aria-pressed="true"] { border-color: var(--accent-line); color: var(--accent); }
     #command-mic:disabled { opacity: 0.4; cursor: default; }
     #command-mic:active { transform: scale(0.98); }
+    #command-send { flex: none; min-width: 44px; height: 44px; padding: 0 14px; border: 1px solid var(--accent); border-radius: var(--radius-s); background: var(--accent); color: var(--on-accent, #04120f); font: inherit; font-weight: 600; cursor: pointer; }
+    #command-send:active { transform: scale(0.98); }
     /* Elarion's answers, just above the bar. */
     #command-chat {
       position: absolute;
@@ -1782,7 +1784,7 @@ export default {
     @media (max-width: 767px) {
       #command-bar {
         left: 10px;
-        right: calc(164px * var(--wheel-grow, 1) + 4px);
+        right: 10px;
         bottom: calc(12px + env(safe-area-inset-bottom, 0px));
         width: auto;
         transform: none;
@@ -3426,6 +3428,7 @@ ${SHELL_SWITCH_CSS}
     <label class="visually-hidden-label" for="command-input">Search or command</label>
     <input id="command-input" type="text" enterkeyhint="send" maxlength="1000" placeholder="Ask Elarion…" title="Ask Elarion about your graph. Also: find …, add …, go to …, clear">
     <button type="button" id="command-mic" aria-pressed="false" title="Speak (Microphone)" aria-label="Microphone"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+    <button type="submit" id="command-send" title="Send to Elarion" aria-label="Send">Send</button>
     <p id="command-hint" role="status" aria-live="polite" hidden></p>
     <div id="command-chat" hidden>
       <div class="command-chat-head"><span id="command-chat-scope">Elarion</span><button type="button" id="command-chat-close" title="Close" aria-label="Close Elarion's answers">×</button></div>
@@ -9001,9 +9004,22 @@ ${SHELL_SWITCH_CSS}
         showCommandHint(Graph.graphData().nodes.length + ' card(s) match "' + truncate(rest, 40) + '".');
         return;
       }
-      askFromCommandBar(text);
+      handOffToElarion(text);
     };
-    // Plain text goes to Elarion (Gemini, /api/ask) about what is on screen: the open group, else the highlighted
+    // Plain text is a message to Elarion, the same as in Mission Control: it is carried there (sessionStorage, read once by
+    // public/js/engine/mission-control.js), which opens the Elarion drawer and sends it. "ask <question>" still asks about the
+    // cards on screen, below. Without storage the question is answered here instead.
+    const ELARION_HANDOFF_KEY = 'aether.pendingAsk';
+    const handOffToElarion = text => {
+      try {
+        sessionStorage.setItem(ELARION_HANDOFF_KEY, JSON.stringify({ text: text, from: 'Space', at: Date.now() }));
+      } catch (err) {
+        askFromCommandBar(text);
+        return;
+      }
+      window.location.href = '/mission-control';
+    };
+    // "ask ..." goes to Elarion (Gemini, /api/ask) about what is on screen: the open group, else the highlighted
     // categories, else the newest cards (COMMAND_ASK_NODES of them). Answers stack in the panel above the bar.
     const COMMAND_ASK_NODES = 30;
     const commandChat = document.getElementById('command-chat');

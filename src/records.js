@@ -4,7 +4,7 @@
 
 export const RECORDS_LIMIT_DEFAULT = 10;
 export const RECORDS_LIMIT_MAX = 50;
-export const RECORD_TYPES = ["card", "blueprint", "deliverable", "note", "run"];
+export const RECORD_TYPES = ["card", "blueprint", "phase_output", "deliverable", "note", "run"];
 const TEXT_MAX = 2000;
 const ID_MAX = 200;
 const COLUMNS = "r.id, r.project_id, r.run_id, r.type, r.title, r.summary, r.body_ref, r.tags, r.created_at, r.updated_at";
