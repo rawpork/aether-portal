@@ -1,4 +1,6 @@
-// Quick Setup (Settings tab): pair an engine and give Elarion its Miserly.io client key in one step. "Test & Pair
+// Quick Setup (Settings tab): pair an engine and, optionally, give Elarion a Miserly.io client key in one step. Miserly is an
+// optional spend-saving layer, never a requirement: with no key the engine calls the model provider directly with its own keys
+// (execution_mode direct-anthropic | direct-gemini | direct-openai) and Elarion is ready. "Test & Pair
 // Engine" checks the engine's GET /health, then sends the key over the authenticated POST /api/engine/config, where
 // the engine verifies it with Miserly.io and saves it without a restart. The header's "Elarion Ready" badge shows the
 // result (GET /api/engine/config on load). Pairing a different address saves it for this browser and reloads, since
@@ -10,14 +12,19 @@ export const SANDBOX_KEY = 'miserly_free_sandbox';
 export const SANDBOX_TEXT = 'Free Sandbox Mode Active';
 export const isSandbox = (summary) => Boolean(summary) && (summary.execution_mode === 'miserly-free' || summary.miserly_key_status === 'sandbox');
 
-// What is wrong with Elarion's key, judged from the key's own status and not from the engine's elarion_ready flag: a real
-// engine has reported elarion_ready while saying it had no key. null when the key is fine, sandboxed, or the engine is too
-// old to report it. kind: missing | invalid | unverified.
+// The engine calls the model provider directly with its own key (no Miserly key saved), and which one.
+export const DIRECT_PROVIDERS = { 'direct-anthropic': 'Claude (Anthropic)', 'direct-gemini': 'Gemini (Google)', 'direct-openai': 'OpenAI' };
+export const directProvider = (summary) => (summary && DIRECT_PROVIDERS[summary.execution_mode]) || null;
+
+// What stops Elarion from answering, or null when it can. A Miserly key is optional: with none saved, an engine that has its own
+// provider key (direct mode, or an engine that simply reports itself ready) is fine. A key that IS saved takes priority, so one that is wrong or unreachable breaks Elarion even
+// though the provider key would have worked, and that is reported. null too for the sandbox and for an engine too old to say.
+// kind: missing (no Miserly key and no provider key either) | invalid | unverified.
 export function keyProblem(summary) {
   if (!summary || isSandbox(summary)) return null;
   const status = summary.miserly_key_status;
   if (status === 'verified') return null;
-  if (status === 'missing') return { kind: 'missing', detail: 'No Miserly key is saved on the engine.' };
+  if (status === 'missing') return directProvider(summary) || summary.elarion_ready === true ? null : { kind: 'missing', detail: 'The engine has no AI model key.' };
   if (status === 'invalid') return { kind: 'invalid', detail: summary.miserly_key_detail || 'Miserly.io did not accept the key.' };
   if (status === 'unreachable') return { kind: 'unverified', detail: summary.miserly_key_detail || 'Miserly.io could not be reached to check the key.' };
   return summary.elarion_ready === false ? { kind: 'invalid', detail: summary.miserly_key_detail || 'The engine could not verify the Miserly key.' } : null;
@@ -26,7 +33,7 @@ export function keyProblem(summary) {
 export const STEPS = [
   ['reach', 'Engine reachable'],
   ['auth', 'Mission Control authorized'],
-  ['key', 'Miserly key verified'],
+  ['key', 'AI model ready'],
 ];
 
 function el(doc, tag, props = {}, children = []) {
@@ -66,10 +73,12 @@ export function publicUrlFor(url) {
 export function badgeState(summary) {
   if (!summary) return { hidden: true };
   const problem = keyProblem(summary);
-  if (problem) return { hidden: false, kind: 'alert', text: 'Set up Elarion', title: problem.kind === 'missing' ? 'No Miserly client key on the engine' : problem.detail };
+  if (problem) return { hidden: false, kind: 'alert', text: 'Set up Elarion', title: problem.kind === 'missing' ? 'No AI model key on the engine' : problem.detail };
   if (summary.elarion_ready && isSandbox(summary)) return { hidden: false, kind: 'running', text: 'Elarion Ready · Sandbox', title: SANDBOX_TEXT + ': Elarion answers with local mock replies and never calls Miserly.io' };
+  const direct = directProvider(summary);
+  if (direct) return { hidden: false, kind: 'running', text: 'Elarion Ready', title: 'Using your ' + direct + ' key directly. A Miserly key is optional: it caps and tracks spend.' };
   if (summary.elarion_ready) return { hidden: false, kind: 'running', text: 'Elarion Ready', title: 'Engine paired and Miserly key ' + (summary.miserly_key_hint || '') + ' verified' };
-  const why = summary.miserly_key_status === 'missing' ? 'No Miserly client key on the engine' : summary.miserly_key_detail || 'Miserly key not verified';
+  const why = summary.miserly_key_status === 'missing' ? 'No AI model key on the engine' : summary.miserly_key_detail || 'Miserly key not verified';
   return { hidden: false, kind: 'alert', text: 'Set up Elarion', title: why };
 }
 
@@ -88,7 +97,7 @@ export function mountQuickSetup(container, options = {}) {
 
   const address = el(doc, 'input', { id: 'qs-address', class: 'qs-input mono', type: 'url', inputmode: 'url', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'https://your-tunnel.trycloudflare.com' });
   address.value = api.baseUrl;
-  const key = el(doc, 'input', { id: 'qs-key', class: 'qs-input mono', type: 'password', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'Paste your Miserly client key' });
+  const key = el(doc, 'input', { id: 'qs-key', class: 'qs-input mono', type: 'password', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'Optional Miserly key' });
   const keyHint = el(doc, 'p', { id: 'qs-key-hint', class: 'qs-hint', text: 'Checking the engine…' });
   const reveal = el(doc, 'button', { type: 'button', class: 'qs-reveal', 'aria-controls': 'qs-key', 'aria-pressed': 'false', text: 'Show' });
   reveal.addEventListener('click', () => {
@@ -97,6 +106,8 @@ export function mountQuickSetup(container, options = {}) {
     reveal.textContent = show ? 'Hide' : 'Show';
     reveal.setAttribute('aria-pressed', String(show));
   });
+  // Leaves Miserly (or the sandbox) so the engine calls the provider directly with its own key. Shown only while one is saved.
+  const removeKey = el(doc, 'button', { type: 'button', class: 'toggle-button qs-remove-key', hidden: true, text: 'Remove Miserly key' });
   const pairBtn = el(doc, 'button', { type: 'submit', class: 'bp-primary qs-pair', text: 'Test & Pair Engine' });
   const message = el(doc, 'p', { class: 'cw-msg qs-msg', 'aria-live': 'polite' });
   const stepEls = {};
@@ -115,17 +126,18 @@ export function mountQuickSetup(container, options = {}) {
       el(doc, 'p', { class: 'qs-hint', text: 'Your tunnel or server address, or http://localhost:3333 on the computer running the engine.' }),
     ]),
     el(doc, 'div', { class: 'qs-field' }, [
-      el(doc, 'label', { for: 'qs-key', text: 'Miserly Client Key' }),
+      el(doc, 'label', { for: 'qs-key', text: 'Miserly Client Key (optional)' }),
       el(doc, 'div', { class: 'qs-key-row' }, [key, reveal]),
       keyHint,
-      el(doc, 'p', { class: 'qs-hint', text: 'No key yet? Enter ' + SANDBOX_KEY + ' to try Elarion in Free Sandbox Mode (local mock replies, no cost).' }),
+      removeKey,
+      el(doc, 'p', { class: 'qs-hint', text: 'Optional. Elarion works without Miserly, using the engine’s own Anthropic, Gemini or OpenAI key. A Miserly key routes calls through its budget caps to save you money. To try Elarion with no keys at all, enter ' + SANDBOX_KEY + ' (local mock replies, no cost).' }),
     ]),
     el(doc, 'div', { class: 'qs-actions' }, [pairBtn, message]),
     stepList,
   ]);
   container.replaceChildren(
     el(doc, 'section', { class: 'surface mc-panel qs', 'aria-labelledby': 'qs-title' }, [
-      el(doc, 'div', { class: 'mc-panel-head' }, [el(doc, 'h2', { id: 'qs-title', text: 'Quick Setup' }), el(doc, 'span', { class: 'mc-muted', text: 'Pair the engine and give Elarion its key' })]),
+      el(doc, 'div', { class: 'mc-panel-head' }, [el(doc, 'h2', { id: 'qs-title', text: 'Quick Setup' }), el(doc, 'span', { class: 'mc-muted', text: 'Pair the engine; Miserly is optional' })]),
       form,
     ]),
   );
@@ -144,7 +156,8 @@ export function mountQuickSetup(container, options = {}) {
   function keyStep(summary, typedKey = '') {
     if (isSandbox(summary)) setStep('key', 'ok', SANDBOX_TEXT + ' (execution mode miserly-free)');
     else if (summary.miserly_key_status === 'verified') setStep('key', 'ok', 'Key ' + summary.miserly_key_hint + (typedKey ? ' saved on the engine' : ' already on the engine'));
-    else if (summary.miserly_key_status === 'missing') setStep('key', 'fail', 'Paste your Miserly client key above.');
+    else if (directProvider(summary) && summary.miserly_key_status === 'missing') setStep('key', 'ok', 'Using your ' + directProvider(summary) + ' key directly. Miserly is optional.');
+    else if (summary.miserly_key_status === 'missing') setStep('key', 'fail', 'Add an Anthropic, Gemini or OpenAI key to the engine (or, optionally, a Miserly key above).');
     else setStep('key', 'fail', summary.miserly_key_detail);
   }
 
@@ -172,12 +185,18 @@ export function mountQuickSetup(container, options = {}) {
       keyHint.textContent = SANDBOX_TEXT + ': Elarion replies locally with mock answers and spends nothing. Paste a real Miserly key to go live.';
       keyHint.dataset.kind = 'ok';
     } else if (summary.miserly_key_configured) {
-      keyHint.textContent = 'Saved on the engine: ' + summary.miserly_key_hint + ' (' + (summary.miserly_key_status === 'verified' ? 'verified' : summary.miserly_key_detail) + '). Paste a new key to replace it.';
-      keyHint.dataset.kind = summary.miserly_key_status === 'verified' ? 'ok' : 'error';
+      const bad = summary.miserly_key_status !== 'verified';
+      keyHint.textContent = 'Saved on the engine: ' + summary.miserly_key_hint + ' (' + (bad ? summary.miserly_key_detail : 'verified') + '). ' + (bad ? 'Paste a new key, or remove it to use the engine’s own provider key.' : 'Paste a new key to replace it.');
+      keyHint.dataset.kind = bad ? 'error' : 'ok';
+    } else if (directProvider(summary)) {
+      keyHint.textContent = 'Not needed. Elarion is using your ' + directProvider(summary) + ' key directly. Add a Miserly key only if you want its spend caps and savings.';
+      keyHint.dataset.kind = 'ok';
     } else {
-      keyHint.textContent = 'The engine has no key yet. Elarion needs one to chat and run prompt steps.';
+      keyHint.textContent = 'The engine has no AI model key. Add an Anthropic, Gemini or OpenAI key to its .env, paste a Miserly key here, or enter ' + SANDBOX_KEY + ' to try the sandbox.';
       keyHint.dataset.kind = 'error';
     }
+    removeKey.hidden = !summary.miserly_key_configured;
+    removeKey.textContent = isSandbox(summary) ? 'Leave sandbox' : 'Remove Miserly key';
   }
 
   // Badge and key hint for the engine this page is connected to.
@@ -263,7 +282,8 @@ export function mountQuickSetup(container, options = {}) {
         return;
       }
       showSummary(summary);
-      say(summary.elarion_ready ? (isSandbox(summary) ? 'Paired. Elarion is ready in Free Sandbox Mode.' : 'Paired. Elarion is ready.') : 'Engine paired; Elarion still needs a valid key.', summary.elarion_ready ? 'ok' : 'error');
+      const ready = summary.elarion_ready && !keyProblem(summary);
+      say(ready ? (isSandbox(summary) ? 'Paired. Elarion is ready in Free Sandbox Mode.' : directProvider(summary) ? 'Paired. Elarion is ready, using your ' + directProvider(summary) + ' key.' : 'Paired. Elarion is ready.') : 'Engine paired; Elarion still needs a working model key.', ready ? 'ok' : 'error');
     } finally {
       busy = false;
       pairBtn.disabled = false;
@@ -273,6 +293,22 @@ export function mountQuickSetup(container, options = {}) {
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     pair();
+  });
+  removeKey.addEventListener('click', async () => {
+    if (busy) return;
+    busy = true;
+    removeKey.disabled = true;
+    say('Removing the Miserly key…');
+    try {
+      const summary = await api.saveEngineConfig({ clear_miserly_key: true });
+      showSummary(summary);
+      say(directProvider(summary) ? 'Removed. Elarion now uses your ' + directProvider(summary) + ' key directly.' : 'Removed. The engine has no AI model key now; add one to its .env.', directProvider(summary) ? 'ok' : 'error');
+    } catch (error) {
+      say((error && error.message) || 'The key was not removed.', 'error');
+    } finally {
+      busy = false;
+      removeKey.disabled = false;
+    }
   });
   const onBadge = () => {
     onOpenSettings();
@@ -284,7 +320,7 @@ export function mountQuickSetup(container, options = {}) {
   return {
     pair,
     refresh,
-    elements: { form, address, key, pairBtn, message, keyHint, steps: stepEls },
+    elements: { form, address, key, pairBtn, message, keyHint, removeKey, steps: stepEls },
     destroy() {
       destroyed = true;
       if (badge) badge.removeEventListener('click', onBadge);

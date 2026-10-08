@@ -335,24 +335,35 @@ async function mountWithConfig(config) {
 }
 const bannerTitle = () => document.querySelector('#mc-next .wf-next-title')?.textContent;
 
-it('with no Miserly key the banner asks for it, only where it helps, and never suggests a first project', async () => {
+it('with no model key at all the banner asks for one, only where it helps, and never suggests a first project', async () => {
   await mountWithConfig({ miserly_key_configured: false, miserly_key_hint: null, miserly_key_status: 'missing', miserly_key_detail: 'No key', public_url: null, elarion_ready: false });
   const next = document.getElementById('mc-next');
   expect(next.hidden).toBe(false);
-  expect(bannerTitle()).toBe('Add your Miserly key');
+  expect(bannerTitle()).toBe('Add an AI model key');
   expect(next.textContent).not.toContain('Start your first project');
   // Settings shows the form itself, so the banner steps aside there; other pages still get the blocker.
   mc.tabs.select('connect');
   expect(next.hidden).toBe(true);
   mc.tabs.select('blueprints');
   expect(next.hidden).toBe(false);
-  expect(bannerTitle()).toBe('Add your Miserly key');
+  expect(bannerTitle()).toBe('Add an AI model key');
   mc.tabs.select('monitor');
   expect(next.hidden).toBe(false);
   // The Settings checklist already reflects it: reachable, authorized, key still to do.
   expect([...document.querySelectorAll('.qs-step')].map((li) => li.dataset.state)).toEqual(['ok', 'ok', 'fail']);
   // The status pill agrees something needs attention.
   expect(document.querySelector('[data-status="pill"]').textContent.trim()).toBe('Setup needed');
+});
+
+it('Miserly is optional: with no Miserly key but the engine calling the provider directly, nothing asks for one', async () => {
+  await mountWithConfig({ miserly_key_configured: false, miserly_key_hint: null, miserly_key_status: 'missing', miserly_key_detail: 'No Miserly client key is set.', public_url: null, elarion_ready: true, execution_mode: 'direct-anthropic' });
+  expect(bannerTitle()).not.toMatch(/key/i);
+  // The Settings checklist is all green, and the form says Miserly is not needed.
+  expect([...document.querySelectorAll('.qs-step')].map((li) => li.dataset.state)).toEqual(['ok', 'ok', 'ok']);
+  expect(document.getElementById('qs-key-hint').textContent).toContain('Not needed');
+  expect(document.querySelector('[data-status="pill"]').textContent.trim()).not.toBe('Setup needed');
+  mc.tabs.select('blueprints');
+  expect(bannerTitle()).not.toMatch(/key/i);
 });
 
 it('with a verified key the first-project suggestion shows on the overview only', async () => {

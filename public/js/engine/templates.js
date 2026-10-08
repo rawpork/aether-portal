@@ -229,7 +229,7 @@ export function briefToSpec(template, brief) {
   return {
     projectName: (brief.projectName || '').trim() || template.name,
     lodLevel: 2,
-    useMiserlyProxy: true,
+    useMiserlyProxy: false,
     links: [...template.links.map((l) => ({ ...l })), { url: BRIEF_SOURCE_URL, title: 'Project brief', rawSnippet: briefSummary(template, brief) }],
     interviewResponses: {
       database: brief.database || templateDefaults(template).database,

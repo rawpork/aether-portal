@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { badgeState, keyProblem, mountQuickSetup, publicUrlFor } from '../../public/js/engine/quick-setup.js';
 
 const READY = { miserly_key_configured: true, miserly_key_hint: '…abcd', miserly_key_status: 'verified', miserly_key_detail: 'ok', public_url: null, elarion_ready: true };
+// No Miserly key saved, and the engine calls the model provider directly with its own key: Miserly is optional.
+const DIRECT = { miserly_key_configured: false, miserly_key_hint: null, miserly_key_status: 'missing', miserly_key_detail: 'No key', public_url: null, elarion_ready: true, execution_mode: 'direct-anthropic' };
 const MISSING = { miserly_key_configured: false, miserly_key_hint: null, miserly_key_status: 'missing', miserly_key_detail: 'No key', public_url: null, elarion_ready: false };
 
 function fakeApi({ baseUrl = 'http://localhost:3333', config = MISSING, health = { status: 'healthy', system: 'Aether Engine Compiler' }, save } = {}) {
@@ -113,15 +115,93 @@ describe('quick setup', () => {
 });
 
 describe('key problems', () => {
-  it('judges the key by its status, so a ready flag cannot hide a missing key from the badge', () => {
+  it('treats a missing Miserly key as fine when the engine can answer without it, and as a problem when it cannot', () => {
     expect(keyProblem(READY)).toBe(null);
-    expect(keyProblem(MISSING)).toMatchObject({ kind: 'missing' });
-    expect(keyProblem({ ...MISSING, elarion_ready: true })).toMatchObject({ kind: 'missing' });
-    expect(badgeState({ ...MISSING, elarion_ready: true })).toMatchObject({ hidden: false, kind: 'alert', text: 'Set up Elarion', title: 'No Miserly client key on the engine' });
+    // Neither a Miserly key nor a provider key: nothing can answer.
+    expect(keyProblem(MISSING)).toMatchObject({ kind: 'missing', detail: 'The engine has no AI model key.' });
+    expect(badgeState(MISSING)).toMatchObject({ hidden: false, kind: 'alert', text: 'Set up Elarion', title: 'No AI model key on the engine' });
+    // Miserly is optional: the engine's own provider key is enough.
+    expect(keyProblem(DIRECT)).toBe(null);
+    expect(keyProblem({ ...MISSING, elarion_ready: true })).toBe(null);
+    expect(badgeState(DIRECT)).toMatchObject({ hidden: false, kind: 'running', text: 'Elarion Ready' });
+    expect(badgeState(DIRECT).title).toContain('Claude (Anthropic)');
+    expect(badgeState(DIRECT).title).toContain('optional');
+    expect(badgeState({ ...DIRECT, execution_mode: 'direct-gemini' }).title).toContain('Gemini (Google)');
+    // A saved key takes priority over the provider key, so a bad one is still a problem.
     expect(keyProblem({ ...READY, miserly_key_status: 'invalid', miserly_key_detail: 'Rejected (401)' })).toEqual({ kind: 'invalid', detail: 'Rejected (401)' });
     expect(keyProblem({ ...READY, miserly_key_status: 'unreachable' })).toMatchObject({ kind: 'unverified' });
     expect(keyProblem({ miserly_key_status: 'sandbox', execution_mode: 'miserly-free', elarion_ready: true })).toBe(null);
     expect(keyProblem(null)).toBe(null);
+  });
+});
+
+describe('Miserly is optional', () => {
+  const stepStates = () => Object.values(qs.elements.steps).map((s) => s.li.dataset.state);
+
+  it('says so in the form: the field is labelled optional and the hint names the provider in use', async () => {
+    mount(fakeApi({ config: DIRECT }));
+    await flush();
+    expect(document.querySelector('label[for="qs-key"]').textContent).toBe('Miserly Client Key (optional)');
+    expect(qs.elements.key.placeholder).toMatch(/optional/i);
+    expect(qs.elements.keyHint.textContent).toContain('Not needed');
+    expect(qs.elements.keyHint.textContent).toContain('Claude (Anthropic)');
+    expect(qs.elements.keyHint.dataset.kind).toBe('ok');
+    expect(qs.elements.removeKey.hidden).toBe(true);
+    // Not a failure: every check is green with no Miserly key.
+    expect(stepStates()).toEqual(['ok', 'ok', 'ok']);
+    expect(qs.elements.steps.key.li.textContent).toContain('AI model ready');
+    expect(qs.elements.steps.key.detail.textContent).toContain('Miserly is optional');
+  });
+
+  it('pairs with no key typed and reports ready, using the provider key', async () => {
+    const api = fakeApi({ config: DIRECT });
+    mount(api);
+    await flush();
+    await qs.pair();
+    expect(api.calls.some((c) => c[0] === 'save')).toBe(false);
+    expect(qs.elements.message.dataset.kind).toBe('ok');
+    expect(qs.elements.message.textContent).toBe('Paired. Elarion is ready, using your Claude (Anthropic) key.');
+  });
+
+  it('is only a failure when the engine has no model key of any kind', async () => {
+    mount(fakeApi({ config: MISSING }));
+    await flush();
+    expect(stepStates()).toEqual(['ok', 'ok', 'fail']);
+    expect(qs.elements.keyHint.textContent).toContain('no AI model key');
+    expect(qs.elements.keyHint.dataset.kind).toBe('error');
+  });
+
+  it('offers to remove a saved Miserly key, which hands the engine back to its own provider key', async () => {
+    const api = fakeApi({ config: READY, save: DIRECT });
+    const badge = mount(api);
+    await flush();
+    expect(qs.elements.removeKey.hidden).toBe(false);
+    expect(qs.elements.removeKey.textContent).toBe('Remove Miserly key');
+    qs.elements.removeKey.click();
+    await flush();
+    expect(api.calls).toContainEqual(['save', { clear_miserly_key: true }]);
+    expect(qs.elements.removeKey.hidden).toBe(true);
+    expect(qs.elements.message.textContent).toBe('Removed. Elarion now uses your Claude (Anthropic) key directly.');
+    expect(badge.title).toContain('optional');
+  });
+
+  it('calls the sandbox "Leave sandbox", and reports when removing leaves no model key at all', async () => {
+    const SANDBOX = { ...READY, miserly_key_status: 'sandbox', execution_mode: 'miserly-free' };
+    mount(fakeApi({ config: SANDBOX, save: MISSING }));
+    await flush();
+    expect(qs.elements.removeKey.textContent).toBe('Leave sandbox');
+    qs.elements.removeKey.click();
+    await flush();
+    expect(qs.elements.message.dataset.kind).toBe('error');
+    expect(qs.elements.message.textContent).toContain('no AI model key');
+  });
+
+  it('suggests removing a Miserly key that is not accepted, since the provider key would work', async () => {
+    mount(fakeApi({ config: { ...READY, miserly_key_status: 'invalid', miserly_key_detail: 'Miserly.io rejected the key (HTTP 401).', elarion_ready: false } }));
+    await flush();
+    expect(qs.elements.keyHint.textContent).toContain('remove it to use the engine’s own provider key');
+    expect(qs.elements.keyHint.dataset.kind).toBe('error');
+    expect(qs.elements.removeKey.hidden).toBe(false);
   });
 });
 

@@ -229,13 +229,13 @@ describe('artifact dashboard', () => {
       '2Sources',
       '2Phases',
       '2Scaffold files',
-      '$2.50Miserly budget',
+      'Proxy offMiserly budget',
       'cloudflare_d1 / cloudflare_workersDatabase / hosting',
     ]);
     const [matrix, scaffold, sources] = [...viewer.querySelectorAll('table')];
     expect([...matrix.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((c) => c.textContent).join(' | '))).toEqual([
-      '1 | Content Ingestion & Normalization | Data Synthesizer | fetch_url_content, sanitize_text | Miserly.io proxy · cap $2.50',
-      '2 | Codebase Scaffold Generation | System Architect | file_system_writer, schema_validator | Miserly.io proxy · cap $2.50',
+      '1 | Content Ingestion & Normalization | Data Synthesizer | fetch_url_content, sanitize_text | Direct (no proxy)',
+      '2 | Codebase Scaffold Generation | System Architect | file_system_writer, schema_validator | Direct (no proxy)',
     ]);
     expect([...scaffold.querySelectorAll('tbody tr')].map((tr) => tr.cells[0].textContent + ':' + tr.cells[2].textContent)).toEqual(['CLAUDE.md:Yes', 'PROJECT_STATE.md:Yes']);
     const link = sources.querySelector('a');
@@ -389,6 +389,8 @@ describe('Projects page structure', () => {
 
   it('folds projects with the same name and outcome under the newest, and keeps the folded one open when it is selected', async () => {
     engine.stored.push(compiledFrom(EXAMPLE_SPEC, 1), compiledFrom(EXAMPLE_SPEC, 2), compiledFrom(EXAMPLE_SPEC, 3));
+    // The example spec leaves the optional Miserly proxy off.
+    expect(EXAMPLE_SPEC.useMiserlyProxy).toBe(false);
     await mount();
     const rows = [...ws.elements.list.querySelectorAll(':scope > li > .bp-list-item')];
     expect(rows).toHaveLength(1);

@@ -543,6 +543,8 @@ export interface EngineConfigSummary {
 
 export interface EngineConfigChanges {
 	miserly_client_key?: string;
+	// true leaves Miserly (or the sandbox): the engine then calls the model provider directly with its own key.
+	clear_miserly_key?: boolean;
 	// "" clears it.
 	public_url?: string;
 }

@@ -25,7 +25,7 @@ const task = (over) => ({ task_id: 'deploy-bp_1', agent_id: 'master-brain', run_
 describe('where the banner belongs', () => {
 	const go = { kind: 'go', title: 'Start your first project', action: { label: 'Open Projects', view: 'blueprints' } };
 	const live = { kind: 'live', title: 'A run is in progress', action: { label: 'Watch', view: 'activity' } };
-	const keyWarn = { kind: 'warn', title: 'Add your Miserly key', action: { label: 'Open Settings', view: 'connect' } };
+	const keyWarn = { kind: 'warn', title: 'Add an AI model key', action: { label: 'Open Settings', view: 'connect' } };
 	const alertOp = { kind: 'alert', title: 'Elarion is waiting', action: { label: 'Answer now', view: 'operator' } };
 
 	it('always shows on the overview, when there is something to say', () => {
@@ -101,7 +101,7 @@ describe('mountDecisionCenter', () => {
 		center = mountDecisionCenter(document, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), slot, pollMs: 100000, getSetup: () => summary, onNavigate: (v) => navigated.push(v), storage: { getItem: () => null, setItem() {} } });
 		await settle();
 		expect(slot.hidden).toBe(false);
-		expect(slot.querySelector('.wf-next-title').textContent).toBe('Add your Miserly key');
+		expect(slot.querySelector('.wf-next-title').textContent).toBe('Add an AI model key');
 		expect(slot.textContent).not.toContain('Start your first project');
 		slot.querySelector('.wf-next-go').click();
 		expect(navigated).toEqual(['connect']);
@@ -111,7 +111,7 @@ describe('mountDecisionCenter', () => {
 		expect(slot.hidden).toBe(true);
 		center.setView('blueprints');
 		expect(slot.hidden).toBe(false);
-		expect(slot.querySelector('.wf-next-title').textContent).toBe('Add your Miserly key');
+		expect(slot.querySelector('.wf-next-title').textContent).toBe('Add an AI model key');
 
 		// Once the key is verified the banner turns into the first-project suggestion, which only belongs on the overview.
 		summary = { elarion_ready: true, miserly_key_status: 'verified', miserly_key_detail: 'ok' };

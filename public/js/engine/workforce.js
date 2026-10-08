@@ -292,13 +292,13 @@ export function nextAction({ error = null, tasks = [], runs = {}, setup = null }
   if (waiting) return { kind: 'alert', title: 'Elarion is waiting for your answer', text: (waiting.awaiting.question || 'A run needs a decision') + ' · ' + taskTitle(waiting.task_id), action: { label: 'Answer now', view: 'operator' } };
   const running = tasks.find((t) => t.status === 'RUNNING');
   if (running) return { kind: 'live', title: 'A run is in progress', text: taskTitle(running.task_id) + ' · step ' + Math.min(running.completed_steps + 1, running.total_steps) + ' of ' + running.total_steps + '. Watch the work live below; nothing is needed from you until it finishes.', action: { label: 'Watch live', view: 'activity' } };
-  // Nothing below can work without a key, so say so before suggesting a project (or reporting one as failed).
+  // Nothing below can work without a model key (a Miserly key is optional: the engine's own provider key does), so say so before suggesting a project (or reporting one as failed).
   const keyIssue = setupIssue(setup);
   if (keyIssue) {
     const go = { label: 'Open Settings', view: 'connect' };
-    if (keyIssue.kind === 'missing') return { kind: 'warn', title: 'Add your Miserly key', text: 'Elarion cannot plan or run a project until the engine has a key. Paste one in Settings, or try Free Sandbox Mode (no key, no cost).', action: go };
-    if (keyIssue.kind === 'unverified') return { kind: 'warn', title: 'Could not check your Miserly key', text: keyIssue.detail + ' Open Settings to try again.', action: go };
-    return { kind: 'warn', title: 'Your Miserly key was not accepted', text: keyIssue.detail + ' Open Settings to replace it.', action: go };
+    if (keyIssue.kind === 'missing') return { kind: 'warn', title: 'Add an AI model key', text: 'Elarion cannot plan or run a project until the engine has a model key. Add an Anthropic, Gemini or OpenAI key to the engine’s .env, or paste a Miserly key in Settings (optional), or try Free Sandbox Mode.', action: go };
+    if (keyIssue.kind === 'unverified') return { kind: 'warn', title: 'Could not check your Miserly key', text: keyIssue.detail + ' Open Settings to try again, or remove the key to use your own provider key.', action: go };
+    return { kind: 'warn', title: 'Your Miserly key was not accepted', text: keyIssue.detail + ' Open Settings to replace it, or remove it to use your own provider key.', action: go };
   }
   const latest = tasks.filter((t) => String(t.task_id).startsWith('deploy-')).sort((a, b) => String(b.finished_at || b.started_at).localeCompare(String(a.finished_at || a.started_at)))[0];
   const run = latest ? runs[latest.task_id] || {} : {};

@@ -10,7 +10,7 @@ const INTERVIEW_KEYS = ['database', 'hosting', 'miserlyBudgetCapUsd', 'unresolve
 export const EXAMPLE_SPEC = {
   projectName: 'Aether Knowledge Sync',
   lodLevel: 2,
-  useMiserlyProxy: true,
+  useMiserlyProxy: false,
   links: [
     { url: 'https://developers.cloudflare.com/d1/', title: 'Cloudflare D1', rawSnippet: 'Serverless SQLite at the edge.' },
     { url: 'https://supabase.com/docs/guides/auth/jwts', title: 'Supabase JWTs' },
