@@ -10,6 +10,7 @@
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 import { agentName, taskTitle } from './labels.js';
+import { pollDelay } from './poll-rate.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 5000;
@@ -258,7 +259,7 @@ export function mountOperatorConsole(container, options = {}) {
       busy = false;
       if (!destroyed) {
         clearTimeout(timer);
-        timer = setTimeout(refresh, running ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+        timer = setTimeout(refresh, pollDelay(running ? ACTIVE_POLL_MS : IDLE_POLL_MS));
       }
     }
   }

@@ -6,6 +6,7 @@
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 import { trapFocus } from '../a11y.js';
+import { pollDelay } from './poll-rate.js';
 
 export const BREAKER_AGENT_ID = 'master-brain';
 export const MANUAL_TRIP_REASON = 'Operator manual trip from Portal UI';
@@ -137,7 +138,7 @@ export function mountBreakerBar(container, options = {}) {
     clearTimeout(timer);
     if (destroyed) return;
     const offline = view.state === 'OFFLINE' || view.state === 'ERROR';
-    timer = setTimeout(poll, offline ? offlinePollMs : pollMs);
+    timer = setTimeout(poll, pollDelay(offline ? offlinePollMs : pollMs));
   }
 
   async function poll() {

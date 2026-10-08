@@ -5,6 +5,7 @@
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
 import { agentName, groupConsecutive, projectTitle, repeatsText, statusLabel, taskTitle } from './labels.js';
+import { pollDelay } from './poll-rate.js';
 
 export const ACTIVE_POLL_MS = 2000;
 export const IDLE_POLL_MS = 5000;
@@ -322,7 +323,7 @@ export function mountTaskMonitor(container, options = {}) {
   function schedule() {
     clearTimeout(timer);
     if (destroyed) return;
-    timer = setTimeout(poll, tasks.some((t) => t.status === 'RUNNING') ? activePollMs : idlePollMs);
+    timer = setTimeout(poll, pollDelay(tasks.some((t) => t.status === 'RUNNING') ? activePollMs : idlePollMs));
   }
 
   async function poll() {

@@ -13,6 +13,8 @@ import { describeUnreachableEngine, mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { mountOperatorConsole } from './operator-console.js';
 import { mountRealtimeRefresh } from './realtime-refresh.js';
+import { mountRealtimeAlerts } from './realtime-alerts.js';
+import { mountPollRate } from './poll-rate.js';
 import { mountAgentDialogue } from './agent-dialogue.js';
 import { mountDualAgents } from './dual-agents.js';
 import { mountRoadmap } from './roadmap.js';
@@ -525,7 +527,10 @@ export async function mountMissionControl(doc = document, options = {}) {
     monitor: () => monitor.refresh(),
     banner: () => decisions && decisions.refreshBanner(),
   });
-  return { realtimeRefresh, connection, breaker, monitor, templates, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  // Spoken and screen-reader alerts when an agent needs the operator, and slower timers while the stream covers the engine.
+  const realtimeAlerts = mountRealtimeAlerts(doc.defaultView || globalThis);
+  const pollRate = mountPollRate(doc.defaultView || globalThis, { onUncovered: () => realtimeRefresh.refreshAll() });
+  return { realtimeRefresh, realtimeAlerts, pollRate, connection, breaker, monitor, templates, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

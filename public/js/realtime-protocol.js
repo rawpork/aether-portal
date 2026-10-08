@@ -171,7 +171,9 @@ export function engineEnvelope(seq, at, type, data) {
 }
 
 // After a hello, the hub sends the missed events in order and then ready, so the client knows it is caught up.
-export const readyMessage = (seq) => ({ v: PROTOCOL_VERSION, type: 'ready', seq });
+// `engine: true` is present only while the engine is connected to the hub, so a tab that joins late (after the engine's
+// engine.hello left the ring) still knows engine events will arrive. Absent means offline or unknown: keep polling.
+export const readyMessage = (seq, engineOnline = false) => ({ v: PROTOCOL_VERSION, type: 'ready', seq, ...(engineOnline ? { engine: true } : {}) });
 // lastSeq is older than the ring: the client must refetch everything and never apply a partial patch across the gap.
 export const gapMessage = (seq) => ({ v: PROTOCOL_VERSION, type: 'gap', seq });
 export const pongMessage = () => ({ v: PROTOCOL_VERSION, type: 'pong' });
@@ -182,7 +184,9 @@ export function validateServerMessage(message) {
 	if (message.v !== PROTOCOL_VERSION) return fail('bad-version');
 	if (message.type === 'pong') return ok({ kind: 'pong', message });
 	if (message.type === 'ready' || message.type === 'gap') {
-		return isSeq(message.seq) ? ok({ kind: message.type, message }) : fail('bad-seq');
+		if (!isSeq(message.seq)) return fail('bad-seq');
+		if (message.type === 'ready' && has(message, 'engine') && message.engine !== true) return fail('bad-engine');
+		return ok({ kind: message.type, message });
 	}
 	const envelope = validateEnvelope(message);
 	return envelope.ok ? ok({ kind: 'event', message }) : envelope;

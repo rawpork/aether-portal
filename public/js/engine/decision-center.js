@@ -12,6 +12,7 @@ import { getEngineApi } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
 import { nextAction } from './workforce.js';
 import { taskTitle } from './labels.js';
+import { pollDelay } from './poll-rate.js';
 
 export const POLL_MS = 4000;
 export const SKILL_COMMAND = /^\s*(?:add\s+(?:repo|skill)|learn)\s+([\s\S]+)$/i;
@@ -407,7 +408,7 @@ export function mountDecisionCenter(doc, options = {}) {
     }
     renderBanner();
     clearTimeout(timer);
-    if (!destroyed) timer = setTimeout(poll, error && error.isUnreachable ? pollMs * 3 : pollMs);
+    if (!destroyed) timer = setTimeout(poll, pollDelay(error && error.isUnreachable ? pollMs * 3 : pollMs));
   }
 
   poll();

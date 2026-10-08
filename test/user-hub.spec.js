@@ -123,6 +123,23 @@ describe("hello, ready and gap", () => {
 		expect(socket.messages).toEqual([{ v: 1, type: "ready", seq: 0 }]);
 	});
 
+	it("tells a tab in its ready whether the engine is online, even after engine.hello left the ring", async () => {
+		const stub = freshStub();
+		expect((await tab(stub, ["engine"])).messages).toEqual([{ v: 1, type: "ready", seq: 0 }]);
+		const engine = await open(stub, "engine");
+		engine.send({ v: 1, topic: "engine", type: "engine.hello", data: { version: "1.0.0" } });
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		// A tab that is already current (lastSeq at the head) gets no replay, so ready is the only place it can learn this.
+		const late = await open(stub);
+		late.send(helloMessage(1, ["engine"]));
+		expect(await late.until(1)).toEqual([{ v: 1, type: "ready", seq: 1, engine: true }]);
+		engine.ws.close(1000, "bye");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		const after = await open(stub);
+		after.send(helloMessage(2, ["engine"]));
+		expect(await after.until(1)).toEqual([{ v: 1, type: "ready", seq: 2 }]);
+	});
+
 	it("sends nothing before hello", async () => {
 		const stub = freshStub();
 		const socket = await open(stub);

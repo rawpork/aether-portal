@@ -53,6 +53,7 @@ export function mountRealtimeRefresh(win, handlers, options = {}) {
 	win.addEventListener('aether-realtime-event', onEvent);
 	win.addEventListener('aether-realtime-gap', onResync);
 	return {
+		refreshAll: onResync,
 		stop() {
 			win.removeEventListener('aether-realtime-event', onEvent);
 			win.removeEventListener('aether-realtime-gap', onResync);

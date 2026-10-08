@@ -6,7 +6,7 @@
 // hub's `origin` on an event can be matched to this tab and skipped.
 //
 // Window events: aether-realtime-event (detail: the envelope), aether-realtime-gap, aether-realtime-ready,
-// aether-realtime-fallback. window.AetherRealtime is the client (state, lastSeq, on, stop) for debugging.
+// aether-realtime-fallback, aether-realtime-status (detail { live, engine }, also kept in window.AetherRealtimeStatus). window.AetherRealtime is the client (state, lastSeq, on, stop) for debugging.
 
 import { createRealtimeClient, realtimeUrl } from './realtime-client.js';
 
@@ -35,6 +35,11 @@ export function bootRealtime(win = window, doc = win.document, overrides = {}) {
 	client.on('gap', (detail) => tell('gap', detail));
 	client.on('ready', (detail) => tell('ready', detail));
 	client.on('fallback', (detail) => tell('fallback', detail));
+	// { live, engine }: the socket is up, and the engine is pushing behind it. Mission Control slows its polling while both hold.
+	client.on('status', (detail) => {
+		win.AetherRealtimeStatus = detail;
+		tell('status', detail);
+	});
 	win.AetherRealtime = client;
 	client.start();
 	return client;

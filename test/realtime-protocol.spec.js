@@ -194,6 +194,14 @@ describe("server messages", () => {
 		expect(validateServerMessage(pongMessage()).value.kind).toBe("pong");
 	});
 
+	it("carries engine presence on ready only while the engine is online", () => {
+		expect(readyMessage(9)).toEqual({ v: 1, type: "ready", seq: 9 });
+		expect(readyMessage(9, false)).toEqual({ v: 1, type: "ready", seq: 9 });
+		expect(readyMessage(9, true)).toEqual({ v: 1, type: "ready", seq: 9, engine: true });
+		expect(validateServerMessage(readyMessage(9, true)).ok).toBe(true);
+		for (const engine of [false, "yes", 1, null]) expect(validateServerMessage({ ...readyMessage(9), engine }).error).toBe("bad-engine");
+	});
+
 	it("rejects a ready without a seq and junk", () => {
 		expect(validateServerMessage({ v: 1, type: "ready" }).ok).toBe(false);
 		expect(validateServerMessage({ v: 1, type: "nope" }).ok).toBe(false);

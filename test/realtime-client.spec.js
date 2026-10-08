@@ -524,6 +524,94 @@ describe("stop", () => {
 	});
 });
 
+describe("status: live socket and engine presence", () => {
+	const engineHello = (seq) => engineEvent(seq, "engine.hello", { version: "1.0.0" });
+	const engineBye = (seq) => engineEvent(seq, "engine.bye", { reason: "disconnected" });
+
+	function watch(topics = ["graph", "engine"]) {
+		const { client } = make({ topics });
+		const statuses = [];
+		client.on("status", (status) => statuses.push(status));
+		client.start();
+		socket().open();
+		// Starting reports not-live once (the page learns it is not covered yet); the tests look at what follows.
+		expect(statuses).toEqual([{ live: false, engine: false }]);
+		statuses.length = 0;
+		return { client, statuses };
+	}
+
+	it("is live only after ready, and reports the engine as online when ready says so", () => {
+		const { client, statuses } = watch();
+		expect(statuses).toEqual([]);
+		socket().receive({ ...ready(4), engine: true });
+		expect(statuses).toEqual([{ live: true, engine: true }]);
+		expect(client.engineOnline).toBe(true);
+	});
+
+	it("is live without the engine when ready has no engine flag (a cold hub, or the engine gone)", () => {
+		const { client, statuses } = watch();
+		socket().receive(ready(0));
+		expect(statuses).toEqual([{ live: true, engine: false }]);
+		expect(client.engineOnline).toBe(false);
+	});
+
+	it("follows engine.hello and engine.bye while live, once per change", () => {
+		const { client, statuses } = watch();
+		socket().receive(ready(0));
+		socket().receive(engineHello(1));
+		socket().receive(engineHello(2));
+		socket().receive(engineBye(3));
+		expect(statuses).toEqual([{ live: true, engine: false }, { live: true, engine: true }, { live: true, engine: false }]);
+		expect(client.engineOnline).toBe(false);
+	});
+
+	it("takes ready as the truth over a hello and bye replayed before it", () => {
+		const { statuses } = watch();
+		socket().receive(engineHello(1));
+		socket().receive(engineBye(2));
+		socket().receive(engineHello(3));
+		socket().receive({ ...ready(3), engine: true });
+		expect(statuses).toEqual([{ live: true, engine: true }]);
+	});
+
+	it("drops to not-live, not-engine when the socket goes", () => {
+		const { client, statuses } = watch();
+		socket().receive({ ...ready(2), engine: true });
+		socket().drop();
+		expect(statuses.at(-1)).toEqual({ live: false, engine: false });
+		expect(client.engineOnline).toBe(false);
+		clock.advance(1000);
+		socket().open();
+		socket().receive({ ...ready(2), engine: true });
+		expect(statuses.at(-1)).toEqual({ live: true, engine: true });
+	});
+
+	it("is not live during a gap resync until the hub's ready", () => {
+		const { statuses } = watch();
+		socket().receive({ ...ready(2), engine: true });
+		socket().receive(gap(90));
+		expect(statuses.at(-1)).toEqual({ live: false, engine: false });
+		socket().receive({ ...ready(90), engine: true });
+		expect(statuses.at(-1)).toEqual({ live: true, engine: true });
+	});
+
+	it("reaches the page as a window event and window.AetherRealtimeStatus", () => {
+		document.head.innerHTML = '<meta name="aether-realtime" content="1"><meta name="aether-realtime-topics" content="engine">';
+		window.AetherLiveClientId = "tab_dom";
+		const log = [];
+		const listener = (event) => log.push(event.detail);
+		window.addEventListener("aether-realtime-status", listener);
+		const client = bootRealtime(window, document, { WebSocketImpl: FakeSocket });
+		socket().open();
+		log.length = 0;
+		socket().receive({ ...ready(1), engine: true });
+		expect(log).toEqual([{ live: true, engine: true }]);
+		expect(window.AetherRealtimeStatus).toEqual({ live: true, engine: true });
+		window.removeEventListener("aether-realtime-status", listener);
+		client.stop();
+	});
+});
+
 describe("bootRealtime (DOM integration)", () => {
 	const page = (metas) => {
 		document.head.innerHTML = metas;

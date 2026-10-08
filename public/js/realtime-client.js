@@ -66,6 +66,8 @@ export function createRealtimeClient(options = {}) {
 	let hiddenTimer = null;
 	let lastHeard = 0;
 	let liveSince = 0;
+	// Whether the engine is pushing to the hub: from `ready.engine` and then engine.hello / engine.bye. Only meaningful while live.
+	let engineOnline = false;
 	let started = false;
 
 	function on(name, fn) {
@@ -90,9 +92,24 @@ export function createRealtimeClient(options = {}) {
 		if (state === next) return;
 		state = next;
 		emit('state', next);
+		if (next !== 'live') engineOnline = false;
+		emitStatus();
+	}
+
+	let lastStatus = '';
+	function emitStatus() {
+		const status = { live: state === 'live', engine: state === 'live' && engineOnline };
+		const key = status.live + ':' + status.engine;
+		if (key === lastStatus) return;
+		lastStatus = key;
+		emit('status', status);
 	}
 
 	function dispatch(event) {
+		if (event.topic === 'engine' && (event.type === 'engine.hello' || event.type === 'engine.bye')) {
+			engineOnline = event.type === 'engine.hello';
+			emitStatus();
+		}
 		emit(event.type, event);
 		emit('topic:' + event.topic, event);
 		emit('*', event);
@@ -212,7 +229,9 @@ export function createRealtimeClient(options = {}) {
 		lastSeq = Math.max(lastSeq, message.seq);
 		liveSince = now();
 		failures = 0;
+		engineOnline = message.engine === true;
 		setState('live');
+		emitStatus();
 		emit('ready', { seq: lastSeq });
 	}
 
@@ -324,6 +343,9 @@ export function createRealtimeClient(options = {}) {
 		},
 		get lastSeq() {
 			return lastSeq;
+		},
+		get engineOnline() {
+			return state === 'live' && engineOnline;
 		},
 	};
 	return api;

@@ -12,6 +12,7 @@ import { describeAuthError } from './connection.js';
 import { ACTIVE_POLL_MS, IDLE_POLL_MS, describeTask, formatAgo, formatDuration } from './task-monitor.js';
 import { ELARION_AGENT_ID, agentName, taskTitle } from './labels.js';
 import { keyProblem } from './quick-setup.js';
+import { pollDelay } from './poll-rate.js';
 
 export { ELARION_AGENT_ID };
 export const PAUSE_REASON = 'Paused from Mission Control';
@@ -489,7 +490,7 @@ export function mountWorkforce(container, options = {}) {
     if (again) {
       again = false;
       timer = setTimeout(refresh, 0);
-    } else timer = setTimeout(refresh, error && error.isUnreachable ? IDLE_POLL_MS * 3 : anyRunning ? ACTIVE_POLL_MS : IDLE_POLL_MS);
+    } else timer = setTimeout(refresh, pollDelay(error && error.isUnreachable ? IDLE_POLL_MS * 3 : anyRunning ? ACTIVE_POLL_MS : IDLE_POLL_MS));
   }
 
   // --- rendering. Each region is rebuilt only when its data changed, and focus is put back on the same control.

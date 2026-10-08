@@ -148,7 +148,7 @@ export class UserHub {
 		for (const event of resume.events) {
 			if (wantsEvent(value.topics, event)) ws.send(JSON.stringify(event));
 		}
-		ws.send(JSON.stringify(readyMessage(resume.seq)));
+		ws.send(JSON.stringify(readyMessage(resume.seq, this.engine.online)));
 	}
 
 	// ---- The engine ----------------------------------------------------------------------------------------------
