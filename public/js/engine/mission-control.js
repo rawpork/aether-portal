@@ -334,6 +334,23 @@ function importProject(doc, blueprints, tabs, storage, newProject) {
   return newProject.openWithSpec(payload.spec, { sourceIds: payload.sourceIds });
 }
 
+// /mission-control?share_url=&share_title=&share_text= (the /share route redirects here): what was shared, or null. The parameters are
+// removed from the address so a reload does not open the dialog again.
+export function takeShareParams(win) {
+  try {
+    const params = new URLSearchParams((win.location && win.location.search) || '');
+    const url = (params.get('share_url') || '').trim();
+    const title = (params.get('share_title') || '').trim();
+    const text = (params.get('share_text') || '').trim();
+    if (!url && !text) return null;
+    for (const key of ['share_url', 'share_title', 'share_text']) params.delete(key);
+    if (win.history) win.history.replaceState(null, '', win.location.pathname + (params.toString() ? '?' + params : '') + win.location.hash);
+    return { url, title, text };
+  } catch {
+    return null;
+  }
+}
+
 // /mission-control?outcome=<id>: fetch that outcome's blueprint from the portal and load it into the editor.
 async function importOutcome(doc, blueprints, tabs, fetchImpl) {
   const win = doc.defaultView;
@@ -610,6 +627,13 @@ export async function mountMissionControl(doc = document, options = {}) {
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
   tabs.openFromHash();
+  // A link shared to the app (the share sheet, /share?url=...): the New project dialog opens with it filled in. Every tab is one tap
+  // away, Roadmap Templates included.
+  const shared = takeShareParams(doc.defaultView || globalThis);
+  if (shared) {
+    if (shared.url) newProject.open('links', { links: shared.url, name: shared.title });
+    else newProject.open('goal', { goal: shared.text });
+  }
   // Space's composer hands a message over (index.js handOffToElarion): open the drawer and send it, once, if it is fresh.
   const handoff = takeSpaceHandoff(doc.defaultView || globalThis);
   if (handoff && drawer) {

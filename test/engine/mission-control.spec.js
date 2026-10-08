@@ -2,7 +2,7 @@
 // simulated portal token endpoint and a simulated engine that records the Authorization header it receives.
 import { afterEach, expect, it } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
-import { mountMissionControl, takeSpaceHandoff } from '../../public/js/engine/mission-control.js';
+import { mountMissionControl, takeShareParams, takeSpaceHandoff } from '../../public/js/engine/mission-control.js';
 import { renderMissionControlPage } from '../../src/mission-control-page.js';
 
 const b64url = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -447,4 +447,39 @@ it('#elarion opens the conversation drawer, at load and from a link while the pa
   } finally {
     window.history.replaceState(null, '', '/');
   }
+});
+
+it('a link shared to the app opens New project on Paste Links, filled in, with every tab one tap away', async () => {
+  window.history.replaceState(null, '', '/mission-control?share_url=' + encodeURIComponent('https://shared.test/article') + '&share_title=A%20good%20read');
+  try {
+    await mountPage();
+    const dialog = document.querySelector('.np-modal');
+    expect(dialog).not.toBeNull();
+    expect(dialog.querySelector('[role="tab"][aria-selected="true"]').textContent).toBe('Paste Links');
+    expect(dialog.querySelector('[data-field="links"]').value).toBe('https://shared.test/article');
+    expect(dialog.querySelector('[data-field="linksName"]').value).toBe('A good read');
+    expect(window.location.search).toBe('');
+    const roadmap = [...dialog.querySelectorAll('[role="tab"]')].find((t) => t.textContent === 'Roadmap Templates');
+    roadmap.click();
+    expect(dialog.querySelector('[data-np-panel="roadmap"]').hidden).toBe(false);
+    expect(dialog.querySelectorAll('[data-np-panel="roadmap"] .np-card').length).toBeGreaterThanOrEqual(5);
+    mc.newProject.close();
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
+});
+
+it('shared text with no link opens Describe Goal; no share parameters open nothing', () => {
+  const win = (search) => ({ location: { search, pathname: '/mission-control', hash: '' }, history: { replaceState() {} } });
+  expect(takeShareParams(win('?share_text=Plan%20a%20bakery%20launch'))).toEqual({ url: '', title: '', text: 'Plan a bakery launch' });
+  expect(takeShareParams(win('?other=1'))).toBe(null);
+  expect(takeShareParams({})).toBe(null);
+});
+
+it('the New project dialog wears the minimal dark shell and the menu drawer is 260px', () => {
+  const html = renderMissionControlPage({ assetVersion: 'test' });
+  expect(html).toMatch(/\.np-modal \{ background: #0B0D10; border-color: rgba\(255, 255, 255, 0\.08\)/);
+  expect(html).toContain("--surface-soft:#15181D");
+  expect(html).toMatch(/\.np-scrim \{[^}]*font-family: "Geist"/);
+  expect(html).toContain('width: min(260px, 86vw)');
 });

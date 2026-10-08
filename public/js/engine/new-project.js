@@ -672,8 +672,12 @@ export function mountNewProject(doc, options = {}) {
 
   const api_ = {
     // Opens the dialog on a tab (Pick Template by default).
-    open(tabId = DEFAULT_TAB) {
+    // prefill: { links, name } fills Paste Links; { goal, name } fills Describe Goal (a shared page or text arriving from /share).
+    open(tabId = DEFAULT_TAB, prefill = {}) {
       if (scrim) return;
+      if (prefill.links) state.linksText = String(prefill.links);
+      if (prefill.goal) state.goal = String(prefill.goal);
+      if (prefill.name) { state.linksName = String(prefill.name).slice(0, NAME_MAX_CHARS); state.goalName = state.linksName; }
       returnFocus = doc.activeElement;
       compiled = null;
       step = 'inputs';

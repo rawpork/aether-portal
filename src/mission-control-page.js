@@ -1275,7 +1275,7 @@ ${SHELL_SWITCH_CSS}
        that closes it; the header keeps the status pill. */
     @media (max-width: 680px) {
       body { flex-direction: column; }
-      .mc-rail { position: fixed; z-index: 300; inset: 0 auto 0 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); border-right: 1px solid var(--rail-line); }
+      .mc-rail { position: fixed; z-index: 300; inset: 0 auto 0 0; width: min(260px, 86vw); transform: translateX(-102%); transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); border-right: 1px solid var(--rail-line); }
       body.rail-open .mc-rail { transform: none; }
       .mc-scrim { position: fixed; inset: 0; z-index: 290; border: 0; padding: 0; background: rgba(0,0,0,0.5); }
         .mc-canvas { min-height: 0; }
@@ -1366,6 +1366,9 @@ ${SHELL_SWITCH_CSS}
 
     /* ---------- New project: one front door (public/js/engine/new-project.js) */
     .rail-new { color: var(--accent); }
+    /* The dialog wears the minimal dark shell whatever the page theme: #0B0D10 ground, #15181D rows, 8% hairlines, Geist where installed. */
+    .np-scrim { color-scheme: dark; --surface:#0B0D10; --surface-soft:#15181D; --canvas:#0B0D10; --line:rgba(255, 255, 255, 0.08); --line-strong:rgba(255, 255, 255, 0.14); --text:#E7EAEE; --text-2:#C2CAD3; --muted:#8A93A6; --faint:#5f6879; --accent:#00ffcc; --accent-text:#00ffcc; --on-accent:#041016; --accent-soft:rgba(0, 255, 204, 0.14); --accent-line:rgba(0, 255, 204, 0.55); --shadow:none; font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .np-modal { background: #0B0D10; border-color: rgba(255, 255, 255, 0.08); color: var(--text); }
     .np-scrim { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 16px; background: rgba(4, 8, 14, 0.62); }
     .np-modal { box-sizing: border-box; width: min(720px, 100%); max-width: 100%; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
     .np-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 12px 6px 22px; }

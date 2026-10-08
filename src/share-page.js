@@ -26,6 +26,17 @@ export function normalizeSharedInput({ url = "", title = "", text = "" }) {
   return { url: link, title: cleanTitle, note, domain };
 }
 
+// Where a share lands: Mission Control, whose New project dialog opens with the link (or the shared text) filled in.
+export function missionControlShareUrl(origin, shared) {
+  const clean = normalizeSharedInput(shared);
+  const params = new URLSearchParams();
+  if (clean.url) params.set("share_url", clean.url);
+  if (clean.title) params.set("share_title", clean.title.slice(0, 200));
+  if (clean.note) params.set("share_text", clean.note.slice(0, 1000));
+  const query = params.toString();
+  return origin + "/mission-control" + (query ? "?" + query : "");
+}
+
 const escapeJson = value => JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 
 export function renderSharePage(shared, { claudeAvailable = false } = {}) {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildPresetPrompt, parseSharePayload } from "../src/share.js";
-import { normalizeSharedInput, renderSharePage } from "../src/share-page.js";
+import { missionControlShareUrl, normalizeSharedInput, renderSharePage } from "../src/share-page.js";
 
 describe("parseSharePayload", () => {
 	it("accepts a link with a tier and preset, defaulting the tier to Flash", () => {
@@ -72,5 +72,16 @@ describe("renderSharePage", () => {
 	it("offers one row of quick-insert command chips", () => {
 		const html = renderSharePage({ url: "https://x.test/a" });
 		for (const chip of ["/research", "/learn", "/ask", "#task", "#done", "/summary", "/event", "/pro", "/claude"]) expect(html, chip).toContain(`data-insert="${chip}"`);
+	});
+});
+
+describe("/share into Mission Control", () => {
+	it("sends a shared link to the New project dialog, and shared text alone to the goal", () => {
+		expect(missionControlShareUrl("https://p.test", { url: "https://a.test/x?y=1", title: "A page" })).toBe("https://p.test/mission-control?share_url=https%3A%2F%2Fa.test%2Fx%3Fy%3D1&share_title=A+page");
+		const android = new URL(missionControlShareUrl("https://p.test", { text: "Look https://b.test/z great find" }));
+		expect(android.searchParams.get("share_url")).toBe("https://b.test/z");
+		expect(android.searchParams.get("share_text")).toBe("Look great find");
+		expect(new URL(missionControlShareUrl("https://p.test", { text: "just words" })).searchParams.get("share_text")).toBe("just words");
+		expect(missionControlShareUrl("https://p.test", {})).toBe("https://p.test/mission-control");
 	});
 });

@@ -5,7 +5,7 @@ import { MAX_OUTCOMES_PER_DAY, OUTCOME_CATEGORY, OUTCOME_STATUSES, buildSynthesi
 import { buildTranscriptSynopsisPrompt, buildVideoSynopsisPrompt, fetchYouTubeTranscript } from "./transcript.js";
 import { WebFetchError, fetchWebContent } from "./webfetch.js";
 import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
-import { renderSharePage } from "./share-page.js";
+import { missionControlShareUrl, renderSharePage } from "./share-page.js";
 import { renderMissionControlPage } from "./mission-control-page.js";
 import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken, verifyEnginePushToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
@@ -1143,9 +1143,9 @@ export default {
         const query = new URLSearchParams(Object.entries(shared).filter(([, value]) => value)).toString();
         return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/share" + (query ? "?" + query : "")), 303);
       }
-      return new Response(renderSharePage(shared, { claudeAvailable: Boolean(env.ANTHROPIC_API_KEY) }), {
-        headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
-      });
+      // Signed in: the share goes into Mission Control's New project dialog, which opens on Paste Links with the link filled in (or
+      // on Describe Goal with the shared text), so a shared page can become a project, a template or a roadmap from the same place.
+      return new Response(null, { status: 303, headers: { Location: missionControlShareUrl(url.origin, shared), "Cache-Control": "no-store" } });
     }
 
     // Endpoint 5f: Deep link to one node (/node/<id>, e.g. the share sheet's View Node button). Signed-in visits get
