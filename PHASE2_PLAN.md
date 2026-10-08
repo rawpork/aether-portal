@@ -1,6 +1,6 @@
 # Phase 2 Plan: Real-Time WebSockets and Durable Object State Sync
 
-Status: **planned, not started** (drafted 2026-10-07 on `main` at `636cf91`). Nothing in this plan is built yet.
+Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 to R6 are not started.
 
 ## 0. Naming
 
@@ -87,11 +87,37 @@ Rules: the engine is the source of truth; the hub never invents engine state; if
 `engine.bye` and Mission Control shows "Engine offline" as it does now. A control action (trip, reset, answer) still goes through the REST relay
 and the hub only reports the result.
 
+### 2.5 R0 spec as written (`public/js/realtime-protocol.js`)
+
+The module is the source of truth; this section records the choices it makes where 2.2 and 2.4 were open.
+
+- **Envelope:** `{ v, seq, at, topic, type, id?, origin?, data? }`. `seq >= 1`, `at` is UTC ISO-8601. `data` exists only on `engine` events
+  (graph events use `id`). Frames over 4096 bytes (UTF-8) are refused before parsing.
+- **Topics:** `graph` carries the nine existing types unchanged, `settings.updated` included, so R2 dual publish is a straight copy.
+  `settings` and `system` are reserved with no types; the validator rejects them until a type is added.
+- **Server control messages (no seq):** `ready {seq}` ends a resume (replay finished, you are current), `gap {seq}` means refetch everything,
+  `pong` answers `ping`. Without `ready` a client could not tell "caught up" from "still replaying".
+- **Client messages:** `hello {lastSeq, topics}`, `ack {seq}`, `ping`. Nothing else is accepted, so the socket cannot write data.
+  `lastSeq: 0` means a first connection.
+- **Resume (`resolveResume`):** replay the events after `lastSeq`; `gap` when the ring no longer holds `lastSeq + 1`, when `lastSeq` is ahead of
+  the hub (the counter was lost), or on a first connection to a hub that already has history. An empty replay is a valid answer.
+- **Engine events:** strict per-type schemas (required and optional fields, no extra keys, so content cannot ride along); `question` is
+  capped at 280 characters (`truncateQuestion`); `task.step` needs `completed_steps <= total_steps`. Task statuses:
+  `queued running awaiting done failed cancelled`. Agent states: `ACTIVE HALTED`.
+- **Engine input** is `{ v, topic: "engine", type, data }` (no seq or at; the hub stamps them). It is the same for option A (one WebSocket
+  frame) and option B (one item in a signed batch), so choosing A or B changes the transport only, not this file.
+- **Reconnect schedule:** `backoffDelay(attempt)` doubles from 1 s to a 30 s cap with jitter between half and the whole step.
+- **Limits:** 4 KB message, 200 events or 10 minutes of ring, 8 connections per user, 10 client messages per second, engine silent 60 s.
+
+Still needed for sign-off: owner decisions in section 6, and the Aether_Engine side's agreement on the event list, the `engine:push` scope
+and A or B. Recommendation: **A** (outbound WebSocket), because the hub learns of a dropped engine from the socket closing instead of waiting
+out the 60 s silence, and a trip reaches the browser without batching delay.
+
 ## 3. Milestones
 
 | # | Milestone | Done when |
 |---|---|---|
-| **R0** | Message format and engine contract written and agreed (this file's sections 2.2 and 2.4 become the spec); `public/js/realtime-protocol.js` with validators and tests | The owner and the engine side sign off on topics, event types, auth scope and A or B |
+| **R0 (signed off)** | Message format and engine contract written and agreed (this file's sections 2.2 and 2.4 become the spec); `public/js/realtime-protocol.js` with validators and tests | The owner and the engine side sign off on topics, event types, auth scope and A or B |
 | R1 | `UserHub` Durable Object (migration `v2`), `/api/realtime` upgrade with auth and Origin check, hibernation, storage ring, resume and gap | Upgrade, auth, resume, gap and cap tests pass in the existing Worker test setup |
 | R2 | Dual publish: the Worker publishes each graph write to the hub and to `GraphEvents` | Parity tests show both deliver the same events |
 | R3 | `realtime.js` in Space behind the flag | Two tabs stay in sync; a mid-stream disconnect resumes with no missed event; a long gap refetches cleanly |
@@ -116,13 +142,14 @@ and the hub only reports the result.
 - **Privacy:** events carry ids only, so logs and `wrangler tail` do not leak card content.
 - **Engine change:** R4 needs a change in the separate Aether_Engine repository; R0 must agree it first.
 
-## 6. Open decisions for the owner
+## 6. Decisions (approved by the owner, 2026-10-07)
 
-1. Phase number (10, or another).
-2. Engine push: outbound WebSocket (A) or signed POST (B).
-3. Resume window: 10 minutes or 200 events (suggested).
-4. Events with ids only (suggested start) or with patches.
-5. Shared rooms for several users: leave to Phase 8 multi-user work (suggested).
+1. **Phase number: 10.** The roadmap files call this work Phase 10.
+2. **Engine push: Option A, outbound WebSocket.** The engine opens `wss://<portal>/api/engine/connect` with an `engine:push` token (see ENGINE_REALTIME_CONTRACT.md). Option B (signed POST) is not built.
+3. **Resume window: 200 events or 10 minutes, whichever is smaller.**
+4. **Events carry ids and small hints, not patches** (the suggested start; not changed by the owner).
+5. **Single shared room:** one hub per user (`idFromName(userId)`), shared by all of that user's tabs and by the engine. Rooms spanning several users are not built and stay with Phase 8 multi-user work.
+6. **`ready` message included** in the protocol (section 2.5).
 
 ## 7. Files this phase will touch
 
