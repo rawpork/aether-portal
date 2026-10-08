@@ -6,6 +6,9 @@ import { getEngineApi } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
 
 export const REFRESH_MS = 60000;
+// Where a roadmap link to a file in the repo (specs/ui/01-node-canvas.md) opens. The roadmap is read from the engine's
+// computer, so this is a default for this project's repository; pass options.linkBase to point somewhere else.
+export const DEFAULT_LINK_BASE = 'https://github.com/rawpork/aether-portal/blob/main/';
 const ACTIVE_GOALS_MAX = 8;
 
 function el(doc, tag, props = {}, children = []) {
@@ -17,6 +20,32 @@ function el(doc, tag, props = {}, children = []) {
   }
   for (const child of children) node.append(child);
   return node;
+}
+
+// Roadmap goals are written in markdown, so a goal can carry "[spec 01](specs/ui/01-node-canvas.md)". This splits text into
+// plain pieces and links: [{ text }, { text, href }]. Only [label](target) is read; anything else stays as written.
+export function parseMarkdownLinks(text) {
+  const parts = [];
+  const pattern = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let last = 0;
+  for (const match of String(text == null ? '' : text).matchAll(pattern)) {
+    if (match.index > last) parts.push({ text: text.slice(last, match.index) });
+    parts.push({ text: match[1], href: match[2] });
+    last = match.index + match[0].length;
+  }
+  if (last < String(text == null ? '' : text).length) parts.push({ text: String(text).slice(last) });
+  return parts;
+}
+
+// The same text without the markdown: "Step 4.1 (spec 01)". For labels and tooltips, where the link syntax is noise.
+export const plainText = (text) => parseMarkdownLinks(text).map((part) => part.text).join('');
+
+// Where a link goes, or null when it is not safe or sensible to open: http(s) addresses as they are, a repo path against the
+// base, anything else (javascript:, mailto:, protocol-relative, absolute paths) not at all.
+export function resolveLink(href, linkBase = DEFAULT_LINK_BASE) {
+  if (/^https?:\/\//i.test(href)) return href;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('/') || !linkBase) return null;
+  return linkBase + href.replace(/^\.\//, '');
 }
 
 const percent = (done, total) => (total ? Math.round((done / total) * 100) : 0);
@@ -52,6 +81,22 @@ function bar(doc, done, total, label) {
 
 export function mountRoadmap(container, options = {}) {
   const doc = container.ownerDocument;
+  const linkBase = options.linkBase === undefined ? DEFAULT_LINK_BASE : options.linkBase;
+  // Goal text as nodes: a real named link for each [label](target), the label alone when the target cannot be opened.
+  const goalNodes = (text) => parseMarkdownLinks(text).map((part) => {
+    if (!part.href) return doc.createTextNode(part.text);
+    const target = resolveLink(part.href, linkBase);
+    if (!target) return doc.createTextNode(part.text);
+    const external = /^https?:\/\//i.test(part.href);
+    return el(doc, 'a', {
+      class: 'rm-link',
+      href: target,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      'aria-label': part.text + (external ? '' : ', file ' + part.href) + ' (opens in a new tab)',
+      text: part.text,
+    });
+  });
   const api = options.api || getEngineApi();
   const now = options.now || (() => Date.now());
   const status = el(doc, 'span', { class: 'mc-muted', 'aria-live': 'polite' });
@@ -80,9 +125,9 @@ export function mountRoadmap(container, options = {}) {
       parts.push(el(doc, 'h3', { class: 'rm-sub', text: 'Active goals' }));
       parts.push(sum.active.length
         ? el(doc, 'ul', { class: 'rm-goals' }, sum.active.slice(0, ACTIVE_GOALS_MAX).map((goal) => el(doc, 'li', { class: 'rm-goal' }, [
-          el(doc, 'span', { class: 'rm-goal-text', text: goal.text }),
+          el(doc, 'span', { class: 'rm-goal-text' }, goalNodes(goal.text)),
           el(doc, 'span', { class: 'mc-muted rm-goal-phase', text: goal.phase + (goal.children.total ? ' · ' + goal.children.done + '/' + goal.children.total + ' sub-steps' : '') }),
-          goal.children.total ? bar(doc, goal.children.done, goal.children.total, goal.text + ' sub-steps') : doc.createTextNode(''),
+          goal.children.total ? bar(doc, goal.children.done, goal.children.total, plainText(goal.text) + ' sub-steps') : doc.createTextNode(''),
         ])))
         : el(doc, 'p', { class: 'mc-muted', text: 'Every goal in the roadmap is done.' }));
       if (sum.active.length > ACTIVE_GOALS_MAX) parts.push(el(doc, 'p', { class: 'mc-muted rm-more', text: '+' + (sum.active.length - ACTIVE_GOALS_MAX) + ' more open goals in the phases below.' }));
@@ -95,7 +140,7 @@ export function mountRoadmap(container, options = {}) {
         ]),
         el(doc, 'ul', { class: 'rm-phase-goals' }, phase.goals.map((goal) => el(doc, 'li', { 'data-done': String(goal.done) }, [
           el(doc, 'span', { class: 'rm-check', 'aria-hidden': 'true', text: goal.done ? '✓' : '○' }),
-          el(doc, 'span', { text: goal.text + (goal.completed_on ? ' · ' + goal.completed_on : '') + (goal.children.total ? ' (' + goal.children.done + '/' + goal.children.total + ')' : '') }),
+          el(doc, 'span', {}, [...goalNodes(goal.text), doc.createTextNode((goal.completed_on ? ' · ' + goal.completed_on : '') + (goal.children.total ? ' (' + goal.children.done + '/' + goal.children.total + ')' : ''))]),
         ]))),
       ]))));
     } else {

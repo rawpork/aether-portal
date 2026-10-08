@@ -76,6 +76,12 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toContain('<a class="shell-item" data-surface="mission-control" href="/mission-control" aria-current="page"');
   expect(html).toContain('.shell-item[aria-current="page"] { display: none; }');
   expect(html).toContain('@view-transition { navigation: auto; }');
+  // Create: template cards share the whole row (auto-fit), so a row of two or three is balanced edge to edge, and one card can
+  // shrink to a 320px screen (min()); their tag lines are pinned to the bottom so every card's chips line up.
+  expect(html).toContain('.tp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));');
+  expect(html).toContain('.tp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }');
+  // 400% zoom (320px): a run's name wraps instead of being cut, and its time drops under it.
+  expect(html).toMatch(/@media \(max-width: 480px\) \{\s*\.mc-task-head \{ grid-template-columns: auto minmax\(0, 1fr\); \}\s*\.mc-task-name \{ overflow: visible; white-space: normal;/);
   expect(html).not.toContain('rail-portal');
   expect(html).not.toContain('mobile-return-btn');
   expect(html).toMatch(/<a class="rail-brand" href="\/" title="Space: the 3D graph \(Alt\+S\)" aria-label="Aether Space \(Alt\+S\)" aria-keyshortcuts="Alt\+S">/);

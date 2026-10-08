@@ -656,13 +656,15 @@ ${SHELL_SWITCH_CSS}
     .da-wrap-input { resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; font-size: 16px; }
     .da-gate { border-left-color: var(--accent); }
     @media (max-width: 760px) { .da { padding: 4px 14px 18px; } .da-grid, .da-wrap-grid { grid-template-columns: 1fr; } .da-pane { height: 62vh; } }
-    .tp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+    /* auto-fit, not auto-fill: the cards share the whole row, so two or three of them are balanced edge to edge instead of
+       leaving an empty track at the end; min() lets one card shrink to a 320px screen. */
+    .tp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
     .tp-card { appearance: none; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; height: 100%; min-height: 150px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
     .tp-card:hover, .tp-card:focus-visible { border-color: var(--accent-line); }
     .tp-blank { border-style: dashed; background: none; }
     .tp-name { font-size: 15px; font-weight: 600; }
     .tp-summary { flex: 1; font-size: 13px; line-height: 1.45; color: var(--text-2); }
-    .tp-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
     .tp-status { min-height: 18px; margin: 0; font-size: 12px; }
     .tp-shelf { padding: 14px; border: 1px solid var(--accent-line); border-radius: var(--radius-l); background: var(--accent-soft); }
     .tp-shelf .tp-card { background: var(--surface); }
@@ -702,6 +704,7 @@ ${SHELL_SWITCH_CSS}
     .rm-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
     .rm-bar-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
     .rm-sub { margin: 22px 0 8px; font-size: 14px; }
+    .rm-link { color: var(--accent-text, var(--accent)); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
     .rm-goals, .rm-sessions, .rm-memory, .rm-phase-goals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
     .rm-goal, .rm-session { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
     .rm-goal-text, .rm-session-title { font-size: 14px; font-weight: 600; }
@@ -799,6 +802,12 @@ ${SHELL_SWITCH_CSS}
     .mc-task-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
     .mc-task-agent { color: var(--muted); font-weight: 400; }
     .mc-task-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    /* Narrow screens (320px at 400% zoom): the run's name wraps instead of being cut to "Deploy p…", and its time drops under it. */
+    @media (max-width: 480px) {
+      .mc-task-head { grid-template-columns: auto minmax(0, 1fr); }
+      .mc-task-name { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+      .mc-task-time { grid-column: 2; white-space: normal; }
+    }
     .mc-task-line { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font-size: 12px; }
     .mc-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 11px; font-size: 12px; font-weight: 700; background: var(--queued-bg); color: var(--queued); }
     .mc-chip[data-status="RUNNING"], .mc-chip[data-status="EXECUTING"] { background: var(--ok-bg); color: var(--ok); }
