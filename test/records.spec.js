@@ -31,7 +31,9 @@ beforeAll(async () => {
 
 describe("query building", () => {
 	it("quotes every word so operators are plain text, and makes the last a prefix", () => {
-		expect(toMatchQuery('sour* AND "dough" NOT')).toBe('"sour" "and" "dough" "not"*');
+		expect(toMatchQuery('sour* AND "dough" NOT')).toMatch(/^"sour" "and" "dough" "not"\* OR "sourand"\* OR "andsour"\* OR /);
+		expect(toMatchQuery("mission")).toBe('"mission"*');
+		expect(toMatchQuery("audit pulse")).toBe('"audit" "pulse"* OR "auditpulse"* OR "pulseaudit"*');
 		expect(toMatchQuery("   ")).toBe(null);
 		expect(toMatchQuery(null)).toBe(null);
 	});
@@ -112,6 +114,8 @@ describe("blueprint records", () => {
 		await upsertRecord(env, "u1", { id: "bp_1", type: "blueprint", title: "Landing page plan v2", summary: "Mailing list" });
 		expect((await searchRecords(env, "u1", { query: "waitlist" })).count).toBe(0);
 		expect((await searchRecords(env, "u1", { query: "mailing" })).count).toBe(1);
+		await upsertRecord(env, "u1", { id: "bp_1", type: "blueprint", title: "Landing page plan v2", summary: "Mailing list", tags: ["#Template", "roadmap"] });
+		expect((await searchRecords(env, "u1", { query: "roadmap", type: "blueprint" })).records[0].tags).toBe("web launch template roadmap");
 		expect((await upsertRecord(env, "u2", { id: "bp_1", type: "blueprint", title: "Mine now" })).status).toBe(403);
 		expect((await upsertRecord(env, "u1", { id: "x", type: "card", title: "t" })).error).toMatch(/type must be/);
 		expect((await upsertRecord(env, "u1", { type: "note", title: "t" })).error).toMatch(/id is required/);
@@ -124,5 +128,12 @@ describe("records routes", () => {
 			expect((await SELF.fetch("https://example.com" + path, { method })).status, path).toBe(401);
 		}
 		expect((await SELF.fetch("https://example.com/api/records/search", { headers: { Authorization: "Bearer not-a-token" } })).status).toBe(401);
+	});
+});
+
+describe("names written as one word", () => {
+	it("finds AuditPulse from 'audit pulse' and 'pulse audit', in either order", async () => {
+		await env.DB.prepare("INSERT INTO saved_nodes (id, url, title, description, category, user_id) VALUES ('ap1', 'https://ap.test', 'AuditPulse launch notes', 'Edge SEO tool', 'general', 'u1')").run();
+		for (const q of ["audit pulse", "pulse audit", "AuditPulse", "auditpulse launch"]) expect((await searchRecords(env, "u1", { query: q })).records.map(r => r.id), q).toContain("ap1");
 	});
 });

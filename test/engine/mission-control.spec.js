@@ -228,7 +228,7 @@ it('New (+) opens the unified New project dialog: a template and its brief becom
   document.getElementById('mc-nav-new').click();
   const dialog = document.querySelector('.np-modal');
   expect(dialog).not.toBeNull();
-  expect([...dialog.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Pick Template', 'Select Space Cards', 'Describe Goal', 'Paste Links']);
+  expect([...dialog.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Pick Template', 'Roadmap Templates', 'Select Space Cards', 'Describe Goal', 'Paste Links']);
   expect(window.location.hash).toBe('');
   dialog.querySelector('input[value="landing-waitlist"]').click();
   dialog.querySelector('[data-field="domain"]').value = 'waitlist.example.com';

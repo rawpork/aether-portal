@@ -7,6 +7,10 @@ it('describes a blueprint as a searchable record', () => {
 	expect(blueprintRecord('bp_1', BP)).toEqual({ id: 'bp_1', type: 'blueprint', title: 'Bakery waitlist', summary: 'Research: Read the market. Build', project_id: 'bp_1', tags: ['blueprint', 'Researcher', 'Developer'] });
 });
 
+it('adds how it was launched to the tags', () => {
+	expect(blueprintRecord('bp_1', BP, { tags: ['ingest', 'template', 'roadmap'] }).tags).toEqual(['blueprint', 'ingest', 'template', 'roadmap', 'Researcher', 'Developer']);
+});
+
 it('posts it to /api/records, and never throws when the portal is unreachable', async () => {
 	const portalFetch = vi.fn(async () => new Response('{}', { status: 201 }));
 	expect(await saveBlueprintRecord(portalFetch, 'bp_1', BP)).toBe(true);

@@ -456,8 +456,8 @@ export async function mountMissionControl(doc = document, options = {}) {
     pro: blueprints.isPro,
     portalFetch: options.portalFetch,
     storage: options.storage,
-    onCompiled: async (blueprintId, blueprint) => {
-      saveBlueprintRecord(recordsFetch, blueprintId, blueprint);
+    onCompiled: async (blueprintId, blueprint, meta) => {
+      saveBlueprintRecord(recordsFetch, blueprintId, blueprint, { tags: meta && meta.tags });
       await blueprints.refresh();
       await blueprints.select(blueprintId, blueprint);
     },

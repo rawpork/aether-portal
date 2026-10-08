@@ -1310,7 +1310,7 @@ export default {
     #topbar .search-wrap #search-input { flex: 1 1 auto; width: 100%; }
     /* The ☰ sits in the top-left corner, flush with the screen edge: a 64px column the height of the bar, with a hairline on its right
        (the same 64px a menu rail would take), so it lines up with the left edge the way the Mission Control rail does. */
-    #topbar #menu-toggle { flex: none; align-self: stretch; width: 64px; margin: 0 4px 0 0; padding: 0; justify-content: center; border: 0; border-right: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; color: var(--text-muted); }
+    #topbar #menu-toggle { flex: none; align-self: stretch; width: 64px; height: 54px; margin: 0 4px 0 0; padding: 0; justify-content: center; border: 0; border-right: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; color: var(--text-muted); }
     #topbar #menu-toggle:hover, #topbar #menu-toggle[aria-expanded="true"] { background: #15181D; color: var(--text); }
     /* Time range chip (top bar): the span on screen, one tap to change it. */
     .scope-chip-wrap { position: relative; flex: none; }
@@ -1400,6 +1400,37 @@ export default {
     .tray-head .card-close { position: absolute; top: -4px; right: -6px; width: 44px; height: 44px; border: 0; background: none; color: var(--text-muted); font-size: 22px; cursor: pointer; }
     .tray-section { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--hairline); }
     .tray-section h3 { margin: 0; color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    /* The 64px rail under the ☰: the same six places and Settings as Mission Control's rail, on the same dark surface, so Space and
+       Mission Control read as one app. Wide screens only; on a phone the ☰ tray carries everything. */
+    #space-rail { display: none; }
+    @media (min-width: 768px) {
+      #space-rail {
+        position: fixed;
+        z-index: 29;
+        top: 54px;
+        bottom: 0;
+        left: 0;
+        width: 64px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 12px 0;
+        background: #0B0D10;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      #space-rail .rail-spacer { flex: 1; }
+      #space-rail .rail-link { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: var(--radius-m); border: 1px solid transparent; color: var(--text-muted); text-decoration: none; }
+      #space-rail .rail-link:hover { background: #15181D; color: var(--text); }
+      #space-rail .rail-link[aria-current="page"] { background: #15181D; border-color: rgba(255, 255, 255, 0.08); color: var(--accent); }
+      body.xr-presenting #space-rail { display: none; }
+      /* Everything anchored to the left edge starts after the rail. */
+      body #cluster-drawer { left: 76px; }
+      body #legend { left: 79px; }
+      body #collection-view { left: 64px; }
+    }
     /* Minimal shell: the drawer matches Mission Control's dark surface. Dark ground, 8% hairlines, Geist where installed (system sans
        otherwise), no section sub-headers (each section keeps its aria-label; the header is hidden from sight only). */
     #portal-tray { --bg-raised: #15181D; background: #0B0D10; border-right: 1px solid rgba(255, 255, 255, 0.08); font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.005em; }
@@ -3098,7 +3129,8 @@ export default {
     }
     @media (max-width: 600px) {
       #topbar .brand, #topbar .user-greeting { display: none; }
-      #topbar { gap: 6px; padding: 0 7px; }
+      #topbar { gap: 6px; padding: 0 7px 0 0; }
+      #topbar #menu-toggle { width: 52px; }
       .bar-btn { padding: 0 10px; }
 
       #cluster-drawer { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 60vh; }
@@ -3164,6 +3196,16 @@ ${SHELL_SWITCH_CSS}
     </div>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   </header>
+  <nav id="space-rail" aria-label="Primary">
+    <a class="rail-link" href="/mission-control" title="Mission Control" aria-label="Mission Control"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg></a>
+    <a class="rail-link" href="/" title="Space" aria-label="Space" aria-current="page"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.6"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(-28 12 12)"/></svg></a>
+    <a class="rail-link" href="/mission-control#create" title="New project" aria-label="New project"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg></a>
+    <a class="rail-link" href="/mission-control#blueprints" title="Projects" aria-label="Projects"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg></a>
+    <a class="rail-link" href="/mission-control#monitor" title="Runs" aria-label="Runs"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg></a>
+    <a class="rail-link" href="/mission-control#studio" title="Studio" aria-label="Studio"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="3" y="15" width="6" height="5" rx="1.5"/><rect x="15" y="9.5" width="6" height="5" rx="1.5"/><path d="M9 6.5c3 0 3 5.5 6 5.5M9 17.5c3 0 3-5.5 6-5.5"/></svg></a>
+    <span class="rail-spacer"></span>
+    <a class="rail-link" href="/mission-control#connect" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></a>
+  </nav>
   <!-- Menu tray (☰): everything that used to crowd the top bar and the filter row, in one panel that slides in from the left. -->
   <button type="button" id="tray-scrim" aria-label="Close menu" tabindex="-1" hidden></button>
   <aside id="portal-tray" aria-label="Menu" aria-hidden="true" inert>

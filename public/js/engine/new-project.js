@@ -1,6 +1,6 @@
-// New project: one front door. Four ways in, one way through.
+// New project: one front door. Five ways in, one way through.
 //
-//   [ Pick Template | Select Space Cards | Describe Goal | Paste Links ]  ->  "Ready to run?" review  ->  Approve & Run
+//   [ Pick Template | Roadmap Templates | Select Space Cards | Describe Goal | Paste Links ]  ->  "Ready to run?" review  ->  Approve & Run
 //
 // Every tab produces the same thing, a blueprint spec (blueprint-spec.js), which is compiled on the engine and then shown on one
 // review card: the plan in plain words, what it will use (a token estimate and the budget, when there is one), whether the engine
@@ -13,6 +13,7 @@
 import { trapFocus, announce } from '../a11y.js';
 import { parseBlueprintSpec } from './blueprint-spec.js';
 import { runPreflight } from './outcomes.js';
+import { ROADMAP_TEMPLATES, roadmapById, roadmapToSpec } from './roadmap-templates.js';
 import {
   AUTH_TYPES,
   BRIEF_SOURCE_URL,
@@ -30,6 +31,7 @@ import {
 
 export const TABS = [
   { id: 'template', label: 'Pick Template' },
+  { id: 'roadmap', label: 'Roadmap Templates' },
   { id: 'cards', label: 'Select Space Cards' },
   { id: 'goal', label: 'Describe Goal' },
   { id: 'links', label: 'Paste Links' },
@@ -192,10 +194,48 @@ export function mountNewProject(doc, options = {}) {
   let presetSourceIds = [];
 
   // ---- the inputs of each tab ----
-  const state = { template: TEMPLATES[0].id, brief: { projectName: '', domain: '', auth: '', database: '', notes: '' }, goalName: '', goal: '', linksName: '', linksText: '', cardName: '', cardSearch: '' };
+  const state = { roadmap: ROADMAP_TEMPLATES[0].id, roadmapName: '', roadmapNotes: '', template: TEMPLATES[0].id, brief: { projectName: '', domain: '', auth: '', database: '', notes: '' }, goalName: '', goal: '', linksName: '', linksText: '', cardName: '', cardSearch: '' };
 
   function panelFor(tabId) {
     return scrim && scrim.querySelector('[data-np-panel="' + tabId + '"]');
+  }
+
+  // Roadmap Templates: ready-made plans, phase by phase.
+  function renderRoadmapPanel() {
+    const panel = panelFor('roadmap');
+    const radios = ROADMAP_TEMPLATES.map((t) => {
+      const input = el(doc, 'input', { type: 'radio', name: id + '-roadmap', value: t.id, id: id + '-r-' + t.id });
+      input.checked = t.id === state.roadmap;
+      input.addEventListener('change', () => {
+        state.roadmap = t.id;
+        renderRoadmapPanel();
+      });
+      return el(doc, 'label', { class: 'np-card', for: input.id, 'data-selected': String(t.id === state.roadmap) }, [
+        input,
+        el(doc, 'span', { class: 'np-card-body' }, [
+          el(doc, 'span', { class: 'np-card-title', text: t.name }),
+          el(doc, 'span', { class: 'np-card-meta', text: t.horizon + ' · ' + t.phases.length + ' phases' }),
+          el(doc, 'span', { class: 'np-card-text', text: t.summary }),
+        ]),
+      ]);
+    });
+    const chosen = roadmapById(state.roadmap);
+    const name = el(doc, 'input', { type: 'text', id: id + '-rname', 'data-field': 'roadmapName', maxlength: String(NAME_MAX_CHARS), autocomplete: 'off', placeholder: chosen.name });
+    name.value = state.roadmapName;
+    name.addEventListener('input', () => (state.roadmapName = name.value));
+    const notes = el(doc, 'textarea', { id: id + '-rnotes', 'data-field': 'roadmapNotes', rows: '3', maxlength: '1000', placeholder: 'Optional: what this is for, who it is for, dates that matter' });
+    notes.value = state.roadmapNotes;
+    notes.addEventListener('input', () => (state.roadmapNotes = notes.value));
+    panel.replaceChildren(
+      el(doc, 'p', { class: 'dc-body', text: 'Start from a ready-made roadmap. Elarion plans the work phase by phase.' }),
+      el(doc, 'fieldset', { class: 'np-cards' }, [el(doc, 'legend', { class: 'mc-visually-hidden', text: 'Roadmap template' }), ...radios]),
+      el(doc, 'div', { class: 'np-brief' }, [
+        el(doc, 'h3', { class: 'np-subhead', text: chosen.name + ': ' + chosen.horizon }),
+        el(doc, 'ol', { class: 'np-plan' }, chosen.phases.map((p) => el(doc, 'li', {}, [el(doc, 'strong', { text: p.title }), doc.createTextNode(' · ' + p.goals.join('; '))]))),
+        el(doc, 'div', { class: 'dc-field' }, [el(doc, 'label', { for: name.id, text: 'Project name' }), name]),
+        el(doc, 'div', { class: 'dc-field' }, [el(doc, 'label', { for: notes.id, text: 'Notes' }), notes]),
+      ]),
+    );
   }
 
   // Pick Template
@@ -381,6 +421,10 @@ export function mountNewProject(doc, options = {}) {
       if (clean(state.brief.domain) && !normalizeDomain(state.brief.domain)) return { ok: false, message: 'That does not look like a domain. Use something like yourbrand.com, or leave it empty.', field: 'domain' };
       return { ok: true, spec: briefToSpec(template, brief), sourceIds: [], template };
     }
+    if (tab === 'roadmap') {
+      const roadmap = roadmapById(state.roadmap);
+      return { ok: true, spec: roadmapToSpec(roadmap, { name: state.roadmapName, notes: state.roadmapNotes }), sourceIds: [], roadmap };
+    }
     if (tab === 'goal') {
       if (clean(state.goal).length < MIN_GOAL_CHARS) return { ok: false, message: 'Say a little more about the goal (at least ' + MIN_GOAL_CHARS + ' characters).', field: 'goal' };
       return { ok: true, spec: goalToSpec({ name: state.goalName, goal: state.goal }), sourceIds: [] };
@@ -471,6 +515,7 @@ export function mountNewProject(doc, options = {}) {
     for (const panel of scrim.querySelectorAll('[data-np-panel]')) panel.hidden = panel.dataset.npPanel !== tabId;
     showError('');
     if (tabId === 'template') renderTemplatePanel();
+    else if (tabId === 'roadmap') renderRoadmapPanel();
     else if (tabId === 'goal') renderGoalPanel();
     else if (tabId === 'links') renderLinksPanel();
     else if (cards) renderCardsPanel();
@@ -502,7 +547,9 @@ export function mountNewProject(doc, options = {}) {
       usage[built.template.id] = (Number(usage[built.template.id]) || 0) + 1;
       try { storage.setItem(USAGE_KEY, JSON.stringify(usage)); } catch { /* storage blocked */ }
     }
-    try { onCompiled(result.blueprint_id, blueprint, { sourceIds: built.sourceIds }); } catch { /* the list refreshing must not stop the review */ }
+    // How it was launched, for the index (records-write.js): everything made here is ingested; a template adds template, a roadmap adds roadmap.
+    const tags = ['ingest', ...(built.template || built.roadmap ? ['template'] : []), ...(built.roadmap ? ['roadmap'] : [])];
+    try { onCompiled(result.blueprint_id, blueprint, { sourceIds: built.sourceIds, tags }); } catch { /* the list refreshing must not stop the review */ }
     setBusy(false);
     await renderReview();
   }

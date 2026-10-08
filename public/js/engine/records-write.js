@@ -3,7 +3,7 @@
 // page reports them here. Best effort: the project works the same if this fails.
 const SUMMARY_MAX = 600;
 
-export function blueprintRecord(blueprintId, blueprint) {
+export function blueprintRecord(blueprintId, blueprint, extra = {}) {
   const phases = Array.isArray(blueprint && blueprint.execution_phases) ? blueprint.execution_phases : [];
   const summary = phases.map((p) => [p.phase_name, p.description].filter(Boolean).join(': ')).filter(Boolean).join('. ').slice(0, SUMMARY_MAX);
   return {
@@ -12,17 +12,18 @@ export function blueprintRecord(blueprintId, blueprint) {
     title: String((blueprint && blueprint.project_name) || 'Untitled project'),
     summary,
     project_id: String(blueprintId),
-    tags: ['blueprint', ...phases.map((p) => p.agent_persona).filter(Boolean)].slice(0, 12),
+    tags: ['blueprint', ...(Array.isArray(extra.tags) ? extra.tags : []), ...phases.map((p) => p.agent_persona).filter(Boolean)].slice(0, 14),
   };
 }
 
-export async function saveBlueprintRecord(portalFetch, blueprintId, blueprint) {
+// extra.tags: how it was made (template, ingest, roadmap), added to the record's tags.
+export async function saveBlueprintRecord(portalFetch, blueprintId, blueprint, extra = {}) {
   if (!blueprintId || !portalFetch) return false;
   try {
     const response = await portalFetch('/api/records', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(blueprintRecord(blueprintId, blueprint)),
+      body: JSON.stringify(blueprintRecord(blueprintId, blueprint, extra)),
     });
     return Boolean(response && response.ok);
   } catch {

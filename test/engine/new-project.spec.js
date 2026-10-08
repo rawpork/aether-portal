@@ -1,10 +1,11 @@
 // The unified New project dialog: the pure spec builders each tab feeds, and the dialog's tabs and review step.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ROADMAP_TAGS, ROADMAP_TEMPLATES, roadmapById, roadmapToSpec } from '../../public/js/engine/roadmap-templates.js';
 import { TABS, cardsToSpec, goalToSpec, linksToSpec, mountNewProject, nameFromGoal, parseLinks } from '../../public/js/engine/new-project.js';
 
 describe('new project spec builders', () => {
-	it('offers four ways in, in order', () => {
-		expect(TABS.map((t) => t.label)).toEqual(['Pick Template', 'Select Space Cards', 'Describe Goal', 'Paste Links']);
+	it('offers five ways in, in order', () => {
+		expect(TABS.map((t) => t.label)).toEqual(['Pick Template', 'Roadmap Templates', 'Select Space Cards', 'Describe Goal', 'Paste Links']);
 	});
 
 	it('turns a described goal into a spec with the goal as its one source', () => {
@@ -55,8 +56,8 @@ describe('New project dialog', () => {
 		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}') });
 		project.open();
 		const tabs = [...document.querySelectorAll('.np-modal [role="tab"]')];
-		expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false']);
-		tabs[2].click();
+		expect(tabs.map((t) => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+		tabs[3].click();
 		expect(document.querySelector('[data-np-panel="goal"]').hidden).toBe(false);
 		expect(document.querySelector('[data-np-panel="template"]').hidden).toBe(true);
 		document.querySelector('.np-next').click();
@@ -101,5 +102,52 @@ describe('New project dialog', () => {
 		expect(onRun).toHaveBeenCalledTimes(1);
 		expect(onRun.mock.calls[0][0]).toEqual(BP);
 		expect(document.querySelector('.np-modal')).toBeNull();
+	});
+});
+
+describe('Roadmap Templates tab', () => {
+	let project;
+	afterEach(() => { if (project) project.destroy(); project = null; document.body.replaceChildren(); });
+	const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0)); };
+	const BP = { blueprint_id: 'bp_1', project_name: '30-day product launch', execution_phases: [{ phase_id: 'p1', phase_name: 'Position', agent_persona: 'Researcher', description: 'Define', task_steps: ['a'] }] };
+
+	it('lists the ready-made roadmaps, and builds a spec whose one source is the roadmap written out', () => {
+		expect(ROADMAP_TEMPLATES.length).toBeGreaterThanOrEqual(5);
+		const template = roadmapById('launch-30');
+		const spec = roadmapToSpec(template, { notes: 'for my bakery' });
+		expect(spec.projectName).toBe('30-day product launch');
+		expect(spec.links).toHaveLength(1);
+		expect(spec.links[0].rawSnippet).toContain('Week 1: Position');
+		expect(spec.links[0].rawSnippet).toContain('for my bakery');
+		expect(roadmapToSpec(template, { name: 'Bakery launch' }).projectName).toBe('Bakery launch');
+		expect(ROADMAP_TAGS).toEqual(['template', 'ingest', 'roadmap']);
+	});
+
+	it('launches a roadmap, and reports it to the index tagged template, ingest and roadmap', async () => {
+		const api = { baseUrl: 'http://localhost:3333', compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })), getEngineConfig: vi.fn(async () => ({ api_key_configured: true, key_verified: true })) };
+		const onCompiled = vi.fn();
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), onCompiled });
+		project.open('roadmap');
+		expect(document.querySelectorAll('[data-np-panel="roadmap"] .np-card').length).toBe(ROADMAP_TEMPLATES.length);
+		document.querySelector('[data-np-panel="roadmap"] input[value="launch-30"]').click();
+		document.querySelector('.np-next').click();
+		await flush();
+		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
+		expect(api.compileBlueprint.mock.calls[0][0].links[0].rawSnippet).toContain('Week 4: Learn');
+		expect(onCompiled.mock.calls[0][2].tags).toEqual(['ingest', 'template', 'roadmap']);
+		expect(document.querySelector('.np-project').textContent).toBe('30-day product launch');
+	});
+
+	it('a plain goal is tagged ingest only, a template adds template', async () => {
+		const api = { baseUrl: 'http://localhost:3333', compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })), getEngineConfig: vi.fn(async () => ({ api_key_configured: true })) };
+		const onCompiled = vi.fn();
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), onCompiled });
+		project.open('links');
+		const links = document.querySelector('[data-field="links"]');
+		links.value = 'https://a.test/page';
+		links.dispatchEvent(new Event('input', { bubbles: true }));
+		document.querySelector('.np-next').click();
+		await flush();
+		expect(onCompiled.mock.calls[0][2].tags).toEqual(['ingest']);
 	});
 });

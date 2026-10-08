@@ -18,11 +18,15 @@ export function clampLimit(value) {
 const words = text => (String(text == null ? "" : text).toLowerCase().match(/[\p{L}\p{N}_]+/gu) || []).slice(0, 12);
 
 // Free text to a safe FTS5 query: each word quoted (so operators and punctuation are plain text), the last one a prefix, all
-// required (AND). Returns null when there is nothing to search for.
+// required (AND). Neighbouring words also match as one word in either order, so "audit pulse" and "pulse audit" find "AuditPulse"
+// (names are often written as a single word). Returns null when there is nothing to search for.
 export function toMatchQuery(text) {
 	const list = words(text);
 	if (!list.length) return null;
-	return list.map((w, i, all) => '"' + w + '"' + (i === all.length - 1 ? "*" : "")).join(" ");
+	const all = list.map((w, i) => '"' + w + '"' + (i === list.length - 1 ? "*" : "")).join(" ");
+	const joined = [];
+	for (let i = 0; i + 1 < list.length && joined.length < 6; i++) joined.push('"' + list[i] + list[i + 1] + '"*', '"' + list[i + 1] + list[i] + '"*');
+	return joined.length ? all + " OR " + joined.join(" OR ") : all;
 }
 
 // The looser form for a multi-word query that found nothing: any word may match, each as a prefix. Null for fewer than two words.
@@ -85,9 +89,11 @@ export async function upsertRecord(env, userId, input) {
 	if (!id) return { error: "id is required." };
 	if (!title) return { error: "title is required." };
 	if (!RECORD_TYPES.includes(type) || type === "card") return { error: "type must be one of: blueprint, deliverable, note, run." };
-	const existing = await env.DB.prepare("SELECT user_id FROM records WHERE id = ?").bind(id).first();
+	const existing = await env.DB.prepare("SELECT user_id, tags FROM records WHERE id = ?").bind(id).first();
 	if (existing && existing.user_id !== userId) return { error: "That id belongs to someone else.", status: 403 };
-	const tags = Array.isArray(input.tags) ? input.tags.map(t => text(String(t), 40).toLowerCase()).filter(Boolean).slice(0, 20).join(" ") : text(input.tags, 400);
+	const sent = (Array.isArray(input.tags) ? input.tags.map(t => text(String(t), 40)) : text(input.tags, 400).split(/\s+/)).map(t => t.replace(/^#/, "").toLowerCase()).filter(Boolean);
+	// Tags only grow: the engine and the page may each file the same blueprint (with different tags), whichever writes last.
+	const tags = [...new Set([...((existing && existing.tags) || "").split(/\s+/).filter(Boolean), ...sent])].slice(0, 24).join(" ");
 	const now = Date.now();
 	await env.DB.prepare(
 		"INSERT INTO records (id, user_id, project_id, run_id, type, title, summary, body_ref, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
