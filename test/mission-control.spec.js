@@ -172,3 +172,29 @@ describe('text fields on touch screens', () => {
 		expect(viewport).not.toMatch(/user-scalable\s*=\s*(no|0)|maximum-scale/);
 	});
 });
+
+describe('the + Skill ingest form styles', () => {
+	const html = renderMissionControlPage({ assetVersion: 'v1' });
+	// Every rule for the selector, joined (a selector can have a base rule and a later one).
+	const rule = (selector) => {
+		const found = [];
+		for (let start = html.indexOf(selector + ' {'); start >= 0; start = html.indexOf(selector + ' {', start + 1)) found.push(html.slice(start, html.indexOf('}', start) + 1));
+		return found.join(' ');
+	};
+
+	it('box every control to its column so nothing spills sideways', () => {
+		const controls = rule('.dc-ingest input, .dc-ingest select, .dc-ingest textarea');
+		expect(controls).toContain('box-sizing: border-box');
+		expect(controls).toContain('width: 100%');
+		expect(controls).toContain('max-width: 100%');
+		expect(controls).toContain('min-width: 0');
+		expect(rule('.dc-modal')).toContain('max-width: 100%');
+		expect(rule('.dc-field')).toContain('min-width: 0');
+		expect(rule('.dc-ingest')).toContain('max-width: 100%');
+	});
+
+	it('stack the two small fields on a narrow screen, and keep the inputs at 16px on touch screens', () => {
+		expect(html).toMatch(/@media \(max-width: 480px\) \{ \.dc-row \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
+		expect(html).toMatch(/@media \(max-width: 900px\), \(pointer: coarse\) \{ \.dc-ingest input, \.dc-ingest select, \.dc-ingest textarea \{ font-size: 16px !important; \} \}/);
+	});
+});

@@ -210,25 +210,85 @@ describe('mountDecisionCenter', () => {
 		expect(await done).toMatchObject({ saved: true });
 	});
 
-	it('+ Skill asks for a link or text, then learns from it', async () => {
+	it('+ Skill opens a structured form, and a link in it is learned as a link', async () => {
 		const { calls } = setup({ '/api/skills/ingest': () => json({ error: 'Only public http(s) addresses can be learned from.' }, 400) });
 		await settle();
 		const done = center.askSource();
 		await settle();
 		expect(modal().querySelector('.dc-title').textContent).toBe('Learn a skill');
+		// The form's fields, with the content ready to type into.
+		expect([...modal().querySelectorAll('.dc-field > label')].map((l) => l.textContent)).toEqual(['Template', 'Title / Subject', 'Category / Tag', 'Text or link', 'Target agent', 'Priority']);
 		const field = modal().querySelector('textarea');
 		expect(document.activeElement).toBe(field);
-		// Typing a digit in the box types it; it does not pick an option.
+		// Typing a digit in a field types it; it does not pick an option.
 		field.dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
+		modal().querySelector('select').dispatchEvent(new KeyboardEvent('keydown', { key: '1', bubbles: true }));
 		expect(modal().querySelector('.dc-title').textContent).toBe('Learn a skill');
 		field.value = 'http://localhost:3333';
+		field.dispatchEvent(new Event('input', { bubbles: true }));
 		document.querySelector('.dc-option[data-option="1"]').click();
 		await settle();
+		// A link goes to the engine on its own (no header), so it is still fetched as a link.
 		expect(calls.find((c) => c.pathname === '/api/skills/ingest').body).toEqual({ source: 'http://localhost:3333' });
 		expect(modal().querySelector('.dc-title').textContent).toBe('Could not learn from that');
 		expect(modal().querySelector('.dc-body').textContent).toMatch(/Only public/);
 		key('1');
 		expect(await done).toBeNull();
+	});
+
+	it('+ Skill compiles the template, title, tag, agent and priority with pasted text into the engine request', async () => {
+		const draft = { slug: 'd1-migration-fails', name: 'd1-migration-fails', description: 'A runbook.', markdown: '# d1', source: { kind: 'text', url: null, title: 't' } };
+		const { calls } = setup({ '/api/skills/ingest': () => json({ draft, exists: false }) });
+		await settle();
+		const done = center.askSource();
+		await settle();
+		const select = modal().querySelector('#' + modal().querySelector('label[for$="-template"]').getAttribute('for'));
+		select.value = 'log';
+		select.dispatchEvent(new Event('change', { bubbles: true }));
+		const byField = (name) => modal().querySelector('[data-field="' + name + '"]');
+		byField('title').value = 'D1 migration fails';
+		byField('content').value = 'Error 7403\n  at migrate()';
+		byField('agent').value = 'master-brain';
+		document.querySelector('.dc-option[data-option="1"]').click();
+		await settle();
+		const body = calls.find((c) => c.pathname === '/api/skills/ingest').body;
+		expect(body.name).toBe('d1-migration-fails');
+		expect(body.source.split('\n\n')[0].split('\n')).toEqual([
+			'Title: D1 migration fails',
+			'Type: System Log / Stack Trace',
+			'Tag: incident',
+			'Target agent: Elarion',
+			'Priority: High',
+			expect.stringContaining('Intended use: An error log or stack trace.'),
+		]);
+		expect(body.source.endsWith('\n\nError 7403\n  at migrate()')).toBe(true);
+		// On to the review of the drafted skill, as before.
+		expect(modal().querySelector('.dc-title').textContent).toBe('New skill: d1-migration-fails');
+		key('3');
+		expect(await done).toBeNull();
+	});
+
+	it('+ Skill keeps the form open with the problem showing, and sends nothing, until the content is there', async () => {
+		const { calls } = setup({ '/api/skills/ingest': () => json({ error: 'should not be called' }, 500) });
+		await settle();
+		const done = center.askSource();
+		await settle();
+		const scrim = modal().closest('.dc-scrim');
+		modal().querySelector('[data-field="title"]').value = 'Kept across the retry';
+		document.querySelector('.dc-option[data-option="1"]').click();
+		await settle();
+		// Same popup, still open, with the typed title intact and the error showing.
+		expect(modal().closest('.dc-scrim')).toBe(scrim);
+		expect(modal().querySelector('.dc-title').textContent).toBe('Learn a skill');
+		expect(modal().querySelector('[data-field="title"]').value).toBe('Kept across the retry');
+		expect(modal().querySelector('.dc-ingest-error').hidden).toBe(false);
+		expect(modal().querySelector('.dc-ingest-error').textContent).toMatch(/Add the content/);
+		expect(document.activeElement).toBe(modal().querySelector('textarea'));
+		expect(calls.some((c) => c.pathname === '/api/skills/ingest')).toBe(false);
+		// Cancel closes it, still sending nothing.
+		document.querySelector('.dc-option[data-option="2"]').click();
+		expect(await done).toBeNull();
+		expect(calls.some((c) => c.pathname === '/api/skills/ingest')).toBe(false);
 	});
 
 	it('learn: an existing skill is offered as a replacement, and errors are explained', async () => {

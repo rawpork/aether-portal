@@ -13,6 +13,7 @@ import { describeEngineError } from './operator-console.js';
 import { nextAction } from './workforce.js';
 import { taskTitle } from './labels.js';
 import { pollDelay } from './poll-rate.js';
+import { mountIngestForm } from './ingest-form.js';
 
 export const POLL_MS = 4000;
 export const SKILL_COMMAND = /^\s*(?:add\s+(?:repo|skill)|learn)\s+([\s\S]+)$/i;
@@ -91,9 +92,10 @@ export function mountDecisionCenter(doc, options = {}) {
   // ---- choice popup
 
   // Shows a popup and resolves with the picked option's index, or -1 when it was closed. options: [{ label, hint? }].
-  function choose({ title, body = null, options: choices, dismissible = true, kind = 'note' }) {
+  // beforeClose(index) may return false to keep the popup open (a form that still has something to fix).
+  function choose({ title, body = null, options: choices, dismissible = true, kind = 'note', beforeClose = null }) {
     return new Promise((resolve) => {
-      queue.push({ title, body, choices, dismissible, kind, resolve });
+      queue.push({ title, body, choices, dismissible, kind, beforeClose, resolve });
       if (!open) showNext();
     });
   }
@@ -130,7 +132,7 @@ export function mountDecisionCenter(doc, options = {}) {
         return;
       }
       const n = Number(event.key);
-      if (Number.isInteger(n) && n >= 1 && n <= buttons.length && !(event.target && /^(INPUT|TEXTAREA)$/.test(event.target.tagName))) {
+      if (Number.isInteger(n) && n >= 1 && n <= buttons.length && !(event.target && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName))) {
         event.preventDefault();
         buttons[n - 1].click();
         return;
@@ -141,19 +143,22 @@ export function mountDecisionCenter(doc, options = {}) {
         buttons[(at + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length].focus();
       } else if (event.key === 'Tab') {
         // Keep focus inside the popup.
-        const focusables = [...modal.querySelectorAll('button, textarea, a[href], input')].filter((n) => !n.disabled);
+        const focusables = [...modal.querySelectorAll('button, textarea, a[href], input, select')].filter((n) => !n.disabled);
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
         if (event.shiftKey && doc.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && doc.activeElement === last) { event.preventDefault(); first.focus(); }
       }
     };
-    buttons.forEach((b, i) => b.addEventListener('click', () => close(i)));
+    buttons.forEach((b, i) => b.addEventListener('click', () => {
+      if (item.beforeClose && item.beforeClose(i) === false) return;
+      close(i);
+    }));
     if (item.dismissible) scrim.addEventListener('click', (event) => { if (event.target === scrim) close(-1); });
     doc.addEventListener('keydown', onKey, true);
     open = { scrim, close };
     doc.body.append(scrim);
-    (modal.querySelector('textarea') || buttons[0]).focus({ preventScroll: true });
+    (modal.querySelector('[data-autofocus]') || modal.querySelector('textarea') || buttons[0]).focus({ preventScroll: true });
   }
 
   // A popup with no choices while something works; close() removes it.
@@ -169,11 +174,12 @@ export function mountDecisionCenter(doc, options = {}) {
 
   // ---- skill ingestion
 
-  async function learn(source) {
+  // source: a link or text; opts.name: a hint for the skill's name.
+  async function learn(source, opts = {}) {
     const working = progress('Learning a new skill', 'Elarion is reading ' + (/^https?:\/\//i.test(source) ? source : 'your text') + ' and writing a SKILL.md. This takes up to a minute.');
     let result;
     try {
-      result = await api.ingestSkill(source);
+      result = await api.ingestSkill(source, opts.name ? { name: opts.name } : {});
     } catch (e) {
       working.close();
       await choose({ title: 'Could not learn from that', body: describeEngineError(e), options: [{ label: 'OK' }], kind: 'warn' });
@@ -183,14 +189,26 @@ export function mountDecisionCenter(doc, options = {}) {
     return reviewDraft(result.draft, result.exists);
   }
 
-  // The + Skill button: asks for a link or text, then learns from it.
+  // The + Skill button: a template picks the defaults, the operator fills a title, a tag, the content, a target agent and a
+  // priority, and the form compiles to the engine's { source, name } (src/ingest-form.js). A form with a problem stays open.
   async function askSource() {
-    const field = el(doc, 'textarea', { class: 'dc-editor dc-source', rows: '3', placeholder: 'https://github.com/owner/repo, a docs page, or paste text', 'aria-label': 'Link or text to learn from' });
-    const body = el(doc, 'div', {}, [el(doc, 'p', { class: 'dc-body', text: 'Give Elarion a GitHub repo, a documentation page or blog post, or paste text. It writes a SKILL.md for you to review before anything is saved.' }), field]);
-    const pick = await choose({ title: 'Learn a skill', body, options: [{ label: 'Learn it', hint: 'Takes up to a minute' }, { label: 'Cancel' }] });
-    const source = field.value.trim();
-    if (pick !== 0 || !source) return null;
-    return learn(source);
+    const form = mountIngestForm(doc);
+    let payload = null;
+    const intro = el(doc, 'p', { class: 'dc-body', text: 'Give Elarion a link, or paste text, and say what it is. It writes a SKILL.md for you to review before anything is saved.' });
+    const pick = await choose({
+      title: 'Learn a skill',
+      body: el(doc, 'div', { class: 'dc-ingest-wrap' }, [intro, form.element]),
+      options: [{ label: 'Learn it', hint: 'Takes up to a minute' }, { label: 'Cancel' }],
+      beforeClose: (index) => {
+        if (index !== 0) return true;
+        const checked = form.validate();
+        if (!checked.ok) return false;
+        payload = checked.payload;
+        return true;
+      },
+    });
+    if (pick !== 0 || !payload) return null;
+    return learn(payload.source, payload.name ? { name: payload.name } : {});
   }
 
   async function reviewDraft(draft, exists) {

@@ -337,6 +337,23 @@ ${SHELL_SWITCH_CSS}
     .dc-preview { margin: 0 0 12px; padding: 10px 12px; max-height: 40vh; overflow: auto; border-radius: var(--radius-s); background: var(--surface-soft); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
     .dc-editor { width: 100%; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-soft); color: var(--text); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; resize: vertical; }
     .dc-warn { margin: 0 0 12px; color: var(--off); font-size: 13px; }
+    /* The + Skill ingest form (public/js/engine/ingest-form.js). Every control is boxed to its column, so nothing spills sideways;
+       on touch screens the shared 16px rule below keeps iOS from zooming the page when one gets focus. */
+    .dc-modal { box-sizing: border-box; max-width: 100%; }
+    .dc-ingest-wrap { min-width: 0; max-width: 100%; }
+    .dc-ingest { display: flex; flex-direction: column; gap: 12px; min-width: 0; max-width: 100%; margin: 0 0 14px; }
+    .dc-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .dc-field label { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
+    .dc-ingest input, .dc-ingest select, .dc-ingest textarea { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; margin: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface-soft); color: var(--text); font: inherit; font-size: 14px; }
+    .dc-ingest input, .dc-ingest select { min-height: 44px; }
+    .dc-ingest textarea { min-height: 150px; resize: vertical; font-family: var(--mono); line-height: 1.5; }
+    .dc-ingest input:focus-visible, .dc-ingest select:focus-visible, .dc-ingest textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .dc-ingest [aria-invalid="true"] { border-color: var(--off); }
+    .dc-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+    .dc-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .dc-ingest-error { margin: 0; }
+    @media (max-width: 480px) { .dc-row { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 900px), (pointer: coarse) { .dc-ingest input, .dc-ingest select, .dc-ingest textarea { font-size: 16px !important; } }
     .dc-steps { margin: 0 0 14px; padding-left: 20px; color: var(--text-2); font-size: 14px; line-height: 1.5; }
     .dc-steps li { margin-bottom: 6px; }
     .oc-build { margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }
