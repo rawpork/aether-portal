@@ -207,7 +207,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     /* The document never scrolls (like the main portal page): only the canvas below the header does. In the iOS
        home-screen app the status bar is see-through, and a scrolling document would slide under the clock. */
     html { height: 100%; background: var(--rail); }
-    body { height: 100%; margin: 0; display: flex; overflow: hidden; background: var(--canvas); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
+    body { height: 100%; height: 100dvh; max-width: 100vw; margin: 0; display: flex; overflow: hidden; background: var(--canvas); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.4; -webkit-font-smoothing: antialiased; }
     button { font: inherit; color: inherit; }
     a { color: inherit; }
     h1, h2, h3, p { margin: 0; }
@@ -786,9 +786,8 @@ ${SHELL_SWITCH_CSS}
     .ad-system[data-tone="alert"] { color: var(--alert); }
     .ad-system[data-tone="ok"] { color: var(--ok); }
     /* Command bar (public/js/engine/command-bar.js): ask Elarion from any view; the mic types by voice. */
-    .mc-command { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px calc(40px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) 40px; border-top: 1px solid var(--line); background: var(--surface); }
-    /* Elarion has its own message box, Studio its command bar and Projects its blueprint editor: one input per page. */
-    body[data-view="studio"] .mc-command, body[data-view="blueprints"] .mc-command { display: none; }
+    .mc-command { flex: none; box-sizing: border-box; width: 100%; max-width: 100vw; margin: 0; display: flex; align-items: center; gap: 8px; padding: 10px calc(40px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) 40px; border-top: 1px solid var(--line); background: var(--surface); }
+    /* The composer is docked at the bottom of every page (the page above it scrolls); it never leaves the screen on a phone. */
     .mc-command input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--canvas); color: var(--text); font: inherit; font-size: 16px; }
     .mc-command input:focus { outline: none; border-color: var(--accent-line); }
     .mc-command .mc-command-skill { color: var(--accent); border-color: var(--accent-line); white-space: nowrap; }
@@ -803,7 +802,9 @@ ${SHELL_SWITCH_CSS}
       input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]), textarea, select { font-size: 16px !important; }
     }
     @media (max-width: 680px) {
-      .mc-command { padding: 8px calc(12px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)); }
+      .mc-command { padding: 8px calc(12px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)); gap: 6px; }
+      .mc-command button { padding: 0 10px; }
+      .mc-command .mc-command-skill { padding: 0 8px; }
       .oc-tabs, .ad { padding-left: 14px; padding-right: 14px; }
     }
     @media (max-width: 900px) {

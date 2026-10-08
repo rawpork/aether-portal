@@ -6,6 +6,7 @@
 // action: Pro hands the blueprint to Elarion (POST /api/projects/run), who plans a DAG of steps and runs it as a task
 // loop on master-brain; other tiers get the upgrade prompt.
 import { getEngineApi } from '../engine-api.bundle.js';
+import { saveBlueprintRecord } from './records-write.js';
 import { EXAMPLE_SPEC, blueprintToTaskSteps, isProTier, parseBlueprintSpec, routeMatrix } from './blueprint-spec.js';
 import { describeAuthError } from './connection.js';
 import { createCopyIdButton, groupConsecutive, projectTitle, repeatsText, statusLabel } from './labels.js';
@@ -142,6 +143,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
     compileButton.textContent = 'Compiling…';
     try {
       const compiled = await api.compileBlueprint(result.spec);
+      saveBlueprintRecord(options.portalFetch, compiled.blueprint_id, compiled.blueprint);
       showFeedback('ok', 'Compiled ' + ((compiled.blueprint && compiled.blueprint.project_name) || 'your project') + (compiled.logged ? '' : ' (the engine could not write its forensic log)') + '. Opened below.');
       await refresh();
       await select(compiled.blueprint_id, compiled.blueprint);

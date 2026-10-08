@@ -211,7 +211,7 @@ describe('dock shell', () => {
     const { panel } = mount().elements;
     expect(slot.firstChild).toBe(panel);
     expect(panel.hidden).toBe(false);
-    expect(panel.querySelector('h2').textContent).toBe('Elarion · Master Brain');
+    expect(panel.querySelector('h2').textContent).toBe('Elarion');
     expect([...panel.querySelectorAll('button')].map((b) => b.className)).toEqual([
       'brain-icon-btn brain-new',
       'brain-icon-btn brain-mic',
@@ -264,7 +264,7 @@ describe('typed chat', () => {
     // The breaker bar's reset goes through the same client and broadcasts ACTIVE.
     await createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine.fetch }).resetBreaker(AGENT);
     expect(dock.getMode()).toBe('idle');
-    expect(messages().at(-1)).toBe('system: Agent reset. The Master Brain is active again.');
+    expect(messages().at(-1)).toBe('system: Agent reset. Elarion is active again.');
     expect(dock.elements.sendButton.disabled).toBe(false);
   });
 

@@ -67,7 +67,7 @@ describe('view models', () => {
     expect(summarizeAgent('atlas', [runningTask], { state: 'HALTED', reason: PAUSE_REASON }, NOW)).toMatchObject({ status: 'paused', pill: 'Paused', eta: 'Halted' });
     expect(summarizeAgent('atlas', [runningTask], { state: 'HALTED', reason: 'loop' }, NOW)).toMatchObject({ status: 'tripped', pillKind: 'off' });
     expect(summarizeAgent('atlas', [{ ...runningTask, status: 'FAILED' }], { state: 'ACTIVE' }, NOW)).toMatchObject({ status: 'needs-input', eta: 'Blocked' });
-    expect(summarizeAgent('master-brain', [], { state: 'ACTIVE' }, NOW)).toMatchObject({ name: 'Elarion', role: 'Master Brain', status: 'waiting', progress: 0 });
+    expect(summarizeAgent('master-brain', [], { state: 'ACTIVE' }, NOW)).toMatchObject({ name: 'Elarion', role: 'Lead operator', status: 'waiting', progress: 0 });
   });
 
   it('calls a finished run Done, apart from running, idle and needs-input', () => {

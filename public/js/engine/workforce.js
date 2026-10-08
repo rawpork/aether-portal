@@ -22,7 +22,7 @@ export const SKILLS_ENDPOINT = '/api/skills/aeps';
 export const MAX_AGENTS = 12;
 export const DETAIL_TABS = ['activity', 'tasks', 'output', 'skills', 'bridge'];
 
-const PROFILES = { [ELARION_AGENT_ID]: { name: 'Elarion', role: 'Master Brain' } };
+const PROFILES = { [ELARION_AGENT_ID]: { name: 'Elarion', role: 'Lead operator' } };
 const AVATAR_TONES = ['violet', 'blue', 'amber', 'teal', 'rose', 'slate'];
 const PILL_TEXT = { running: 'Running', 'needs-input': 'Needs input', paused: 'Paused', tripped: 'Stopped', done: 'Done', idle: 'Idle', waiting: 'Waiting' };
 const PILL_KIND = { running: 'running', 'needs-input': 'alert', paused: 'queued', tripped: 'off', done: 'done', idle: 'queued', waiting: 'queued' };
@@ -124,7 +124,7 @@ export function summarizeAgent(agentId, tasks, agentState, now = Date.now()) {
     reason,
     latest,
     objective,
-    objectiveTitle: latest ? titleCase(latest.task_id) : agentId === ELARION_AGENT_ID ? 'Master Brain session' : 'Idle',
+    objectiveTitle: latest ? titleCase(latest.task_id) : agentId === ELARION_AGENT_ID ? 'Elarion session' : 'Idle',
     progress: total ? Math.round((done / total) * 100) : 0,
     done,
     total,

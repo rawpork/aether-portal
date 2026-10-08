@@ -150,10 +150,10 @@ export function mountBrainDock(container, options = {}) {
   const status = el(doc, 'span', { class: 'brain-status', 'aria-live': 'polite', text: MODE_TEXT.idle });
   const newButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-new', title: 'Start a new session', text: 'New' });
   const log = el(doc, 'ol', { class: 'brain-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation' });
-  const empty = el(doc, 'li', { class: 'brain-empty', text: 'Ask the Master Brain about blueprints, agents, budgets or breaker state. Type, or tap the mic to talk to Elarion.' });
+  const empty = el(doc, 'li', { class: 'brain-empty', text: 'Ask Elarion about blueprints, agents, budgets or breaker state. Type, or tap the mic to talk to Elarion.' });
   log.append(empty);
   const interim = el(doc, 'p', { class: 'brain-interim', hidden: true });
-  const input = el(doc, 'textarea', { class: 'brain-input', rows: '1', placeholder: 'Message the Master Brain', 'aria-label': 'Message', maxlength: '32000' });
+  const input = el(doc, 'textarea', { class: 'brain-input', rows: '1', placeholder: 'Ask Elarion…', 'aria-label': 'Message', maxlength: '32000' });
   const micButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-mic', 'aria-pressed': 'false', 'aria-label': 'Talk', title: 'Talk to Elarion', text: '🎙' });
   const speakButton = el(doc, 'button', { type: 'button', class: 'brain-icon-btn brain-speak', 'aria-label': 'Speak voice replies' });
   const sendButton = el(doc, 'button', { type: 'submit', class: 'brain-send', text: 'Send' });
@@ -163,7 +163,7 @@ export function mountBrainDock(container, options = {}) {
   const panel = el(doc, 'div', { class: 'brain-dock' }, [
     el(doc, 'header', { class: 'brain-head' }, [
       avatar,
-      el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Elarion · Master Brain' }), status]),
+      el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Elarion' }), status]),
       newButton,
     ]),
     scopeBar,
@@ -250,7 +250,7 @@ export function mountBrainDock(container, options = {}) {
     if (error.isUnreachable) return 'Can’t reach the Aether Engine at ' + api.baseUrl + '. Is it running?';
     if (error.isUnauthorized) return describeAuthError(error);
     if (error.status === 409) return 'Still answering the previous message.';
-    if (error.status === 503) return 'The Master Brain isn’t configured on the engine (MISERLY_CLIENT_KEY).';
+    if (error.status === 503) return 'Elarion isn’t configured on the engine (MISERLY_CLIENT_KEY).';
     if (error.status === 422) return 'The model declined that request.';
     if (error.status === 429) return 'Miserly.io rate or budget limit reached. Try again later.';
     return error.message || 'The engine returned an error.';
@@ -280,7 +280,7 @@ export function mountBrainDock(container, options = {}) {
       markHalted(detail.reason);
     } else if (view.halted) {
       view.halted = false;
-      addMessage('system', 'Agent reset. The Master Brain is active again.');
+      addMessage('system', 'Agent reset. Elarion is active again.');
       setMode('idle');
     }
   });

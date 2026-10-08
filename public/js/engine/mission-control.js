@@ -24,6 +24,7 @@ import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
 import { projectTitle } from './labels.js';
 import { mountStudioCanvas } from './studio-canvas.js';
 import { mountNewProject } from './new-project.js';
+import { saveBlueprintRecord } from './records-write.js';
 import { setupElarionDrawer } from './elarion-drawer.js';
 import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
@@ -180,7 +181,7 @@ export function setupStudioTabs(doc, onChange = () => {}) {
 }
 
 // Views whose page has its own input, so the shared command bar is hidden there (mirrors the CSS in mission-control-page.js).
-const composerHiddenFor = (view) => view === 'studio' || view === 'blueprints';
+const composerHiddenFor = () => false; // the composer is docked on every page
 
 // Pages: each rail button opens its page and is marked aria-current="page" while it (or a sub-page under it) is open. The small
 // [data-goto-view] switches inside a page (Projects | Roadmap, Run history | Operator console) move between a page and its
@@ -374,6 +375,8 @@ export async function mountMissionControl(doc = document, options = {}) {
   });
 
   let blueprints = null;
+  // Where blueprints are reported to the portal's retrieval index (records-write.js): the page's own fetch unless one is injected.
+  const recordsFetch = options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init));
   const monitor = mountTaskMonitor(byId('mc-monitor'), {
     api,
     statusEl: byId('mc-monitor-status'),
@@ -384,6 +387,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   });
   blueprints = mountBlueprintWorkspace(byId('mc-blueprints'), {
     api,
+    portalFetch: recordsFetch,
     tier: options.tier || meta(doc, 'aether-tier') || 'free',
     upgradeUrl: options.upgradeUrl ?? meta(doc, 'aether-upgrade-url'),
     // A deploy runs as a task loop: show it in the monitor once the engine has registered it, and again when done.
@@ -421,6 +425,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     portalFetch: options.portalFetch,
     storage: options.storage,
     onCompiled: async (blueprintId, blueprint) => {
+      saveBlueprintRecord(recordsFetch, blueprintId, blueprint);
       await blueprints.refresh();
       await blueprints.select(blueprintId, blueprint);
     },

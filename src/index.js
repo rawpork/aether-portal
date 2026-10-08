@@ -18,6 +18,7 @@ import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from "../public/js/shell-surfac
 export { GraphEvents } from "./graph-events.js";
 export { UserHub } from "./realtime/user-hub.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
+import { getRecord, searchRecords, upsertRecord } from "./records.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
@@ -195,6 +196,37 @@ export default {
       }
       const preferredName = await loadPreferredName(env, auth.user.id);
       return jsonResponse(await mintEngineToken(auth.user.id, env.ENGINE_JWT_SECRET, Date.now(), ENGINE_TOKEN_TTL_SECONDS, { preferred_name: preferredName }), 200, { "Cache-Control": "no-store" });
+    }
+
+    // Context retrieval (src/records.js, migrations/0019_records.sql): the engine's search_records and get_record tools, and the
+    // write blueprints use to enter the index. The engine authenticates with an engine:push token, a signed-in tab with its session.
+    //   GET  /api/records/search?q=&project_id=&type=&limit=   GET /api/records/<id>   POST /api/records { id, type, title, ... }
+    if (url.pathname === "/api/records" || url.pathname.startsWith("/api/records/")) {
+      const bearer = /^Bearer (.+)$/.exec(request.headers.get("Authorization") || "");
+      let userId = bearer ? (await verifyEnginePushToken(bearer[1], env.ENGINE_JWT_SECRET))?.userId : null;
+      if (!userId) {
+        if (bearer) return jsonResponse({ error: "Unauthorized" }, 401);
+        const auth = await authenticateUser(request, env, url);
+        if (auth.error) return auth.error;
+        userId = auth.user.id;
+      }
+      try {
+        if (url.pathname === "/api/records" && request.method === "POST") {
+          const saved = await upsertRecord(env, userId, await request.json().catch(() => null));
+          return saved.error ? jsonResponse({ error: saved.error }, saved.status || 400) : jsonResponse(saved, 201);
+        }
+        if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET, POST" });
+        if (url.pathname === "/api/records/search") {
+          return jsonResponse(await searchRecords(env, userId, {
+            query: url.searchParams.get("q"), project_id: url.searchParams.get("project_id"), type: url.searchParams.get("type"), limit: url.searchParams.get("limit"),
+          }), 200, { "Cache-Control": "no-store" });
+        }
+        const found = url.pathname.startsWith("/api/records/") ? await getRecord(env, userId, decodeURIComponent(url.pathname.slice("/api/records/".length))) : null;
+        return found ? jsonResponse(found, 200, { "Cache-Control": "no-store" }) : jsonResponse({ error: "Not found" }, 404);
+      } catch (err) {
+        console.error("Records request failed:", err);
+        return jsonResponse({ error: "The records search failed." }, 500);
+      }
     }
 
     // Endpoint 1: API returning the signed-in user's JSON graph data

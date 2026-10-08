@@ -155,7 +155,7 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   // The other modules are mounted in their views.
   expect(document.querySelectorAll('#mc-monitor .mc-stat')).toHaveLength(5);
   expect(document.getElementById('mc-monitor-status').textContent).toBe('Up to date');
-  expect(document.querySelector('#mc-elaron .brain-dock h2').textContent).toBe('Elarion · Master Brain');
+  expect(document.querySelector('#mc-elaron .brain-dock h2').textContent).toBe('Elarion');
 
   // No key entry needed: every engine call carried the portal-minted token.
   expect(document.querySelector('#mc-connection summary').textContent).toBe('Engine connection · localhost:3333 · portal session token');
@@ -331,8 +331,9 @@ it('has one H1 and a heading outline that never skips a level, and keeps one inp
   levels.forEach((level, i) => {
     if (i > 0) expect(level, 'heading #' + i + ' follows an h' + levels[i - 1]).toBeLessThanOrEqual(levels[i - 1] + 1);
   });
-  // Hidden for the pages that own an input; the style rule lives in the page template.
-  expect(html).toMatch(/body\[data-view="studio"\] \.mc-command, body\[data-view="blueprints"\] \.mc-command \{ display: none; \}/);
+  // Docked on every page, sized to the screen; the style rule lives in the page template.
+  expect(html).not.toMatch(/\[data-view="[a-z]+"\] \.mc-command/);
+  expect(html).toMatch(/\.mc-command \{ flex: none; box-sizing: border-box; width: 100%; max-width: 100vw;/);
   expect(document.querySelector('label[for="mc-command-input"]').textContent).toBe('Ask Elarion');
   expect(document.getElementById('mc-command-input').getAttribute('placeholder')).toBe('Ask Elarion…');
   expect(document.getElementById('mc-command-input').getAttribute('aria-describedby')).toBe('mc-command-hint');
