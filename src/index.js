@@ -11,7 +11,7 @@ import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken, verifyEnginePushToken } from
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { seedOnboardingGraph } from "./onboarding.js";
 import { handleSitesApi, serveSite } from "./sites.js";
-import { graphEventFor, publishGraphEvent, subscribeGraphEvents } from "./graph-events.js";
+import { graphEventFor, publishGraphEvent, realtimeEnabled, subscribeGraphEvents } from "./graph-events.js";
 import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from "../public/js/shell-surfaces.js";
 
 // The live sync Durable Object (wrangler.jsonc durable_objects).
@@ -106,7 +106,7 @@ export default {
   async fetch(request, env, ctx) {
     const response = await this.route(request, env, ctx);
     const event = response.ok ? graphEventFor(request.method, new URL(request.url).pathname) : null;
-    if (event && env.GRAPH_EVENTS) ctx.waitUntil(announceWrite(request, env, event));
+    if (event && (env.GRAPH_EVENTS || realtimeEnabled(env))) ctx.waitUntil(announceWrite(request, env, event));
     return response;
   },
 
@@ -1174,7 +1174,7 @@ export default {
         return new Response("OK");
       } finally {
         // Whatever the message saved (a link, note, photo or research), the user's open tabs pick it up.
-        if (telegramUserId && env.GRAPH_EVENTS) {
+        if (telegramUserId && (env.GRAPH_EVENTS || realtimeEnabled(env))) {
           ctx.waitUntil(publishGraphEvent(env, telegramUserId, { type: "graph.changed" }).catch(err => console.warn("Live sync publish failed:", err.message)));
         }
       }
@@ -10377,7 +10377,7 @@ async function announceWrite(request, env, event) {
 async function connectRealtime(request, env, url) {
   const isEngine = url.pathname === "/api/engine/connect";
   if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
-  if (!env.USER_HUB || String(env.REALTIME || "").toLowerCase() === "off") {
+  if (!realtimeEnabled(env)) {
     return jsonResponse({ error: "Realtime is off.", configured: false }, 404, { "Cache-Control": "no-store" });
   }
   if (request.headers.get("Upgrade") !== "websocket") return jsonResponse({ error: "Expected a WebSocket upgrade." }, 426);

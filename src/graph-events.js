@@ -51,9 +51,18 @@ export function graphEventFor(method, pathname) {
   return null;
 }
 
-// Pushes an event to the user's open tabs. origin: the tab that made the change (it skips its own events).
+// Pushes an event to the user's open tabs, on both transports while they coexist (PHASE2_PLAN.md R2): the SSE stream
+// (GraphEvents) and the realtime WebSocket hub (UserHub). One failing does not stop the other. origin: the tab that made
+// the change (it skips its own events).
 export async function publishGraphEvent(env, userId, event, origin = null) {
-  if (!env.GRAPH_EVENTS || !userId) return;
+  if (!userId) return;
+  const results = await Promise.allSettled([publishToStream(env, userId, event, origin), publishToHub(env, userId, event, origin)]);
+  const failed = results.find(result => result.status === "rejected");
+  if (failed) throw failed.reason;
+}
+
+async function publishToStream(env, userId, event, origin) {
+  if (!env.GRAPH_EVENTS) return;
   const stub = env.GRAPH_EVENTS.get(env.GRAPH_EVENTS.idFromName(String(userId)));
   const payload = { ...event, origin: origin ? String(origin).slice(0, 64) : null, at: new Date().toISOString() };
   await stub.fetch("https://graph-events/publish", {
@@ -61,6 +70,22 @@ export async function publishGraphEvent(env, userId, event, origin = null) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
+}
+
+// The hub stamps the seq and time. Internal only: no route of the Worker reaches /publish, and REALTIME=off skips it.
+export function realtimeEnabled(env) {
+  return Boolean(env.USER_HUB) && String(env.REALTIME || "").toLowerCase() !== "off";
+}
+
+async function publishToHub(env, userId, event, origin) {
+  if (!realtimeEnabled(env)) return;
+  const stub = env.USER_HUB.get(env.USER_HUB.idFromName(String(userId)));
+  const response = await stub.fetch("https://user-hub/publish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event: { type: event.type, ...(event.id ? { id: event.id } : {}) }, origin: origin ? String(origin).slice(0, 64) : null })
+  });
+  if (!response.ok) throw new Error("Realtime hub refused the event: " + response.status);
 }
 
 // The user's stream, as the Durable Object serves it.
