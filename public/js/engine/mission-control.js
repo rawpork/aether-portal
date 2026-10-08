@@ -21,16 +21,24 @@ import { mountRoadmap } from './roadmap.js';
 import { mountDecisionCenter, skillCommandSource } from './decision-center.js';
 import { mountCommandBar } from './command-bar.js';
 import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
+import { projectTitle } from './labels.js';
 import { mountStudioCanvas } from './studio-canvas.js';
-import { mountTemplates } from './templates.js';
+import { mountNewProject } from './new-project.js';
+import { setupElarionDrawer } from './elarion-drawer.js';
 import { mountWorkflowConsole } from './workflow-console.js';
 import { setupTheme } from './theme.js';
 import { mountQuickSetup } from './quick-setup.js';
-import { greetingFor, mountWorkforce } from './workforce.js';
+import { mountWorkforce } from './workforce.js';
 
-// view -> sidebar button id (its aria-controls names the view's panel). #studio / #create / #monitor / #blueprints / #elaron / #connect open a view; no hash is the overview.
-const VIEWS = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', elaron: 'mc-nav-elaron', create: 'mc-nav-create', blueprints: 'mc-nav-blueprints', roadmap: 'mc-nav-roadmap', operator: 'mc-nav-operator', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
-const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', elaron: 'Elarion', create: 'Create / Templates', blueprints: 'Projects', roadmap: 'Roadmap', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
+// The pages. view -> the panel it shows. #studio / #monitor / #blueprints / #connect and the two sub-pages (#roadmap under Projects,
+// #operator under Runs) open a page; no hash is the overview. #elaron opens the conversation drawer and #create the New project
+// dialog (they are things that open over a page, not pages), so old links to them still work.
+const PANELS = { overview: 'mc-view-overview', studio: 'mc-view-studio', blueprints: 'mc-view-blueprints', roadmap: 'mc-view-roadmap', operator: 'mc-view-operator', monitor: 'mc-view-monitor', connect: 'mc-view-connect' };
+// view -> the rail button that shows as current for it. A sub-page lives under its parent's button.
+const RAIL = { overview: 'mc-nav-overview', studio: 'mc-nav-studio', blueprints: 'mc-nav-blueprints', roadmap: 'mc-nav-blueprints', operator: 'mc-nav-monitor', monitor: 'mc-nav-monitor', connect: 'mc-nav-connect' };
+// rail button -> the page it opens.
+const RAIL_OPENS = { 'mc-nav-overview': 'overview', 'mc-nav-studio': 'studio', 'mc-nav-blueprints': 'blueprints', 'mc-nav-monitor': 'monitor', 'mc-nav-connect': 'connect' };
+const VIEW_TITLES = { overview: 'Mission Control', studio: 'Studio', blueprints: 'Projects', roadmap: 'Roadmap', operator: 'Operator Console', monitor: 'Run history', connect: 'Settings' };
 
 // A set of tabs over panels (Operator: Live log / Agent dialogue): roving tabindex, arrow keys move between them.
 export function setupTabset(doc, pairs, onChange = () => {}) {
@@ -172,27 +180,49 @@ export function setupStudioTabs(doc, onChange = () => {}) {
 }
 
 // Views whose page has its own input, so the shared command bar is hidden there (mirrors the CSS in mission-control-page.js).
-const composerHiddenFor = (view) => view === 'elaron' || view === 'studio' || view === 'blueprints';
+const composerHiddenFor = (view) => view === 'studio' || view === 'blueprints';
 
-// Sidebar views: each rail button shows its view and is marked aria-current="page" while it is open.
-export function setupTabs(doc, onSelect = () => {}) {
+// Pages: each rail button opens its page and is marked aria-current="page" while it (or a sub-page under it) is open. The small
+// [data-goto-view] switches inside a page (Projects | Roadmap, Run history | Operator console) move between a page and its
+// sub-page. redirects: { view: () => ... } are views that open something over the page instead of showing a panel (the Elarion
+// drawer, the New project dialog); selecting one runs it and leaves the page as it was.
+export function setupTabs(doc, onSelect = () => {}, { redirects = {} } = {}) {
   const win = doc.defaultView;
-  const all = Object.entries(VIEWS).map(([view, id]) => ({ view, tab: doc.getElementById(id) })).filter((t) => t.tab);
   const title = doc.getElementById('mc-title');
   const announce = doc.getElementById('mc-route');
   const baseTitle = doc.title;
   let current = 'overview';
   let started = false;
 
+  const railButtons = Object.keys(RAIL_OPENS).map((id) => doc.getElementById(id)).filter(Boolean);
+
   function select(view, focus = false) {
-    if (!(view in VIEWS)) view = 'overview';
+    if (view in redirects) {
+      redirects[view]();
+      return;
+    }
+    if (!(view in PANELS)) view = 'overview';
     current = view;
-    for (const t of all) {
-      const active = t.view === view;
-      if (active) t.tab.setAttribute('aria-current', 'page');
-      else t.tab.removeAttribute('aria-current');
-      doc.getElementById(t.tab.getAttribute('aria-controls')).hidden = !active;
-      if (active && focus) t.tab.focus();
+    for (const [name, panelId] of Object.entries(PANELS)) {
+      const panel = doc.getElementById(panelId);
+      if (panel) panel.hidden = name !== view;
+    }
+    const railId = RAIL[view];
+    for (const button of railButtons) {
+      if (button.id === railId) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+    for (const sw of doc.querySelectorAll('[data-goto-view]')) {
+      if (sw.dataset.gotoView === view) sw.setAttribute('aria-current', 'page');
+      else sw.removeAttribute('aria-current');
+    }
+    if (focus) {
+      const rail = doc.getElementById(railId);
+      const target = rail && !rail.closest('[inert]') ? rail : title;
+      if (target) {
+        if (target === title) title.setAttribute('tabindex', '-1');
+        target.focus();
+      }
     }
     // The page name is the H1, the tab title follows it, and a screen reader hears the change (not on first load).
     // The title is the menu button, so only its text changes, never the button.
@@ -215,23 +245,27 @@ export function setupTabs(doc, onSelect = () => {}) {
     onSelect(view);
   }
 
-  all.forEach((t) => t.tab.addEventListener('click', () => select(t.view)));
+  for (const button of railButtons) button.addEventListener('click', () => select(RAIL_OPENS[button.id]));
+  doc.addEventListener('click', (event) => {
+    const sw = event.target && event.target.closest ? event.target.closest('[data-goto-view]') : null;
+    if (sw) select(sw.dataset.gotoView, false);
+  });
   const hash = win && win.location ? win.location.hash.slice(1) : '';
-  select(hash in VIEWS ? hash : 'overview');
-  return { select, getView: () => current, destroy() {} };
-}
+  select(hash in PANELS ? hash : 'overview');
 
-// Header: time-of-day greeting with the signed-in user's name. (The ticking LIVE clock is gone: the status pill's popover
-// shows when the engine last answered, which is the time that matters.)
-function startHeader(doc) {
-  const name = meta(doc, 'aether-user');
-  const greeting = doc.getElementById('mc-greeting');
-  const tick = () => {
-    if (greeting) greeting.textContent = greetingFor(new Date()) + (name ? ', ' + name : '');
+  return {
+    select,
+    getView: () => current,
+    // An old link to #elaron or #create opens that over the overview, once everything it needs has been mounted.
+    openFromHash() {
+      const wanted = win && win.location ? win.location.hash.slice(1) : '';
+      if (wanted in redirects) {
+        if (win.history) win.history.replaceState(null, '', win.location.pathname + win.location.search);
+        redirects[wanted]();
+      }
+    },
+    destroy() {},
   };
-  tick();
-  const timer = setInterval(tick, 60000);
-  return () => clearInterval(timer);
 }
 
 const meta = (doc, name) => {
@@ -251,8 +285,9 @@ function offerPairingFromLink(doc, wizard, tabs) {
   return wizard.offerPairing(engineUrl);
 }
 
-// /mission-control?project=1: "Make it a project" on a portal card left a project payload in storage; load it.
-function importProject(doc, blueprints, tabs, storage) {
+// /mission-control?project=1: "Make it a project" on a portal card left a project payload in storage; load it. It opens the New
+// project review for those cards (the plan, the estimate, the readiness checks), not a raw editor.
+function importProject(doc, blueprints, tabs, storage, newProject) {
   const win = doc.defaultView;
   const params = new URLSearchParams((win && win.location && win.location.search) || '');
   if (!params.get('project')) return null;
@@ -261,13 +296,10 @@ function importProject(doc, blueprints, tabs, storage) {
   tabs.select('blueprints');
   const payload = storage ? takeProjectPayload(storage) : null;
   if (!payload) {
-    blueprints.loadSpec('');
     blueprints.elements.feedback.textContent = 'The project from Space had expired or was missing. Use Make it a project on the card again.';
     return null;
   }
-  const result = blueprints.loadSpec(JSON.stringify(payload.spec, null, 2));
-  blueprints.elements.feedback.textContent = 'Loaded from Space: ' + payload.spec.links.length + (payload.spec.links.length === 1 ? ' card' : ' cards') + '. Validate, then Compile blueprint.';
-  return result;
+  return newProject.openWithSpec(payload.spec, { sourceIds: payload.sourceIds });
 }
 
 // /mission-control?outcome=<id>: fetch that outcome's blueprint from the portal and load it into the editor.
@@ -355,29 +387,52 @@ export async function mountMissionControl(doc = document, options = {}) {
     tier: options.tier || meta(doc, 'aether-tier') || 'free',
     upgradeUrl: options.upgradeUrl ?? meta(doc, 'aether-upgrade-url'),
     // A deploy runs as a task loop: show it in the monitor once the engine has registered it, and again when done.
+    onNewProject: () => newProject.open(),
+    onSelectionChange: () => refreshScopes(),
     onStarted: () => setTimeout(() => monitor.refresh(), 300),
     onExecuted: () => monitor.refresh(),
     onCompleted: (bp, outcome) => { if (outcomes) outcomes.recordRun(bp, outcome); },
   });
-  // Create / Templates: a template and its brief compile into a blueprint, which then opens under Projects with
-  // Deploy & Execute ready.
-  const templates = byId('mc-templates') ? mountTemplates(byId('mc-templates'), {
-    api,
-    onCompiled: async (blueprintId, blueprint, { template }) => {
-      tabs.select('blueprints');
-      await blueprints.refresh();
-      await blueprints.select(blueprintId, blueprint);
-      blueprints.elements.feedback.textContent = 'Created ' + blueprintId + ' from the ' + template.name + ' template and your brief. Press Deploy & Execute to start the run.';
-      const deployButton = blueprints.elements.viewer.querySelector('.bp-deploy');
-      if (deployButton) deployButton.focus();
-    },
-    onBlank: () => {
-      tabs.select('blueprints');
-      blueprints.elements.editor.focus();
-    },
-  }) : null;
   const outcomes = byId('mc-outcomes') ? mountOutcomesList(byId('mc-outcomes'), { api, portalFetch: options.portalFetch, storage: options.storage }) : null;
   const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
+  // The conversation lives in a drawer that slides in over any page. The composer opens it.
+  let drawerClosing = false;
+  const drawer = setupElarionDrawer(doc, {
+    onClosing: () => { drawerClosing = true; },
+    onClose: () => { drawerClosing = false; },
+    focusTarget: () => (dock && dock.elements ? dock.elements.input : null),
+    onOpen: () => refreshScopes(),
+  });
+  // "Asking about": the page being looked at and the project open in it, as chips in the conversation.
+  function refreshScopes() {
+    if (!dock || !dock.setScopes) return;
+    const view = tabs ? tabs.getView() : 'overview';
+    const list = [{ id: 'page', label: VIEW_TITLES[view] || 'This page', context: { page: VIEW_TITLES[view] || view } }];
+    const open = blueprints && blueprints.getSelected ? blueprints.getSelected() : null;
+    if (open && open.project_name && (view === 'blueprints' || view === 'roadmap')) {
+      list.unshift({ id: 'project', label: projectTitle(open), context: { project: open.project_name, blueprint_id: open.blueprint_id, page: VIEW_TITLES[view] } });
+    }
+    dock.setScopes(list, list[0].id);
+  }
+  // The New project dialog: templates, Space cards, a goal or links, then one review before anything runs.
+  const newProject = mountNewProject(doc, {
+    api,
+    pro: blueprints.isPro,
+    portalFetch: options.portalFetch,
+    storage: options.storage,
+    onCompiled: async (blueprintId, blueprint) => {
+      await blueprints.refresh();
+      await blueprints.select(blueprintId, blueprint);
+    },
+    onRun: (blueprint, { website }) => blueprints.runBlueprint(blueprint, { website }),
+    onStarted: (blueprintId) => {
+      tabs.select('blueprints');
+      blueprints.select(blueprintId);
+    },
+    onUpgrade: () => blueprints.showUpgrade(),
+  });
+  const newButton = byId('mc-nav-new');
+  if (newButton) newButton.addEventListener('click', () => newProject.open());
   // The rail's badge counts the choices waiting, so a question is seen from any view.
   const operatorCount = byId('mc-operator-count');
   const operator = byId('mc-operator') ? mountOperatorConsole(byId('mc-operator'), {
@@ -418,28 +473,23 @@ export async function mountMissionControl(doc = document, options = {}) {
     ...options.quickSetup,
   });
   const agentBadge = byId('mc-agent-count');
-  const computeValue = byId('mc-compute-value');
-  const computeSub = byId('mc-compute-sub');
-  const computeBar = byId('mc-compute-bar');
   workforce = mountWorkforce(byId('mc-workforce'), {
     api,
     portalFetch: options.portalFetch,
     onConnect: () => tabs.select('connect', true),
-    onOpenElarion: () => tabs.select('elaron', true),
+    onOpenElarion: () => drawer && drawer.open(),
     onNavigate: (view) => tabs.select(view, true),
     storage: options.storage,
     showNext: false,
-    // Sidebar: agent count, and the compute card (tokens spent; the bar is the share of runs that completed).
+    // Sidebar: the agent count. The status pill: the fleet, and compute.
     onAgentsChange: (agents, counts) => {
       stoppable = agents.filter((a) => a.status !== 'tripped' && a.status !== 'paused').map((a) => a.agentId);
       if (statusPill) statusPill.update({ agents: { working: agents.filter((a) => a.status === 'running').length, total: agents.length, stopped: agents.filter((a) => a.status === 'tripped' || a.status === 'paused').length } });
       if (agentBadge) agentBadge.textContent = String(agents.length);
       const tokens = agents.reduce((sum, a) => sum + a.tokens, 0);
       const runs = counts ? counts.running + counts.completed + counts.halted + counts.failed : 0;
-      // The number is tokens spent; the bar and the line under it are runs completed, so each says what it measures.
-      if (computeValue) computeValue.textContent = (tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'k' : String(tokens)) + ' tokens';
-      if (computeSub) computeSub.textContent = (counts ? counts.completed : 0) + ' of ' + runs + ' runs done';
-      if (computeBar) computeBar.style.width = (runs ? Math.round((counts.completed / runs) * 100) : 0) + '%';
+      // Compute lives in the status pill's popover: tokens spent, and the share of runs that completed.
+      if (statusPill) statusPill.update({ compute: { tokens, completed: counts ? counts.completed : 0, runs } });
     },
   });
   // Studio: the Workflow console and the Engine activity canvas, each polling the engine only while it is on screen.
@@ -454,6 +504,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     if (studio) studio.setActive(shown && pane === 'activity');
   }
   tabs = setupTabs(doc, (view) => {
+    refreshScopes();
     if (decisions) decisions.setView(view);
     if (view === 'blueprints') blueprints.refresh();
     if (view === 'overview') workforce.refresh();
@@ -464,7 +515,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     }
     studioShown = view === 'studio';
     syncStudio();
-  });
+  }, { redirects: { elaron: () => drawer.open(), create: () => newProject.open() } });
   const tray = setupMenuTray(doc);
   // Command bar: whatever is typed (or spoken) goes to Elarion, and the view opens on the reply.
   const commandForm = byId('mc-command');
@@ -479,13 +530,23 @@ export async function mountMissionControl(doc = document, options = {}) {
         decisions.learn(source);
         return;
       }
-      tabs.select('elaron');
+      drawer.open();
       // Busy or halted: leave the text in the dock's own box so it isn't lost. Either way, keep typing there.
       if (!dock.send(text)) dock.elements.input.value = text;
       dock.elements.input.focus();
     },
   }) : null;
-  const stopHeader = startHeader(doc);
+  // Reaching for the composer opens the conversation: whatever was typed there carries over into the drawer's message box.
+  const composerInput = byId('mc-command-input');
+  if (composerInput) {
+    composerInput.addEventListener('focus', () => {
+      if (drawer.isOpen() || drawerClosing) return;
+      const typed = composerInput.value;
+      composerInput.value = '';
+      drawer.open();
+      if (typed && !dock.elements.input.value) dock.elements.input.value = typed;
+    });
+  }
   const skillButton = byId('mc-command-skill');
   // The "Do this next" banner (on the overview, and elsewhere only when something urgent blocks the work), and numbered
   // choice popups for decisions, finished runs and skills.
@@ -505,12 +566,13 @@ export async function mountMissionControl(doc = document, options = {}) {
   });
   offerPairingFromLink(doc, wizard, tabs);
   try {
-    importProject(doc, blueprints, tabs, options.storage || (doc.defaultView && doc.defaultView.localStorage));
+    importProject(doc, blueprints, tabs, options.storage || (doc.defaultView && doc.defaultView.localStorage), newProject);
   } catch (error) {
     blueprints.elements.feedback.textContent = 'Could not load the project from Space (' + error.message + ').';
   }
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
+  tabs.openFromHash();
   if (skillButton && decisions) skillButton.addEventListener('click', () => decisions.askSource());
   // Agent spec (the rail): define an agent's role and what it may do. It writes a spec and starts nothing: agents run when a
   // project that uses them is deployed.
@@ -527,7 +589,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   // Spoken and screen-reader alerts when an agent needs the operator, and slower timers while the stream covers the engine.
   const realtimeAlerts = mountRealtimeAlerts(doc.defaultView || globalThis);
   const pollRate = mountPollRate(doc.defaultView || globalThis, { onUncovered: () => realtimeRefresh.refreshAll() });
-  return { realtimeRefresh, realtimeAlerts, pollRate, connection, breaker, monitor, templates, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  return { realtimeRefresh, realtimeAlerts, pollRate, drawer, newProject, connection, breaker, monitor, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

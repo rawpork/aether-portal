@@ -2,7 +2,10 @@
 // with a single worded state, and opens a popover with the detail and the stop / resume controls (the breaker bar mounts
 // into the popover). The pill's text always carries the meaning; colour only backs it up.
 //
-//   Halted > engine trouble > Needs you > N working > Set up needed > All idle
+//   Stopped > engine trouble > Needs you > N working > Setup needed > Elarion Ready
+//
+// It reads as one line, "Engine Live · Elarion Ready": the engine's state and Elarion's readiness together. The popover under it
+// has the detail, the compute stats and Stop all agents.
 //
 // Markup comes from src/mission-control-page.js; this module finds its parts by data attribute under `root`.
 
@@ -12,15 +15,17 @@ export function summarizeStatus(model) {
   const agents = model.agents || { working: 0, total: 0 };
   const waiting = model.waiting || 0;
   const elarion = model.elarion || { hidden: true };
-  if (breaker.state === 'HALTED') return { kind: 'halted', text: 'Halted' };
+  if (breaker.state === 'HALTED') return { kind: 'halted', text: 'Agents stopped' };
   if (breaker.state === 'OFFLINE') return { kind: 'alert', text: 'Engine offline' };
   if (breaker.state === 'AUTH') return { kind: 'alert', text: 'Sign-in needed' };
   if (breaker.state === 'ERROR') return { kind: 'alert', text: 'Engine error' };
   if (breaker.state === 'CONNECTING') return { kind: 'checking', text: 'Checking' };
   if (waiting > 0) return { kind: 'alert', text: 'Needs you · ' + waiting };
-  if (agents.working > 0) return { kind: 'running', text: agents.working + ' working' };
-  if (!elarion.hidden && elarion.kind === 'alert') return { kind: 'alert', text: 'Setup needed' };
-  return { kind: 'idle', text: 'All idle' };
+  if (agents.working > 0) return { kind: 'running', text: 'Engine Live · ' + agents.working + ' working' };
+  if (!elarion.hidden && elarion.kind === 'alert') return { kind: 'alert', text: 'Engine Live · Setup needed' };
+  // Elarion's own badge says how she is ("Elarion Ready", "Elarion Ready · Sandbox"); the engine part is always "Engine Live" here.
+  if (!elarion.hidden && elarion.text) return { kind: 'idle', text: 'Engine Live · ' + elarion.text };
+  return { kind: 'idle', text: 'Engine Live' };
 }
 
 // "4 s ago" style age for the Engine row.
@@ -31,6 +36,13 @@ export function formatAge(ms) {
   if (s < 60) return s + ' s ago';
   const m = Math.floor(s / 60);
   return m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ago';
+}
+
+// "12.3k tokens · 4 of 6 runs done": tokens spent, and how many runs finished.
+export function computeText(compute) {
+  const c = compute || { tokens: 0, completed: 0, runs: 0 };
+  const tokens = c.tokens >= 1000 ? (c.tokens / 1000).toFixed(1) + 'k' : String(c.tokens || 0);
+  return tokens + ' tokens · ' + (c.completed || 0) + ' of ' + (c.runs || 0) + ' runs done';
 }
 
 const ENGINE_ROW = {
@@ -57,9 +69,11 @@ export function mountStatusPill(root, options = {}) {
   const agentsRow = part('agents');
   const waitingRow = part('waiting');
   const cutoffRow = part('cutoff');
+  const computeRow = part('compute');
+  const computeBar = part('compute-bar');
   if (!pill || !text || !panel) throw new Error('Status pill markup is missing.');
 
-  const model = { breaker: { state: 'CONNECTING', reason: null, syncedAt: null }, agents: { working: 0, total: 0, stopped: 0 }, waiting: 0, elarion: { hidden: true } };
+  const model = { breaker: { state: 'CONNECTING', reason: null, syncedAt: null }, agents: { working: 0, total: 0, stopped: 0 }, waiting: 0, elarion: { hidden: true }, compute: { tokens: 0, completed: 0, runs: 0 } };
   let current = null;
   let open = false;
   let ticker = null;
@@ -93,6 +107,8 @@ export function mountStatusPill(root, options = {}) {
     }
     if (waitingRow) waitingRow.textContent = model.waiting ? model.waiting + ' choice' + (model.waiting === 1 ? '' : 's') + ' waiting' : 'Nothing';
     if (cutoffRow) cutoffRow.textContent = cutoffText();
+    if (computeRow) computeRow.textContent = computeText(model.compute);
+    if (computeBar) computeBar.style.width = (model.compute.runs ? Math.round((model.compute.completed / model.compute.runs) * 100) : 0) + '%';
 
     // Announce changes only: polite for ordinary ones, assertive for Halted.
     if (!current || current.text !== next.text) {
@@ -110,6 +126,7 @@ export function mountStatusPill(root, options = {}) {
     if (patch.agents) model.agents = { ...model.agents, ...patch.agents };
     if (patch.waiting != null) model.waiting = patch.waiting;
     if (patch.elarion) model.elarion = patch.elarion;
+    if (patch.compute) model.compute = { ...model.compute, ...patch.compute };
     render();
   }
 

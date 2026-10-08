@@ -376,13 +376,16 @@ describe('tier gating: Deploy & Execute Blueprint', () => {
 describe('Projects page structure', () => {
   it('leads with the project list, then the blueprint editor, and the New blueprint button jumps to the editor', async () => {
     await mount();
-    const order = [...container.children].map((c) => (c.classList.contains('bp-artifacts') ? 'projects' : c.classList.contains('bp-ingest') ? 'editor' : c.className));
-    expect(order).toEqual(['projects', 'editor']);
+    const order = [...container.children].map((c) => (c.classList.contains('bp-artifacts') ? 'projects' : c.classList.contains('bp-advanced') ? 'advanced' : c.className));
+    expect(order).toEqual(['projects', 'advanced']);
     // A screen reader meets the project list heading before the editor's.
     const headings = [...container.querySelectorAll('h2')].map((h) => h.textContent);
     expect(headings[0]).toBe('Your projects');
     expect(headings[1]).toBe('Blueprint ingestion');
-    expect(ws.elements.listEmpty.textContent).toBe('No projects yet. Paste a blueprint below and compile it.');
+    // The raw JSON editor sits behind a collapsed Advanced section.
+    expect(ws.elements.advanced.open).toBe(false);
+    expect(ws.elements.advanced.querySelector('summary').textContent).toBe('Advanced: Edit Blueprint JSON');
+    expect(ws.elements.listEmpty.textContent).toBe('No projects yet. Press New project to start one.');
     container.querySelector('.bp-new').click();
     expect(document.activeElement).toBe(ws.elements.editor);
   });

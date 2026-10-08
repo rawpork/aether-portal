@@ -228,12 +228,6 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .rail-count { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; background: var(--rail-raised); color: var(--rail-strong); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
     .rail-item[aria-current="page"] .rail-count { background: var(--rail-line); }
     .rail-spacer { flex: 1; min-height: 16px; }
-    .rail-compute { margin: 0 2px 10px; padding: 16px; border: 1px solid var(--rail-line); border-radius: var(--radius-l); }
-    .rail-compute-head { display: flex; justify-content: space-between; align-items: baseline; color: var(--rail-strong); }
-    .rail-compute-head strong { font-weight: 700; }
-    .rail-compute-bar { height: 5px; margin: 12px 0 10px; border-radius: 3px; background: var(--rail-line); overflow: hidden; }
-    .rail-compute-bar span { display: block; height: 100%; width: 0; background: var(--lime); transition: width 0.3s; }
-    .rail-compute-sub { font-size: 12px; }
     .rail-user { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding: 16px 8px 4px; border-top: 1px solid var(--rail-line); }
     .rail-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; background: #3B4A40; color: var(--rail-strong); font-weight: 700; font-size: 14px; }
     .rail-user-text { min-width: 0; display: flex; flex-direction: column; }
@@ -246,10 +240,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     /* The heading keeps at least 220px (or the full row); when the actions don't fit beside it they wrap to a second
        row instead of squeezing the greeting or spilling past the edge. */
     .mc-heading { flex: 1 1 260px; min-width: min(220px, 100%); display: flex; flex-direction: column; gap: 6px; }
-    .mc-crumbs { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
     .mc-title { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mc-greeting { margin: 0; color: var(--muted); font-size: 14px; }
-    .mc-greeting:empty, body:not([data-view="overview"]) .mc-greeting { display: none; }
     .mc-actions { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin-left: auto; }
     /* Phones and small tablets: the rail's Portal link is hidden there, so the header carries the way back. */
     /* The page title is the menu button (one control where there were three): a phone opens the drawer, a wide screen folds the rail. */
@@ -265,8 +256,6 @@ ${SHELL_SWITCH_CSS}
     .btn-primary:hover { background: var(--ink-hover); }
     .mc-main { position: relative; z-index: 0; isolation: isolate; flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 28px calc(40px + env(safe-area-inset-right, 0px)) calc(32px + env(safe-area-inset-bottom, 0px)) 40px; }
     .mc-view { max-width: 1240px; margin: 0 auto; }
-    body[data-view="elaron"] .mc-main { display: flex; flex-direction: column; }
-    #mc-view-elaron:not([hidden]) { flex: 1; min-height: 460px; width: 100%; display: flex; }
 
     /* ---------- Shared pieces */
     .surface { border: 1px solid var(--line); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow); }
@@ -322,7 +311,6 @@ ${SHELL_SWITCH_CSS}
     .wf-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 16px; border: 1px solid var(--alert-line); border-radius: var(--radius-m); background: var(--alert-soft); color: var(--alert); font-size: 13px; }
     /* Decision center (decision-center.js): the banner slot on every view and the numbered choice popups. */
     #mc-next { max-width: 1240px; margin: 0 auto 16px; }
-    body[data-view="elaron"] #mc-next { width: 100%; }
     .dc-scrim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgba(4, 8, 14, 0.62); }
     .dc-modal { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); color: var(--text); }
     .dc-modal[data-kind="alert"], .dc-modal[data-kind="go"] { border-color: var(--accent-line); }
@@ -563,6 +551,8 @@ ${SHELL_SWITCH_CSS}
     .status-row:first-child { border-top: 0; padding-top: 0; }
     .status-row dt { color: var(--muted); }
     .status-row dd { margin: 0; overflow-wrap: anywhere; }
+    .status-bar { display: block; height: 5px; margin-top: 8px; border-radius: 3px; background: var(--line); overflow: hidden; }
+    .status-bar span { display: block; height: 100%; width: 0; background: var(--switch-on, var(--accent)); transition: width 0.3s; }
     .status-row:has(#mc-ready[hidden]) { display: none; }
     .status-link { appearance: none; min-height: 44px; margin-left: 4px; padding: 0 8px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
     .status-panel .mc-breaker { flex-wrap: wrap; }
@@ -737,6 +727,7 @@ ${SHELL_SWITCH_CSS}
     .rm-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
     .rm-bar-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
     .rm-sub { margin: 22px 0 8px; font-size: 14px; }
+    .rm-code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
     .rm-link { color: var(--accent-text, var(--accent)); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
     .rm-goals, .rm-sessions, .rm-memory, .rm-phase-goals { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
     .rm-goal, .rm-session { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
@@ -797,7 +788,7 @@ ${SHELL_SWITCH_CSS}
     /* Command bar (public/js/engine/command-bar.js): ask Elarion from any view; the mic types by voice. */
     .mc-command { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px calc(40px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) 40px; border-top: 1px solid var(--line); background: var(--surface); }
     /* Elarion has its own message box, Studio its command bar and Projects its blueprint editor: one input per page. */
-    body[data-view="elaron"] .mc-command, body[data-view="studio"] .mc-command, body[data-view="blueprints"] .mc-command { display: none; }
+    body[data-view="studio"] .mc-command, body[data-view="blueprints"] .mc-command { display: none; }
     .mc-command input { flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--canvas); color: var(--text); font: inherit; font-size: 16px; }
     .mc-command input:focus { outline: none; border-color: var(--accent-line); }
     .mc-command .mc-command-skill { color: var(--accent); border-color: var(--accent-line); white-space: nowrap; }
@@ -1257,7 +1248,7 @@ ${SHELL_SWITCH_CSS}
     @media (min-width: 680.02px) {
       body[data-rail="icons"] .mc-rail { width: 84px; padding-left: 12px; padding-right: 12px; align-items: center; }
       body[data-rail="icons"] .rail-brand { padding: 0 0 22px; min-width: 44px; justify-content: center; }
-      body[data-rail="icons"] .rail-brand-word, body[data-rail="icons"] .rail-label, body[data-rail="icons"] .rail-compute, body[data-rail="icons"] .rail-user-text { display: none; }
+      body[data-rail="icons"] .rail-brand-word, body[data-rail="icons"] .rail-label, body[data-rail="icons"] .rail-user-text { display: none; }
       body[data-rail="icons"] .rail-item { justify-content: center; padding: 0; width: 52px; position: relative; }
       body[data-rail="icons"] .rail-count { position: absolute; top: 2px; right: 0; min-width: 20px; height: 20px; font-size: 12px; padding: 0 3px; }
       body[data-rail="icons"] .rail-user { justify-content: center; padding: 14px 0 4px; }
@@ -1293,11 +1284,9 @@ ${SHELL_SWITCH_CSS}
          rather than clipping; the "Operations" eyebrow just repeats the title here, so it is dropped on phones. */
       .mc-top { gap: 4px 8px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
       .mc-heading, .mc-actions { display: contents; }
-      .mc-crumbs { display: none; }
       .mc-title { flex: 1 1 0; min-width: 0; margin: 0; font-size: 18px; line-height: 1.2; white-space: normal; overflow: visible; }
       .mc-menu-button { display: flex; width: 100%; margin: 0; padding: 4px 10px; justify-content: space-between; }
       .mc-menu-text { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-      .mc-greeting { order: 10; flex: 0 0 100%; font-size: 13px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .status-pill { padding: 0 12px; font-size: 13px; }
       /* Calm states stay a compact pill in the row. States that want attention (needs you, offline, halted) become a
          full-width strip under the title, so their longer words never squeeze the page name. */
@@ -1342,6 +1331,75 @@ ${SHELL_SWITCH_CSS}
       .mc-top { flex-wrap: wrap; }
       .mc-title { flex-basis: 100%; order: 5; }
     }
+
+    /* ---------- Segmented page switch: Projects | Roadmap, Run history | Operator console */
+    .wf-next { position: relative; }
+    .wf-next-text { padding-right: 36px; }
+    .wf-next-dismiss { appearance: none; position: absolute; top: 4px; right: 4px; width: 44px; height: 44px; border: 0; border-radius: var(--radius-m); background: none; color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+    .wf-next-dismiss:hover { color: var(--text); background: var(--surface-soft); }
+    .mc-seg { display: flex; flex-wrap: wrap; gap: 4px; width: fit-content; max-width: 100%; margin: 0 0 16px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .mc-seg button { appearance: none; min-height: 40px; padding: 0 16px; border: 0; border-radius: var(--radius-s); background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+    .mc-seg button:hover { color: var(--text); }
+    .mc-seg button[aria-current="page"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }
+    @media (pointer: coarse) { .mc-seg button { min-height: 44px; } }
+    .mc-display-row { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 24px 22px; }
+    .mc-display-row .toggle-button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }
+
+    /* ---------- Elarion drawer: the conversation slides in from the right over any page */
+    .mc-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 230; box-sizing: border-box; width: min(440px, 100%); max-width: 100%; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); border-left: 1px solid var(--line-strong); background: var(--surface); box-shadow: -12px 0 40px rgba(0, 0, 0, 0.28); transform: translateX(100%); visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }
+    body.drawer-open .mc-drawer { transform: none; visibility: visible; transition: transform 0.25s ease; }
+    .mc-drawer-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 22px; border-bottom: 1px solid var(--line); }
+    .mc-drawer-title { font-size: 16px; font-weight: 700; }
+    .mc-drawer-close { appearance: none; flex: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 24px; line-height: 1; cursor: pointer; }
+    .mc-drawer #mc-elaron { flex: 1; min-height: 0; }
+    .mc-drawer-scrim { position: fixed; inset: 0; z-index: 225; background: rgba(4, 8, 14, 0.55); }
+    @media (max-width: 680px) { .mc-drawer .brain-log { padding: 14px; } .mc-drawer .brain-form { padding-left: 14px; padding-right: 14px; } }
+    @media (prefers-reduced-motion: reduce) { .mc-drawer { transition: none; } }
+    .brain-scope { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 10px 22px; border-bottom: 1px solid var(--line); }
+    .brain-scope-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .brain-chip { appearance: none; min-height: 32px; max-width: 100%; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 16px; background: var(--surface-soft); color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .brain-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .brain-scope-tag { align-self: flex-start; padding: 1px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.14); font-size: 12px; opacity: 0.85; }
+    @media (pointer: coarse) { .brain-chip { min-height: 44px; } }
+    @media (max-width: 680px) { .brain-scope { padding-left: 14px; padding-right: 14px; } }
+
+    /* ---------- New project: one front door (public/js/engine/new-project.js) */
+    .rail-new { color: var(--accent); }
+    .np-scrim { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 16px; background: rgba(4, 8, 14, 0.62); }
+    .np-modal { box-sizing: border-box; width: min(720px, 100%); max-width: 100%; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+    .np-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 12px 6px 22px; }
+    .np-title { font-size: 20px; font-weight: 700; }
+    .np-close { appearance: none; flex: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 24px; line-height: 1; cursor: pointer; }
+    .np-inputs, .np-review-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 22px 14px; }
+    .np-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 14px; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    @media (max-width: 640px) { .np-seg { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .np-seg [role="tab"] { appearance: none; min-height: 44px; padding: 6px 8px; border: 0; border-radius: var(--radius-s); background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; line-height: 1.25; cursor: pointer; touch-action: manipulation; }
+    .np-seg [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }
+    .np-foot { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 22px calc(14px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
+    .np-foot button { min-height: 44px; }
+    .np-error { margin: 0 22px 8px; }
+    .np-cards { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
+    .np-card, .np-row { display: flex; align-items: flex-start; gap: 12px; box-sizing: border-box; min-height: 48px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); cursor: pointer; }
+    .np-card[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+    .np-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .np-card-title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+    .np-card-meta { color: var(--muted); font-size: 12px; }
+    .np-card-text { color: var(--text-2); font-size: 13px; line-height: 1.4; }
+    .np-list { display: grid; gap: 6px; max-height: 38vh; margin: 0 0 12px; overflow: auto; }
+    .np-empty { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+    .np-brief { display: flex; flex-direction: column; gap: 12px; }
+    .np-subhead { margin: 16px 0 8px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .np-brief .np-subhead { margin-top: 4px; }
+    .np-project { margin: 0 0 6px; font-size: 18px; overflow-wrap: anywhere; }
+    .np-plan { display: grid; gap: 6px; margin: 0; padding-left: 22px; font-size: 14px; line-height: 1.45; }
+    .np-estimate { margin: 0; font-size: 14px; line-height: 1.5; }
+    .np-upgrade { opacity: 0.85; }
+    .np-panel[hidden] { display: none; }
+    .dc-ingest input[type="radio"], .dc-ingest input[type="checkbox"] { flex: none; box-sizing: border-box; width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; padding: 0; accent-color: var(--accent); }
+    .dc-check { display: flex; align-items: flex-start; gap: 12px; color: var(--text-2); font-size: 14px; line-height: 1.4; cursor: pointer; }
+    .bp-advanced { margin: 18px 0 0; }
+    .bp-advanced-summary { display: inline-block; padding: 12px 4px; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .bp-advanced[open] > .bp-advanced-summary { margin-bottom: 6px; }
   </style>
 </head>
 <body data-view="overview" data-shell-surface="mission-control">
@@ -1349,23 +1407,13 @@ ${SHELL_SWITCH_CSS}
     <a class="rail-brand" href="/" data-surface="space" title="Space: the 3D graph (Alt+S)" aria-label="Aether Space (Alt+S)" aria-keyshortcuts="Alt+S"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
     <nav class="rail-nav" aria-label="Mission Control views">
       <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
+      <a class="rail-item" id="mc-nav-space" href="/" data-surface="space" title="Space: the 3D graph (Alt+S)" aria-keyshortcuts="Alt+S">${ICONS.space}<span class="rail-label">Space</span></a>
+      <button type="button" class="rail-item rail-new" id="mc-nav-new" aria-haspopup="dialog" title="New project: start from a template, your Space cards, a goal or links">${ICONS.plus}<span class="rail-label">New</span></button>
+      <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects, and the Roadmap">${ICONS.layers}<span class="rail-label">Projects</span></button>
+      <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Runs: run history, and the choices agents are waiting on">${ICONS.clock}<span class="rail-label">Runs</span><span class="rail-count" id="mc-operator-count" aria-label="choices waiting" hidden>0</span></button>
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
-      <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
-      <button type="button" class="rail-item" id="mc-nav-create" aria-controls="mc-view-create" title="Create / Templates: start a project from a template">${ICONS.plus}<span class="rail-label">Create</span></button>
-      <button type="button" class="rail-item" id="mc-agent-spec" aria-haspopup="dialog" title="Agent spec: define an agent's role and what it may do. Writes a spec; nothing starts.">${ICONS.spec}<span class="rail-label" data-short="Agent">Agent spec</span></button>
-      <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
-      <button type="button" class="rail-item" id="mc-nav-roadmap" aria-controls="mc-view-roadmap" title="Roadmap: goals from ROADMAP.md and recent sessions">${ICONS.flag}<span class="rail-label">Roadmap</span></button>
-      <button type="button" class="rail-item" id="mc-nav-operator" aria-controls="mc-view-operator" title="Operator Console: live agent activity, and the choices agents are waiting on">${ICONS.console}<span class="rail-label" data-short="Operator">Operator</span><span class="rail-count" id="mc-operator-count" aria-label="choices waiting" hidden>0</span></button>
-      <button type="button" class="rail-item" id="mc-nav-monitor" aria-controls="mc-view-monitor" title="Run history">${ICONS.clock}<span class="rail-label" data-short="Runs">Run history</span></button>
       <span class="rail-spacer"></span>
-      <div class="rail-compute">
-        <div class="rail-compute-head"><span>Compute</span><strong id="mc-compute-value" title="Tokens used by task runs">0 tokens</strong></div>
-        <div class="rail-compute-bar" aria-hidden="true" title="Share of runs completed"><span id="mc-compute-bar"></span></div>
-        <div class="rail-compute-sub" id="mc-compute-sub">0 of 0 runs done</div>
-      </div>
-      <a class="rail-item" id="mc-nav-engine" href="#" title="Engine State: the Aether Engine's own status page">${ICONS.engine}<span class="rail-label" data-short="Engine">Engine State</span></a>
       <button type="button" class="rail-item" id="mc-nav-connect" aria-controls="mc-view-connect" title="Settings">${ICONS.gear}<span class="rail-label">Settings</span></button>
-      <button type="button" class="rail-item" id="mc-theme-toggle" title="Switch between light and dark">${ICONS.theme}<span class="rail-label" id="mc-theme-label" data-short="Theme">Dark mode</span></button>
     </nav>
     <div class="rail-user">
       <span class="rail-avatar" aria-hidden="true">${escapeAttr(initialsOf(userName))}</span>
@@ -1376,10 +1424,8 @@ ${SHELL_SWITCH_CSS}
   <div class="mc-canvas">
     <header class="mc-top">
       <div class="mc-heading">
-        <p class="mc-crumbs">Operations</p>
         <h1 class="mc-title" id="mc-title"><button type="button" class="mc-menu-button" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" aria-describedby="mc-menu-hint" title="Menu"><span class="mc-menu-text" id="mc-title-text">Mission Control</span>${ICONS.menu}</button></h1>
         <span class="mc-visually-hidden" id="mc-menu-hint">Opens the menu to switch views.</span>
-        <p class="mc-greeting" id="mc-greeting"></p>
         <span class="mc-visually-hidden" id="mc-route" role="status" aria-live="polite"></span>
       </div>
       <div class="mc-actions">
@@ -1394,6 +1440,7 @@ ${SHELL_SWITCH_CSS}
               <div class="status-row"><dt>Elarion</dt><dd><button type="button" class="ready-pill" id="mc-ready" data-kind="running" hidden><span class="ready-dot" aria-hidden="true"></span><span class="ready-text">Elarion Ready</span></button></dd></div>
               <div class="status-row"><dt>Agents</dt><dd data-status="agents">None yet</dd></div>
               <div class="status-row"><dt>Waiting for you</dt><dd data-status="waiting">Nothing</dd></div>
+              <div class="status-row"><dt>Compute</dt><dd><span data-status="compute">0 tokens · 0 of 0 runs done</span><span class="status-bar" aria-hidden="true" title="Share of runs completed"><span data-status="compute-bar"></span></span></dd></div>
               <div class="status-row"><dt>Safety cutoff</dt><dd data-status="cutoff">Unknown until the engine answers.</dd></div>
             </dl>
             <div id="mc-breaker" class="mc-breaker" role="group" aria-label="Stop and resume agents"></div>
@@ -1407,7 +1454,7 @@ ${SHELL_SWITCH_CSS}
       <div class="mc-view" id="mc-view-overview"><div id="mc-workforce"></div></div>
       <div class="mc-view" id="mc-view-studio" hidden>
         <section class="surface mc-panel" aria-labelledby="mc-studio-title">
-          <div class="mc-panel-head"><h2 id="mc-studio-title">Studio</h2><span class="mc-muted">Agent-generated workflows, and what the engine is doing</span></div>
+          <div class="mc-panel-head"><h2 id="mc-studio-title">Studio</h2><span class="mc-muted">Agent-generated workflows, and what the engine is doing</span><span class="mc-spacer"></span><button type="button" class="toggle-button" id="mc-agent-spec" aria-haspopup="dialog" title="Agent spec: define an agent's role and what it may do. Writes a spec; nothing starts.">+ Agent spec</button></div>
           <div class="subtabs" role="tablist" aria-label="Studio">
             <button type="button" role="tab" id="mc-studio-tab-workflow" aria-controls="mc-workflow" aria-selected="true">Workflow console</button>
             <button type="button" role="tab" id="mc-studio-tab-activity" aria-controls="mc-studio-activity" aria-selected="false" tabindex="-1">Engine activity</button>
@@ -1416,11 +1463,16 @@ ${SHELL_SWITCH_CSS}
           <div id="mc-studio-activity" role="tabpanel" aria-labelledby="mc-studio-tab-activity" hidden><div id="mc-studio"></div></div>
         </section>
       </div>
-      <div class="mc-view surface" id="mc-view-elaron" hidden><section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section></div>
-      <div class="mc-view" id="mc-view-create" hidden><div id="mc-templates"></div></div>
-      <div class="mc-view" id="mc-view-blueprints" hidden><div id="mc-blueprints"></div><div id="mc-outcomes"></div></div>
-      <div class="mc-view" id="mc-view-roadmap" hidden><div id="mc-roadmap"></div></div>
+      <div class="mc-view" id="mc-view-blueprints" hidden>
+        <nav class="mc-seg" aria-label="Projects pages"><button type="button" data-goto-view="blueprints" aria-current="page">Projects</button><button type="button" data-goto-view="roadmap">Roadmap</button></nav>
+        <div id="mc-blueprints"></div><div id="mc-outcomes"></div>
+      </div>
+      <div class="mc-view" id="mc-view-roadmap" hidden>
+        <nav class="mc-seg" aria-label="Projects pages"><button type="button" data-goto-view="blueprints">Projects</button><button type="button" data-goto-view="roadmap" aria-current="page">Roadmap</button></nav>
+        <div id="mc-roadmap"></div>
+      </div>
       <div class="mc-view" id="mc-view-operator" hidden>
+        <nav class="mc-seg" aria-label="Runs pages"><button type="button" data-goto-view="monitor">Run history</button><button type="button" data-goto-view="operator" aria-current="page">Operator console</button></nav>
         <section class="surface mc-panel" aria-labelledby="mc-operator-title">
           <div class="mc-panel-head"><h2 id="mc-operator-title">Operator Console</h2><span id="mc-operator-status" class="mc-muted" aria-live="polite"></span></div>
           <div class="subtabs oc-tabs" role="tablist" aria-label="Operator views">
@@ -1434,6 +1486,7 @@ ${SHELL_SWITCH_CSS}
         </section>
       </div>
       <div class="mc-view" id="mc-view-monitor" hidden>
+        <nav class="mc-seg" aria-label="Runs pages"><button type="button" data-goto-view="monitor" aria-current="page">Run history</button><button type="button" data-goto-view="operator">Operator console</button></nav>
         <section class="surface mc-panel" aria-labelledby="mc-monitor-title">
           <div class="mc-panel-head"><h2 id="mc-monitor-title">Run history</h2><span id="mc-monitor-status" class="mc-muted" aria-live="polite"></span></div>
           <div id="mc-monitor"></div>
@@ -1442,6 +1495,13 @@ ${SHELL_SWITCH_CSS}
       <div class="mc-view" id="mc-view-connect" hidden>
         <p class="mc-engine-note" id="mc-engine-note" role="status" hidden></p>
         <div id="mc-quick-setup"></div>
+        <section class="surface mc-panel" aria-labelledby="mc-display-title">
+          <div class="mc-panel-head"><h2 id="mc-display-title">Display and status</h2></div>
+          <div class="mc-display-row">
+            <button type="button" class="toggle-button" id="mc-theme-toggle" title="Switch between light and dark">${ICONS.theme}<span id="mc-theme-label">Dark mode</span></button>
+            <a class="toggle-button" id="mc-nav-engine" href="#" title="Engine State: the Aether Engine's own status page">${ICONS.engine}<span>Engine status page</span></a>
+          </div>
+        </section>
         <section class="surface mc-panel" aria-labelledby="mc-connect-title">
           <div class="mc-panel-head"><h2 id="mc-connect-title">Engine connection</h2></div>
           <div id="mc-connect"></div>
@@ -1458,6 +1518,11 @@ ${SHELL_SWITCH_CSS}
       <button type="submit">Send</button>
     </form>
   </div>
+  <div class="mc-drawer-scrim" id="mc-drawer-scrim" hidden></div>
+  <aside class="mc-drawer" id="mc-drawer" role="dialog" aria-modal="false" aria-labelledby="mc-drawer-title" aria-hidden="true" inert>
+    <div class="mc-drawer-head"><h2 class="mc-drawer-title" id="mc-drawer-title">Elarion</h2><button type="button" class="mc-drawer-close" id="mc-drawer-close" aria-label="Close the conversation" title="Close (Esc)">×</button></div>
+    <section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section>
+  </aside>
   <noscript><p class="mc-section">Mission Control needs JavaScript.</p></noscript>
   <script type="module" src="/js/realtime-boot.js?v=${v}"></script>
   <script type="module" src="/js/engine/mission-control.js?v=${v}"></script>

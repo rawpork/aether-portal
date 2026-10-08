@@ -1,6 +1,6 @@
 // Roadmap view: goals written in markdown become named, safe links instead of raw "[label](path)" text.
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_LINK_BASE, mountRoadmap, parseMarkdownLinks, plainText, resolveLink } from '../../public/js/engine/roadmap.js';
+import { DEFAULT_LINK_BASE, mountRoadmap, parseInline, parseMarkdownLinks, plainText, resolveLink } from '../../public/js/engine/roadmap.js';
 
 const SPEC = 'Step 4.1: 2D Visual Node Canvas ([spec 01](specs/ui/01-node-canvas.md))';
 
@@ -94,5 +94,15 @@ describe('roadmap cards', () => {
 		await mount({ linkBase: '' });
 		expect([...host.querySelectorAll('.rm-goals a.rm-link')].map((a) => a.textContent)).toEqual(['docs']);
 		expect(host.querySelector('.rm-goal-text').textContent).toContain('spec 01');
+	});
+});
+
+describe('inline markdown in goals', () => {
+	it('reads code, bold and italic along with links, and leaves stray marks alone', () => {
+		expect(parseInline('Run `npm test` and **ship** it, *soon* [spec](a.md)')).toEqual([
+			{ text: 'Run ' }, { text: 'npm test', kind: 'code' }, { text: ' and ' }, { text: 'ship', kind: 'strong' }, { text: ' it, ' }, { text: 'soon', kind: 'em' }, { text: ' ' }, { text: 'spec', href: 'a.md' },
+		]);
+		expect(plainText('Run `npm test` and **ship** it')).toBe('Run npm test and ship it');
+		expect(plainText('2 * 3 = 6')).toBe('2 * 3 = 6');
 	});
 });

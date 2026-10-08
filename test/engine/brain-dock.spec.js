@@ -630,3 +630,22 @@ describe('Elarion voice dock', () => {
     expect(messages().at(-1)).toMatch(/^error: Voice input needs speech recognition/);
   });
 });
+
+describe('scope chips', () => {
+  it('shows what the conversation is about, tags the question, and sends the scope with it', async () => {
+    mount();
+    expect(dock.elements.scopeBar.hidden).toBe(true);
+    dock.setScopes([{ id: 'page', label: 'Marketing', context: { page: 'Marketing' } }], 'page');
+    expect(dock.elements.scopeBar.hidden).toBe(false);
+    expect([...dock.elements.scopeBar.querySelectorAll('.brain-chip')].map((c) => c.textContent + ':' + c.getAttribute('aria-pressed'))).toEqual(['Marketing:true', 'Everything:false']);
+    await type('How is it going?');
+    const chat = engine.calls.find((c) => c.path === '/api/master-brain/chat');
+    expect(chat.body.context).toEqual({ asking_about: 'Marketing', page: 'Marketing' });
+    expect(dock.elements.log.querySelector('.brain-user .brain-scope-tag').textContent).toBe('Asking about: Marketing');
+    dock.elements.scopeBar.querySelector('[data-scope=""]').click();
+    expect(dock.getScope()).toBe(null);
+    await type('And overall?');
+    const second = engine.calls.filter((c) => c.path === '/api/master-brain/chat')[1];
+    expect(second.body.context).toBeUndefined();
+  });
+});

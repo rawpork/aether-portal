@@ -44,6 +44,11 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const upgradeUrl = options.upgradeUrl || '';
   const onUpgrade = options.onUpgrade || (() => {});
   const onStarted = options.onStarted || (() => {});
+  // The "New project" button opens the one front door (new-project.js). Without it the button falls back to the raw editor.
+  const onNewProject = options.onNewProject || null;
+  // Called with the project open in the viewer (its full blueprint) once it has loaded, so Elarion's drawer can offer it as the
+  // thing being asked about.
+  const onSelectionChange = options.onSelectionChange || (() => {});
   const onExecuted = options.onExecuted || (() => {});
   // How often a started project run is checked until it ends.
   const pollMs = options.pollMs ?? 2000;
@@ -51,6 +56,8 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const onCompleted = options.onCompleted || (() => {});
 
   let artifacts = [];
+  // The run status line for each blueprint, so it survives the viewer being redrawn and shows wherever the project is open.
+  const runStatus = new Map();
   let selectedId = null;
   let selected = null; // full blueprint, or { error }
   let destroyed = false;
@@ -84,6 +91,11 @@ export function mountBlueprintWorkspace(container, options = {}) {
     el(doc, 'div', { class: 'bp-actions' }, [uploadButton, exampleButton, el(doc, 'span', { class: 'mc-spacer' }), validateButton, compileButton]),
     feedback,
   ]);
+
+  // Most people never write blueprint JSON: the New project button (templates, Space cards, a goal, or links) writes it for them.
+  // The editor stays for people who do, behind a plain disclosure.
+  const advancedSummary = el(doc, 'summary', { class: 'bp-advanced-summary', text: 'Advanced: Edit Blueprint JSON' });
+  const advanced = el(doc, 'details', { class: 'bp-advanced' }, [advancedSummary, form]);
 
   function showFeedback(kind, title, items = []) {
     const box = el(doc, 'div', { class: 'bp-result', 'data-kind': kind }, [el(doc, 'p', { class: 'bp-result-title', text: title })]);
@@ -187,9 +199,9 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const listStatus = el(doc, 'span', { class: 'mc-muted', 'aria-live': 'polite' });
   const refreshButton = el(doc, 'button', { type: 'button', class: 'toggle-button bp-refresh', text: 'Refresh' });
   const list = el(doc, 'ul', { class: 'bp-list', 'aria-label': 'Compiled blueprints' });
-  const listEmpty = el(doc, 'p', { class: 'mc-empty', text: 'No projects yet. Paste a blueprint below and compile it.' });
-  // The project list leads the page, so the editor (a long field) comes after it; this jumps straight there.
-  const newBlueprintButton = el(doc, 'button', { type: 'button', class: 'toggle-button bp-new', text: 'New blueprint' });
+  const listEmpty = el(doc, 'p', { class: 'mc-empty', text: 'No projects yet. Press New project to start one.' });
+  // The one front door: pick a template, choose Space cards, describe a goal or paste links.
+  const newBlueprintButton = el(doc, 'button', { type: 'button', class: 'bp-primary bp-new', text: '+ New project' });
   const viewer = el(doc, 'article', { class: 'bp-viewer', 'aria-label': 'Blueprint viewer' });
   const artifactsCard = el(doc, 'section', { class: 'bp-card bp-artifacts', 'aria-labelledby': 'bp-artifacts-title' }, [
     el(doc, 'div', { class: 'bp-card-head' }, [el(doc, 'h2', { id: 'bp-artifacts-title', text: 'Your projects' }), listStatus, el(doc, 'span', { class: 'mc-spacer' }), newBlueprintButton, refreshButton]),
@@ -291,7 +303,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
       deploy.setAttribute('aria-haspopup', 'dialog');
       deploy.append(el(doc, 'span', { class: 'bp-pro-badge', text: 'PRO' }));
     }
-    const deployStatus = el(doc, 'p', { class: 'bp-deploy-status mc-muted', 'aria-live': 'polite' });
+    const deployStatus = el(doc, 'p', { class: 'bp-deploy-status mc-muted', 'aria-live': 'polite', 'data-blueprint': bp.blueprint_id, text: runStatus.get(bp.blueprint_id) || '' });
     const confirmCancel = el(doc, 'button', { type: 'button', class: 'toggle-button bp-confirm-cancel', text: 'Cancel' });
     const confirmRun = el(doc, 'button', { type: 'button', class: 'bp-primary bp-confirm-run', text: 'Run blueprint' });
     // Website delivery: the run also builds a live website, drafted at /s/<slug> and public only after Approve & publish.
@@ -408,6 +420,22 @@ export function mountBlueprintWorkspace(container, options = {}) {
   async function execute(bp, deploy, confirmRow, deployStatus, { website = false } = {}) {
     confirmRow.hidden = true;
     deploy.disabled = true;
+    try {
+      await runBlueprint(bp, { website });
+    } finally {
+      deploy.disabled = false;
+    }
+  }
+
+  // The run itself, also started by the New project review's Approve & Run. Its status goes to the project's status line.
+  async function runBlueprint(bp, { website = false } = {}) {
+    const deployStatus = {
+      set textContent(text) {
+        runStatus.set(bp.blueprint_id, text);
+        const node = viewer.querySelector('.bp-deploy-status[data-blueprint="' + bp.blueprint_id + '"]');
+        if (node) node.textContent = text;
+      },
+    };
     const taskId = 'deploy-' + bp.blueprint_id;
     deployStatus.textContent = 'Elarion is analyzing the blueprint and planning the run…';
     try {
@@ -442,8 +470,6 @@ export function mountBlueprintWorkspace(container, options = {}) {
       onCompleted(bp, outcome);
     } catch (error) {
       deployStatus.textContent = 'Execution failed: ' + engineErrorText(error);
-    } finally {
-      deploy.disabled = false;
     }
   }
 
@@ -460,6 +486,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
       if (selectedId === id) selected = { error };
     }
     if (selectedId === id) renderViewer();
+    if (selectedId === id) onSelectionChange(selected);
   }
 
   async function refresh() {
@@ -476,8 +503,10 @@ export function mountBlueprintWorkspace(container, options = {}) {
 
   refreshButton.addEventListener('click', refresh);
 
-  container.replaceChildren(artifactsCard, form);
+  container.replaceChildren(artifactsCard, advanced);
   newBlueprintButton.addEventListener('click', () => {
+    if (onNewProject) return onNewProject();
+    advanced.open = true;
     form.scrollIntoView({ block: 'start' });
     editor.focus();
   });
@@ -486,6 +515,8 @@ export function mountBlueprintWorkspace(container, options = {}) {
 
   // Puts a spec into the editor and validates it (used for outcome blueprints sent from the main portal).
   function loadSpec(text) {
+    // A spec put here (an outcome's blueprint) is meant to be seen, so the editor opens.
+    advanced.open = true;
     editor.value = text;
     const result = validate();
     editor.focus();
@@ -497,8 +528,15 @@ export function mountBlueprintWorkspace(container, options = {}) {
     select,
     validate,
     loadSpec,
+    runBlueprint,
+    isPro: pro,
+    showUpgrade() {
+      upgradeModal.hidden = false;
+      upgradeClose.focus();
+    },
+    getRunStatus: (blueprintId) => runStatus.get(blueprintId) || '',
     getSelected: () => selected,
-    elements: { form, editor, fileInput, uploadButton, exampleButton, validateButton, compileButton, feedback, list, listEmpty, viewer, upgradeModal, refreshButton },
+    elements: { form, advanced, newBlueprintButton, editor, fileInput, uploadButton, exampleButton, validateButton, compileButton, feedback, list, listEmpty, viewer, upgradeModal, refreshButton },
     destroy() {
       destroyed = true;
       upgradeModal.remove();

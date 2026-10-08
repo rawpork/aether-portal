@@ -62,14 +62,20 @@ export function snapshot(tasks) {
   return new Map(tasks.map((t) => [t.agent_id + '/' + t.task_id, { status: t.status, run_id: t.run_id, awaitingKey: t.awaiting ? t.run_id + ':' + t.awaiting.step_index : null }]));
 }
 
-// Where the "Do this next" banner belongs. The overview always shows it. Anywhere else it shows only when something urgent
-// blocks the work (the engine, the key, a question waiting) and the button leads somewhere other than the page you are
-// already on; suggestions to start or review a project belong on the overview alone.
+// Where the "Do this next" banner belongs. Never on the page its own button leads to ("Open Projects" while Projects is open is
+// advice about where you already are). The overview shows it otherwise. Anywhere else it shows only when something urgent blocks
+// the work (the engine, the key, a question waiting); suggestions to start or review a project belong on the overview alone.
 export function bannerVisibleOn(action, view) {
   if (!action) return false;
+  if (action.action && action.action.view === view) return false;
   if (view === 'overview') return true;
-  return (action.kind === 'warn' || action.kind === 'alert') && Boolean(action.action) && action.action.view !== view;
+  return (action.kind === 'warn' || action.kind === 'alert') && Boolean(action.action);
 }
+
+// A banner is identified by what it says, so a dismissed one stays gone until the situation (and so the message) changes.
+export const DISMISSED_KEY = 'aether.mc.bannerDismissed';
+export const bannerKey = (action) => [action.kind, action.title, action.text].join('|');
+const MAX_DISMISSED = 30;
 
 export function mountDecisionCenter(doc, options = {}) {
   const win = doc.defaultView || globalThis;
@@ -89,6 +95,12 @@ export function mountDecisionCenter(doc, options = {}) {
   let lastBanner = '';
   const queue = [];
   let open = null;
+  // Banners the operator dismissed (see bannerKey).
+  let dismissed = [];
+  try {
+    const stored = JSON.parse((storage && storage.getItem && storage.getItem(DISMISSED_KEY)) || '[]');
+    if (Array.isArray(stored)) dismissed = stored.map(String).slice(-MAX_DISMISSED);
+  } catch { /* nothing remembered */ }
 
   // ---- choice popup
 
@@ -501,7 +513,7 @@ export function mountDecisionCenter(doc, options = {}) {
       runs = JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {};
     } catch { /* no run hints */ }
     const action = nextAction({ error, tasks, runs, setup: getSetup() });
-    const visible = bannerVisibleOn(action, view);
+    const visible = bannerVisibleOn(action, view) && !dismissed.includes(bannerKey(action));
     const sig = JSON.stringify([action, visible]);
     if (sig === lastBanner) return;
     lastBanner = sig;
@@ -515,7 +527,19 @@ export function mountDecisionCenter(doc, options = {}) {
       go.addEventListener('click', () => onNavigate(action.action.view));
       children.push(go);
     }
+    // One tap puts it away. It stays away until the message changes, and the status pill still carries anything urgent.
+    const dismiss = el(doc, 'button', { type: 'button', class: 'wf-next-dismiss', 'aria-label': 'Dismiss: ' + action.title, title: 'Dismiss', text: '×' });
+    dismiss.addEventListener('click', () => dismissBanner(action));
+    children.push(dismiss);
     slot.replaceChildren(...children);
+  }
+
+  function dismissBanner(action) {
+    const key = bannerKey(action);
+    if (!dismissed.includes(key)) dismissed = [...dismissed, key].slice(-MAX_DISMISSED);
+    try { storage && storage.setItem && storage.setItem(DISMISSED_KEY, JSON.stringify(dismissed)); } catch { /* storage blocked: it stays dismissed for this page */ }
+    lastBanner = '';
+    renderBanner();
   }
 
   async function poll() {
@@ -542,6 +566,16 @@ export function mountDecisionCenter(doc, options = {}) {
       renderBanner();
     },
     refreshBanner: renderBanner,
+    // The current banner's message, if one is on screen: { kind, title, text } (tests and the page use it).
+    getBanner: () => {
+      if (!slot || slot.hidden) return null;
+      const title = slot.querySelector('.wf-next-title');
+      return title ? { kind: slot.dataset.kind, title: title.textContent, text: (slot.querySelector('.wf-next-sub') || {}).textContent || '' } : null;
+    },
+    dismissBanner: () => {
+      const dismiss = slot && slot.querySelector('.wf-next-dismiss');
+      if (dismiss) dismiss.click();
+    },
     choose,
     learn,
     askSource,

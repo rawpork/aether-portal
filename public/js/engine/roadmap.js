@@ -37,8 +37,27 @@ export function parseMarkdownLinks(text) {
   return parts;
 }
 
-// The same text without the markdown: "Step 4.1 (spec 01)". For labels and tooltips, where the link syntax is noise.
-export const plainText = (text) => parseMarkdownLinks(text).map((part) => part.text).join('');
+// Inline markdown beyond links: `code`, **bold**, *italic*, as [{ text, kind? , href? }] with kind 'code' | 'strong' | 'em'.
+// Roadmap goals use these, so they must not show as literal backticks and asterisks.
+export function parseInline(text) {
+  const source = String(text == null ? '' : text);
+  const parts = [];
+  const pattern = /\[([^\]]+)\]\(([^)\s]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*\s][^*]*)\*/g;
+  let last = 0;
+  for (const match of source.matchAll(pattern)) {
+    if (match.index > last) parts.push({ text: source.slice(last, match.index) });
+    if (match[1] !== undefined) parts.push({ text: match[1], href: match[2] });
+    else if (match[3] !== undefined) parts.push({ text: match[3], kind: 'code' });
+    else if (match[4] !== undefined) parts.push({ text: match[4], kind: 'strong' });
+    else parts.push({ text: match[5], kind: 'em' });
+    last = match.index + match[0].length;
+  }
+  if (last < source.length) parts.push({ text: source.slice(last) });
+  return parts;
+}
+
+// The same text without the markdown: "Step 4.1 (spec 01)". For labels and tooltips, where the syntax is noise.
+export const plainText = (text) => parseInline(text).map((part) => part.text).join('');
 
 // Where a link goes, or null when it is not safe or sensible to open: http(s) addresses as they are, a repo path against the
 // base, anything else (javascript:, mailto:, protocol-relative, absolute paths) not at all.
@@ -83,7 +102,8 @@ export function mountRoadmap(container, options = {}) {
   const doc = container.ownerDocument;
   const linkBase = options.linkBase === undefined ? DEFAULT_LINK_BASE : options.linkBase;
   // Goal text as nodes: a real named link for each [label](target), the label alone when the target cannot be opened.
-  const goalNodes = (text) => parseMarkdownLinks(text).map((part) => {
+  const goalNodes = (text) => parseInline(text).map((part) => {
+    if (part.kind) return el(doc, part.kind === 'code' ? 'code' : part.kind, { class: part.kind === 'code' ? 'rm-code' : '', text: part.text });
     if (!part.href) return doc.createTextNode(part.text);
     const target = resolveLink(part.href, linkBase);
     if (!target) return doc.createTextNode(part.text);

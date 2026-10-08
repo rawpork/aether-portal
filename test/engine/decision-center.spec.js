@@ -399,3 +399,34 @@ describe('launch choice after a viable build', () => {
 		m.restore();
 	});
 });
+
+describe('dismissing the banner', () => {
+	const warn = { kind: 'warn', title: 'Add an AI model key', text: 'x', action: { label: 'Open Settings', view: 'connect' } };
+
+	it('is never shown on the page its button leads to', () => {
+		expect(bannerVisibleOn({ kind: 'go', title: 't', action: { label: 'Open Projects', view: 'blueprints' } }, 'blueprints')).toBe(false);
+		expect(bannerVisibleOn(warn, 'connect')).toBe(false);
+		expect(bannerVisibleOn(warn, 'monitor')).toBe(true);
+	});
+
+	it('puts the banner away with one tap and keeps it away until the message changes', async () => {
+		const store = new Map();
+		const storage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, v) };
+		const slot = document.createElement('section');
+		document.body.append(slot);
+		const engine = async (url) => (new URL(url).pathname === '/api/tasks' ? json({ tasks: [], counts: {} }) : json({ ok: true }));
+		const make = () => mountDecisionCenter(document, { api: createEngineApi({ baseUrl: 'http://localhost:3333', fetch: engine }), slot, pollMs: 100000, getSetup: () => ({ elarion_ready: false, miserly_key_status: 'missing', miserly_key_detail: 'No key' }), onNavigate: () => {}, storage });
+		let center = make();
+		await settle();
+		const button = slot.querySelector('.wf-next-dismiss');
+		expect(button.getAttribute('aria-label')).toMatch(/^Dismiss: /);
+		button.click();
+		expect(slot.hidden).toBe(true);
+		center.destroy();
+		slot.replaceChildren();
+		center = make();
+		await settle();
+		expect(slot.hidden).toBe(true);
+		center.destroy();
+	});
+});

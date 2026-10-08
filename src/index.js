@@ -1664,6 +1664,7 @@ export default {
       #thumb-wheel { transition: none; }
     }
     body.xr-presenting #thumb-wheel { display: none; }
+    #thumb-wheel, #wheel-mode { display: none !important; }
     /* Command bar: text first, with a mic that types by voice. Desktop: bottom centre, between the Categories list and
        the wheel. Phones: beside the wheel, with the Categories pill lifted above it. Hidden while a card is open (the
        card has its own Ask box), in a headset and over an expanded sheet. */
@@ -6621,8 +6622,8 @@ ${SHELL_SWITCH_CSS}
       applyGraphFilters();
       // First load in graph view: the layout grows out from the origin, so frame it once it has spread. A reload keeps
       // the layout (keepLayout), so it leaves the camera where it is.
-      if (firstLoad && filterState.view === 'graph' && !deepLinkId) scheduleLaunch(FIT_SETTLE_MS + 600);
-      else if (firstLoad && filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
+      // Zoom-to-fit: the first view is the whole graph, in frame, whatever the screen size. (The newest card's wall is one tap away.)
+      if (firstLoad && filterState.view === 'graph') scheduleFit(FIT_SETTLE_MS + 600);
       if (deepLinkId) openDeepLink();
       openLiveSync();
     };
@@ -10089,6 +10090,8 @@ ${SHELL_SWITCH_CSS}
     });
     const mountThumbWheel = () => {
       const spatial = window.AetherSpatial;
+      // The radial dial is retired: the toolbar and the tray menu carry every control, and the corner stays clear.
+      if (true) return;
       if (!spatial || !spatial.createThumbWheel || thumbWheel) return;
       thumbWheel = spatial.createThumbWheel({
         mount: thumbWheelMount,

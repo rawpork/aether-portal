@@ -134,6 +134,11 @@ export function mountBrainDock(container, options = {}) {
   };
 
   const view = { mode: 'idle', busy: false, halted: false };
+  // What the conversation is about, as chips: "Asking about: Marketing". scopes: [{ id, label, context }]; scope: the chosen id, or
+  // null for everything. The chosen scope's context travels with each typed message (the engine reads it as data), and its label
+  // is shown on that message in the thread.
+  let scopes = [];
+  let scope = null;
   // Voice session: the open stream, its ready frame, and whichever capture is running.
   const voice = { stream: null, ready: null, recognition: null, recorder: null, media: null, closing: false };
 
@@ -154,12 +159,14 @@ export function mountBrainDock(container, options = {}) {
   const sendButton = el(doc, 'button', { type: 'submit', class: 'brain-send', text: 'Send' });
   const form = el(doc, 'form', { class: 'brain-form', autocomplete: 'off' }, [input, micButton, speakButton, sendButton]);
   const hint = el(doc, 'p', { class: 'brain-hint' });
+  const scopeBar = el(doc, 'div', { class: 'brain-scope', role: 'group', 'aria-label': 'What you are asking about', hidden: true });
   const panel = el(doc, 'div', { class: 'brain-dock' }, [
     el(doc, 'header', { class: 'brain-head' }, [
       avatar,
       el(doc, 'div', { class: 'brain-title' }, [el(doc, 'h2', { text: 'Elarion · Master Brain' }), status]),
       newButton,
     ]),
+    scopeBar,
     log,
     interim,
     form,
@@ -191,6 +198,22 @@ export function mountBrainDock(container, options = {}) {
     hint.textContent = hintText();
   }
 
+  // The bar of chips under the header: "Asking about:" and one chip per scope, plus "Everything". Hidden when there is nothing to choose.
+  function renderScopes() {
+    scopeBar.replaceChildren();
+    scopeBar.hidden = scopes.length === 0;
+    if (!scopes.length) return;
+    scopeBar.append(el(doc, 'span', { class: 'brain-scope-label', text: 'Asking about:' }));
+    const chip = (id, label) => {
+      const on = scope === id;
+      const button = el(doc, 'button', { type: 'button', class: 'brain-chip', 'aria-pressed': String(on), 'data-scope': id === null ? '' : id, text: label });
+      button.addEventListener('click', () => setScope(id));
+      return button;
+    };
+    for (const s of scopes) scopeBar.append(chip(s.id, s.label));
+    scopeBar.append(chip(null, 'Everything'));
+  }
+
   function hintText() {
     if (view.halted) return 'The agent is halted. Reset it from the top bar to continue.';
     if (voice.ready) return voice.ready.stt ? 'Voice: the engine transcribes your audio.' : Recognition ? 'Voice: your browser transcribes speech, then the text goes to the engine.' : '';
@@ -214,6 +237,8 @@ export function mountBrainDock(container, options = {}) {
         sendTyped(choiceReply(option));
       }));
     }
+    // The scope this message was asked under, so the thread still says what each question was about.
+    if (kind === 'user' && meta.scope) item.append(el(doc, 'span', { class: 'brain-scope-tag', text: 'Asking about: ' + meta.scope }));
     log.append(item);
     log.scrollTop = log.scrollHeight;
     return item;
@@ -263,10 +288,11 @@ export function mountBrainDock(container, options = {}) {
   // --- typed chat
   async function sendTyped(text) {
     view.busy = true;
-    addMessage('user', text);
+    const chosen = scopes.find((s) => s.id === scope) || null;
+    addMessage('user', text, { scope: chosen ? chosen.label : null });
     setMode('thinking');
     try {
-      const reply = await api.sendMasterBrainChat(text, sessionId, { agentId });
+      const reply = await api.sendMasterBrainChat(text, sessionId, { agentId, ...(chosen && chosen.context ? { context: { asking_about: chosen.label, ...chosen.context } } : {}) });
       addMessage('assistant', reply.response, { tokens: reply.tokens });
       setMode('idle');
     } catch (error) {
@@ -619,9 +645,25 @@ export function mountBrainDock(container, options = {}) {
   }
   win.addEventListener('pagehide', onPageHide);
 
+  // The scopes on offer (the page being looked at, the project open) and the one chosen. A chosen scope that is no longer on offer
+  // falls back to "Everything" rather than naming something that is gone.
+  function setScopes(list, selectedId = scope) {
+    scopes = Array.isArray(list) ? list.filter((s) => s && s.id && s.label) : [];
+    scope = scopes.some((s) => s.id === selectedId) ? selectedId : null;
+    renderScopes();
+  }
+
+  function setScope(id) {
+    scope = id !== null && scopes.some((s) => s.id === id) ? id : null;
+    renderScopes();
+  }
+
   render();
 
   return {
+    setScopes,
+    setScope,
+    getScope: () => scope,
     // Sends a typed turn as if entered in the dock (Mission Control's command bar). False while busy or halted.
     send(text) {
       const value = String(text || '').trim();
@@ -631,7 +673,7 @@ export function mountBrainDock(container, options = {}) {
     },
     getMode: () => view.mode,
     getSessionId: () => sessionId,
-    elements: { panel, avatar, status, log, input, form, micButton, speakButton, sendButton, newButton, interim, hint },
+    elements: { panel, avatar, status, log, input, form, micButton, speakButton, sendButton, newButton, interim, hint, scopeBar },
     destroy() {
       onPageHide();
       win.removeEventListener('pagehide', onPageHide);

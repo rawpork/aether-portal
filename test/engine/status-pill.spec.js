@@ -3,25 +3,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEngineApi } from '../../public/js/engine-api.bundle.js';
 import { mountBreakerBar } from '../../public/js/engine/breaker-bar.js';
-import { formatAge, mountStatusPill, summarizeStatus } from '../../public/js/engine/status-pill.js';
+import { computeText, formatAge, mountStatusPill, summarizeStatus } from '../../public/js/engine/status-pill.js';
 import { renderMissionControlPage } from '../../src/mission-control-page.js';
 
 describe('summarizeStatus priority', () => {
   const idle = { breaker: { state: 'ACTIVE' }, agents: { working: 0, total: 1 }, waiting: 0, elarion: { hidden: false, kind: 'running' } };
 
-  it('is All idle when nothing needs anything', () => {
-    expect(summarizeStatus(idle)).toEqual({ kind: 'idle', text: 'All idle' });
+  it('reads Engine Live when nothing needs anything', () => {
+    expect(summarizeStatus(idle)).toEqual({ kind: 'idle', text: 'Engine Live' });
   });
 
   it('ranks Halted over engine trouble over Needs you over working over setup', () => {
     const busy = { ...idle, agents: { working: 2, total: 3 }, waiting: 1, elarion: { hidden: false, kind: 'alert' } };
-    expect(summarizeStatus({ ...busy, breaker: { state: 'HALTED' } }).text).toBe('Halted');
+    expect(summarizeStatus({ ...busy, breaker: { state: 'HALTED' } }).text).toBe('Agents stopped');
     expect(summarizeStatus({ ...busy, breaker: { state: 'OFFLINE' } }).text).toBe('Engine offline');
     expect(summarizeStatus({ ...busy, breaker: { state: 'AUTH' } }).text).toBe('Sign-in needed');
     expect(summarizeStatus({ ...busy, breaker: { state: 'ERROR' } }).text).toBe('Engine error');
     expect(summarizeStatus(busy)).toEqual({ kind: 'alert', text: 'Needs you · 1' });
-    expect(summarizeStatus({ ...busy, waiting: 0 })).toEqual({ kind: 'running', text: '2 working' });
-    expect(summarizeStatus({ ...busy, waiting: 0, agents: { working: 0, total: 3 } })).toEqual({ kind: 'alert', text: 'Setup needed' });
+    expect(summarizeStatus({ ...busy, waiting: 0 })).toEqual({ kind: 'running', text: 'Engine Live · 2 working' });
+    expect(summarizeStatus({ ...busy, waiting: 0, agents: { working: 0, total: 3 } })).toEqual({ kind: 'alert', text: 'Engine Live · Setup needed' });
     expect(summarizeStatus({ breaker: { state: 'CONNECTING' } }).text).toBe('Checking');
   });
 
@@ -54,13 +54,13 @@ describe('status pill popover', () => {
 
   it('shows a worded state with a full accessible name, not colour alone', () => {
     status.update({ breaker: { state: 'ACTIVE' } });
-    expect(pill.textContent.trim()).toBe('All idle');
-    expect(pill.getAttribute('aria-label')).toBe('Fleet status: All idle. Open details.');
+    expect(pill.textContent.trim()).toBe('Engine Live');
+    expect(pill.getAttribute('aria-label')).toBe('Fleet status: Engine Live. Open details.');
     expect(pill.getAttribute('aria-haspopup')).toBe('dialog');
     expect(pill.getAttribute('aria-expanded')).toBe('false');
     status.update({ agents: { working: 2, total: 3 } });
     expect(pill.dataset.kind).toBe('running');
-    expect(pill.textContent.trim()).toBe('2 working');
+    expect(pill.textContent.trim()).toBe('Engine Live · 2 working');
   });
 
   it('opens on click with focus on the panel, and Escape closes it and returns focus to the pill', () => {
@@ -93,9 +93,9 @@ describe('status pill popover', () => {
   it('announces changes politely, and Halted through the alert region', () => {
     status.update({ breaker: { state: 'ACTIVE' } });
     status.update({ agents: { working: 1, total: 1 } });
-    expect(root.querySelector('[data-status="live"]').textContent).toBe('Fleet status: 1 working');
+    expect(root.querySelector('[data-status="live"]').textContent).toBe('Fleet status: Engine Live · 1 working');
     status.update({ breaker: { state: 'HALTED', reason: 'Operator manual trip from Portal UI' } });
-    expect(root.querySelector('[data-status="alert"]').textContent).toBe('Fleet status: Halted');
+    expect(root.querySelector('[data-status="alert"]').textContent).toBe('Fleet status: Agents stopped');
     expect(root.querySelector('[data-status="cutoff"]').textContent).toContain('On. Agents are stopped');
   });
 
@@ -208,4 +208,11 @@ describe('stop all agents through the breaker bar', () => {
     expect(last.state).toBe('ACTIVE');
     expect(typeof last.syncedAt).toBe('number');
   });
+});
+
+describe('compute readout', () => {
+	it('words the tokens and finished runs', () => {
+		expect(computeText({ tokens: 12345, completed: 4, runs: 6 })).toBe('12.3k tokens · 4 of 6 runs done');
+		expect(computeText(null)).toBe('0 tokens · 0 of 0 runs done');
+	});
 });

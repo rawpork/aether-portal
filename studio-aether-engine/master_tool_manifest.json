@@ -1,0 +1,4861 @@
+{
+  "ecc.get_project_path": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_project_path",
+    "file_path": "repos/ecc/ecc_dashboard.py",
+    "repo_root": "repos/ecc",
+    "description": "Get the ECC project path - assumes this script is run from the project dir",
+    "args": []
+  },
+  "ecc.load_agents": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_agents",
+    "file_path": "repos/ecc/ecc_dashboard.py",
+    "repo_root": "repos/ecc",
+    "description": "Load agents by scanning the agents/ directory.",
+    "args": [
+      "project_path"
+    ]
+  },
+  "ecc.load_skills": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_skills",
+    "file_path": "repos/ecc/ecc_dashboard.py",
+    "repo_root": "repos/ecc",
+    "description": "Load skills from skills directory",
+    "args": [
+      "project_path"
+    ]
+  },
+  "ecc.load_commands": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_commands",
+    "file_path": "repos/ecc/ecc_dashboard.py",
+    "repo_root": "repos/ecc",
+    "description": "Load commands from commands directory",
+    "args": [
+      "project_path"
+    ]
+  },
+  "ecc.load_rules": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_rules",
+    "file_path": "repos/ecc/ecc_dashboard.py",
+    "repo_root": "repos/ecc",
+    "description": "Load rules from rules directory",
+    "args": [
+      "project_path"
+    ]
+  },
+  "ecc.main": {
+    "type": "PYTHON_NATIVE",
+    "name": "main",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'main' from selector.py.",
+    "args": []
+  },
+  "ecc.aura_verdict": {
+    "type": "PYTHON_NATIVE",
+    "name": "aura_verdict",
+    "file_path": "repos/ecc/integrations/aura/adapter.py",
+    "repo_root": "repos/ecc",
+    "description": "Look up the trust verdict for a counterparty DID. Never raises on a",
+    "args": [
+      "did"
+    ]
+  },
+  "ecc.before_settle": {
+    "type": "PYTHON_NATIVE",
+    "name": "before_settle",
+    "file_path": "repos/ecc/integrations/aura/adapter.py",
+    "repo_root": "repos/ecc",
+    "description": "Gate a sensitive action behind a trust check. Returns the verdict on pass,",
+    "args": [
+      "did"
+    ]
+  },
+  "ecc.count_words": {
+    "type": "PYTHON_NATIVE",
+    "name": "count_words",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'count_words' from evaluate.py.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.check_accuracy": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_accuracy",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Check for verifiable claims, tool output references, error signs.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.check_completeness": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_completeness",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Check for requirement coverage, edge cases, error handling.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.check_clarity": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_clarity",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Check for structure, readability, jargon handling.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.check_actionability": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_actionability",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Check if the user can act on the output immediately.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.check_conciseness": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_conciseness",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Check for redundancy, filler, information density.",
+    "args": [
+      "text",
+      "task"
+    ]
+  },
+  "ecc.evaluate": {
+    "type": "PYTHON_NATIVE",
+    "name": "evaluate",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Run all 5 axis checks and return scored results.",
+    "args": [
+      "task",
+      "output"
+    ]
+  },
+  "ecc.format_report": {
+    "type": "PYTHON_NATIVE",
+    "name": "format_report",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/scripts/evaluate.py",
+    "repo_root": "repos/ecc",
+    "description": "Format scores into a readable evaluation report.",
+    "args": [
+      "scores"
+    ]
+  },
+  "ecc.extract_content": {
+    "type": "PYTHON_NATIVE",
+    "name": "extract_content",
+    "file_path": "repos/ecc/scripts/hooks/insaits-security-monitor.py",
+    "repo_root": "repos/ecc",
+    "description": "Extract inspectable text from a Claude Code tool input payload.",
+    "args": [
+      "data"
+    ]
+  },
+  "ecc.write_audit": {
+    "type": "PYTHON_NATIVE",
+    "name": "write_audit",
+    "file_path": "repos/ecc/scripts/hooks/insaits-security-monitor.py",
+    "repo_root": "repos/ecc",
+    "description": "Append an audit event to the JSONL audit log.",
+    "args": [
+      "event"
+    ]
+  },
+  "ecc.get_anomaly_attr": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_anomaly_attr",
+    "file_path": "repos/ecc/scripts/hooks/insaits-security-monitor.py",
+    "repo_root": "repos/ecc",
+    "description": "Get a field from an anomaly that may be a dict or an object.",
+    "args": [
+      "anomaly",
+      "key",
+      "default"
+    ]
+  },
+  "ecc.format_feedback": {
+    "type": "PYTHON_NATIVE",
+    "name": "format_feedback",
+    "file_path": "repos/ecc/scripts/hooks/insaits-security-monitor.py",
+    "repo_root": "repos/ecc",
+    "description": "Format detected anomalies as feedback for Claude Code.",
+    "args": [
+      "anomalies"
+    ]
+  },
+  "ecc.maximize_window": {
+    "type": "PYTHON_NATIVE",
+    "name": "maximize_window",
+    "file_path": "repos/ecc/scripts/lib/ecc_dashboard_runtime.py",
+    "repo_root": "repos/ecc",
+    "description": "Maximize the dashboard window using the safest supported method.",
+    "args": [
+      "window"
+    ]
+  },
+  "ecc.build_terminal_launch": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_terminal_launch",
+    "file_path": "repos/ecc/scripts/lib/ecc_dashboard_runtime.py",
+    "repo_root": "repos/ecc",
+    "description": "Return safe argv/kwargs for opening a terminal rooted at the requested path.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.launch_terminal": {
+    "type": "PYTHON_NATIVE",
+    "name": "launch_terminal",
+    "file_path": "repos/ecc/scripts/lib/ecc_dashboard_runtime.py",
+    "repo_root": "repos/ecc",
+    "description": "Open a terminal at the given path after validating the target directory.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.detect_project": {
+    "type": "PYTHON_NATIVE",
+    "name": "detect_project",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Detect current project context. Returns dict with id, name, root, project_dir.",
+    "args": []
+  },
+  "ecc.load_registry": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_registry",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Load the projects registry.",
+    "args": []
+  },
+  "ecc.parse_instinct_file": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_instinct_file",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Parse YAML-like instinct file format.",
+    "args": [
+      "content"
+    ]
+  },
+  "ecc.load_all_instincts": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_all_instincts",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Load all instincts: project-scoped + global.",
+    "args": [
+      "project",
+      "include_global"
+    ]
+  },
+  "ecc.load_project_only_instincts": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_project_only_instincts",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Load only project-scoped instincts (no global).",
+    "args": [
+      "project"
+    ]
+  },
+  "ecc.cmd_status": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_status",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Show status of all instincts (project + global).",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_import": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_import",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Import instincts from file or URL.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_export": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_export",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_export' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_evolve": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_evolve",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Analyze instincts and suggest evolutions to skills/commands/agents.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_promote": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_promote",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Promote project-scoped instincts to global scope.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_projects": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_projects",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "List or maintain known projects and their instinct counts.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_prune": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_prune",
+    "file_path": "repos/ecc/skills/continuous-learning-v2/scripts/instinct-cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Delete pending instincts older than the TTL threshold.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.get_project_memory_dir": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_project_memory_dir",
+    "file_path": "repos/ecc/skills/delivery-gate/hooks/quality-gate.py",
+    "repo_root": "repos/ecc",
+    "description": "Find the current project's memory directory.",
+    "args": []
+  },
+  "ecc.check_disk": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_disk",
+    "file_path": "repos/ecc/skills/delivery-gate/hooks/quality-gate.py",
+    "repo_root": "repos/ecc",
+    "description": "Check free space on the disk containing the home directory.",
+    "args": []
+  },
+  "ecc.check_stale_libs": {
+    "type": "PYTHON_NATIVE",
+    "name": "check_stale_libs",
+    "file_path": "repos/ecc/skills/delivery-gate/hooks/quality-gate.py",
+    "repo_root": "repos/ecc",
+    "description": "Return list of library names not updated today.",
+    "args": [
+      "mem_dir"
+    ]
+  },
+  "ecc.count_edits": {
+    "type": "PYTHON_NATIVE",
+    "name": "count_edits",
+    "file_path": "repos/ecc/skills/delivery-gate/hooks/quality-gate.py",
+    "repo_root": "repos/ecc",
+    "description": "Count Edit/Write tool invocations in the full transcript.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.extract_pptx": {
+    "type": "PYTHON_NATIVE",
+    "name": "extract_pptx",
+    "file_path": "repos/ecc/skills/frontend-slides/scripts/extract-pptx.py",
+    "repo_root": "repos/ecc",
+    "description": "Extract all content from a PowerPoint file.",
+    "args": [
+      "file_path",
+      "output_dir"
+    ]
+  },
+  "ecc.pick": {
+    "type": "PYTHON_NATIVE",
+    "name": "pick",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/gacha.py",
+    "repo_root": "repos/ecc",
+    "description": "\u4f7f\u7528 secrets \u6a21\u5757\uff08\u76f4\u63a5\u8bfb os.urandom\uff09\u786e\u4fdd\u771f\u968f\u673a",
+    "args": [
+      "pool"
+    ]
+  },
+  "ecc.connect": {
+    "type": "PYTHON_NATIVE",
+    "name": "connect",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Open an existing caller-selected database; never apply schema/migrations.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.claim": {
+    "type": "PYTHON_NATIVE",
+    "name": "claim",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Reserve one already-authorized decision; return only a random claim token.",
+    "args": [
+      "db",
+      "obligation_id",
+      "decision_id"
+    ]
+  },
+  "ecc.begin_dispatch": {
+    "type": "PYTHON_NATIVE",
+    "name": "begin_dispatch",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Return bound payload once, only after dispatching state has committed.",
+    "args": [
+      "db",
+      "token"
+    ]
+  },
+  "ecc.cancel": {
+    "type": "PYTHON_NATIVE",
+    "name": "cancel",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Cancel only a not-yet-dispatched claim. Never reopen its decision key.",
+    "args": [
+      "db",
+      "token"
+    ]
+  },
+  "ecc.mark_unknown": {
+    "type": "PYTHON_NATIVE",
+    "name": "mark_unknown",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Record uncertainty, including a restarted worker's dispatching claim.",
+    "args": [
+      "db",
+      "token"
+    ]
+  },
+  "ecc.complete": {
+    "type": "PYTHON_NATIVE",
+    "name": "complete",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Atomically record a confirmed result; identical duplicate completion is a no-op.",
+    "args": [
+      "db",
+      "token",
+      "coordinate"
+    ]
+  },
+  "ecc.reconcile": {
+    "type": "PYTHON_NATIVE",
+    "name": "reconcile",
+    "file_path": "repos/ecc/skills/operator-approval-loop/references/approval_claims.py",
+    "repo_root": "repos/ecc",
+    "description": "Trusted caller supplies verified outcome evidence; this does not verify it.",
+    "args": [
+      "db",
+      "token",
+      "coordinate",
+      "evidence"
+    ]
+  },
+  "ecc.classify_events": {
+    "type": "PYTHON_NATIVE",
+    "name": "classify_events",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/classifier.py",
+    "repo_root": "repos/ecc",
+    "description": "Classify which tool calls match which compliance steps.",
+    "args": [
+      "spec",
+      "trace",
+      "model"
+    ]
+  },
+  "ecc.grade": {
+    "type": "PYTHON_NATIVE",
+    "name": "grade",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/grader.py",
+    "repo_root": "repos/ecc",
+    "description": "Grade a trace against a compliance spec using LLM classification.",
+    "args": [
+      "spec",
+      "trace",
+      "classifier_model"
+    ]
+  },
+  "ecc.parse_trace": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_trace",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/parser.py",
+    "repo_root": "repos/ecc",
+    "description": "Parse a JSONL observation trace file into sorted events.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.parse_spec": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_spec",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/parser.py",
+    "repo_root": "repos/ecc",
+    "description": "Parse a YAML compliance spec file.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.generate_report": {
+    "type": "PYTHON_NATIVE",
+    "name": "generate_report",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/report.py",
+    "repo_root": "repos/ecc",
+    "description": "Generate a Markdown compliance report.",
+    "args": [
+      "skill_path",
+      "spec",
+      "results",
+      "scenarios"
+    ]
+  },
+  "ecc.run_scenario": {
+    "type": "PYTHON_NATIVE",
+    "name": "run_scenario",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/runner.py",
+    "repo_root": "repos/ecc",
+    "description": "Execute a scenario and extract tool calls from stream-json output.",
+    "args": [
+      "scenario",
+      "model",
+      "max_turns",
+      "timeout"
+    ]
+  },
+  "ecc.generate_scenarios": {
+    "type": "PYTHON_NATIVE",
+    "name": "generate_scenarios",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/scenario_generator.py",
+    "repo_root": "repos/ecc",
+    "description": "Generate 3 scenarios with decreasing prompt strictness.",
+    "args": [
+      "skill_path",
+      "spec_yaml",
+      "model"
+    ]
+  },
+  "ecc.generate_spec": {
+    "type": "PYTHON_NATIVE",
+    "name": "generate_spec",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/spec_generator.py",
+    "repo_root": "repos/ecc",
+    "description": "Generate a compliance spec from a skill/rule file.",
+    "args": [
+      "skill_path",
+      "model",
+      "max_retries"
+    ]
+  },
+  "ecc.extract_yaml": {
+    "type": "PYTHON_NATIVE",
+    "name": "extract_yaml",
+    "file_path": "repos/ecc/skills/skill-comply/scripts/utils.py",
+    "repo_root": "repos/ecc",
+    "description": "Extract YAML from LLM output, stripping markdown fences if present.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.build_prompt": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_prompt",
+    "file_path": "repos/ecc/skills/taste-application/scripts/apply.py",
+    "repo_root": "repos/ecc",
+    "description": "Assemble one shot prompt: structure and motion only, then brief, then avoid.",
+    "args": [
+      "spec",
+      "grade",
+      "style_steer",
+      "brief",
+      "index",
+      "n_shots",
+      "duration",
+      "n_cuts"
+    ]
+  },
+  "ecc.apply": {
+    "type": "PYTHON_NATIVE",
+    "name": "apply",
+    "file_path": "repos/ecc/skills/taste-application/scripts/apply.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'apply' from apply.py.",
+    "args": [
+      "genre",
+      "style_steer",
+      "brief",
+      "duration",
+      "root",
+      "base_video",
+      "overlays",
+      "out",
+      "concurrency",
+      "take_len",
+      "assemble",
+      "base_ratio",
+      "strength",
+      "fps",
+      "tier"
+    ]
+  },
+  "ecc.rim_colour": {
+    "type": "PYTHON_NATIVE",
+    "name": "rim_colour",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "The pack's peak-chroma zone, as a linear-sRGB light colour.",
+    "args": [
+      "pack_dir"
+    ]
+  },
+  "ecc.validate_settings": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_settings",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'validate_settings' from blender_prop.py.",
+    "args": [
+      "frames",
+      "width",
+      "height",
+      "fps"
+    ]
+  },
+  "ecc.validate_output": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_output",
+    "file_path": "repos/ecc/skills/taste-application/scripts/forge.py",
+    "repo_root": "repos/ecc",
+    "description": "Refuse to replace either a viewing copy or any part of its handoff.",
+    "args": [
+      "out_path"
+    ]
+  },
+  "ecc.validate_bounds": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_bounds",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'validate_bounds' from blender_prop.py.",
+    "args": [
+      "lower",
+      "upper"
+    ]
+  },
+  "ecc.camera_distance": {
+    "type": "PYTHON_NATIVE",
+    "name": "camera_distance",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "Fit the original bounding sphere with the original 50 mm / 36 mm camera.",
+    "args": [
+      "radius",
+      "width",
+      "height"
+    ]
+  },
+  "ecc.linearize_action": {
+    "type": "PYTHON_NATIVE",
+    "name": "linearize_action",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "Blender 4 legacy actions and Blender 5 slotted action channel bags.",
+    "args": [
+      "action"
+    ]
+  },
+  "ecc.verify_render": {
+    "type": "PYTHON_NATIVE",
+    "name": "verify_render",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'verify_render' from blender_prop.py.",
+    "args": [
+      "status",
+      "render_dir",
+      "frames"
+    ]
+  },
+  "ecc.build": {
+    "type": "PYTHON_NATIVE",
+    "name": "build",
+    "file_path": "repos/ecc/skills/taste-application/scripts/blender_prop.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'build' from blender_prop.py.",
+    "args": [
+      "mesh",
+      "pack",
+      "out",
+      "frames",
+      "size",
+      "render_dir"
+    ]
+  },
+  "ecc.extract_json": {
+    "type": "PYTHON_NATIVE",
+    "name": "extract_json",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Pull a JSON object out of a model reply.",
+    "args": [
+      "text"
+    ]
+  },
+  "ecc.validate_spec": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_spec",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Coerce a parsed object onto the schema. Returns (spec, problems).",
+    "args": [
+      "obj"
+    ]
+  },
+  "ecc.detail_score": {
+    "type": "PYTHON_NATIVE",
+    "name": "detail_score",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Variance of the Laplacian - a standard sharpness/detail proxy.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.pick_stills": {
+    "type": "PYTHON_NATIVE",
+    "name": "pick_stills",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Spread the selection across the whole pack rather than taking a prefix.",
+    "args": [
+      "stills",
+      "limit"
+    ]
+  },
+  "ecc.build_grounding": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_grounding",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Turn the minted measurements into a factual preamble for the VLM.",
+    "args": [
+      "sp"
+    ]
+  },
+  "ecc.banned_hits": {
+    "type": "PYTHON_NATIVE",
+    "name": "banned_hits",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Fields that hedge, and which words they hedged with.",
+    "args": [
+      "spec"
+    ]
+  },
+  "ecc.describe": {
+    "type": "PYTHON_NATIVE",
+    "name": "describe",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Ask the VLM for the style spec, repairing once if it does not parse.",
+    "args": [
+      "image_urls",
+      "grounding"
+    ]
+  },
+  "ecc.mint_prop": {
+    "type": "PYTHON_NATIVE",
+    "name": "mint_prop",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Turn the highest-detail still into a GLB and store it in the pack.",
+    "args": [
+      "sp",
+      "stills"
+    ]
+  },
+  "ecc.distill": {
+    "type": "PYTHON_NATIVE",
+    "name": "distill",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'distill' from distill.py.",
+    "args": [
+      "genre",
+      "root",
+      "max_stills",
+      "props"
+    ]
+  },
+  "ecc.use_tier": {
+    "type": "PYTHON_NATIVE",
+    "name": "use_tier",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Repoint one slot at a named tier. Returns the endpoint now in use.",
+    "args": [
+      "slot",
+      "tier"
+    ]
+  },
+  "ecc.is_dry_run": {
+    "type": "PYTHON_NATIVE",
+    "name": "is_dry_run",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "True when ``TASTE_FORGE_DRY_RUN`` is set to a truthy value.",
+    "args": []
+  },
+  "ecc.enable_dry_run": {
+    "type": "PYTHON_NATIVE",
+    "name": "enable_dry_run",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Turn on dry-run mode for this process (what ``--dry-run`` calls).",
+    "args": []
+  },
+  "ecc.require_live": {
+    "type": "PYTHON_NATIVE",
+    "name": "require_live",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Require explicit process-level authorization before any live transport.",
+    "args": []
+  },
+  "ecc.safe_url": {
+    "type": "PYTHON_NATIVE",
+    "name": "safe_url",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Log only origin: paths, queries and userinfo can carry signed secrets.",
+    "args": [
+      "url"
+    ]
+  },
+  "ecc.api_key": {
+    "type": "PYTHON_NATIVE",
+    "name": "api_key",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Return ``FAL_KEY`` after live opt-in. Never logs the value.",
+    "args": []
+  },
+  "ecc.submit": {
+    "type": "PYTHON_NATIVE",
+    "name": "submit",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Submit once. Ambiguous failures must be reconciled before another job.",
+    "args": [
+      "endpoint",
+      "payload",
+      "timeout"
+    ]
+  },
+  "ecc.upload": {
+    "type": "PYTHON_NATIVE",
+    "name": "upload",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Upload a local file and return its URL, memoized per (path, mtime, size).",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.upload_many": {
+    "type": "PYTHON_NATIVE",
+    "name": "upload_many",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'upload_many' from falapi.py.",
+    "args": [
+      "paths"
+    ]
+  },
+  "ecc.clear_upload_cache": {
+    "type": "PYTHON_NATIVE",
+    "name": "clear_upload_cache",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'clear_upload_cache' from falapi.py.",
+    "args": []
+  },
+  "ecc.parse_urls": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_urls",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Collect every URL in a response, depth-first, in order.",
+    "args": [
+      "result"
+    ]
+  },
+  "ecc.first_url": {
+    "type": "PYTHON_NATIVE",
+    "name": "first_url",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'first_url' from falapi.py.",
+    "args": [
+      "result",
+      "endpoint"
+    ]
+  },
+  "ecc.vlm_describe": {
+    "type": "PYTHON_NATIVE",
+    "name": "vlm_describe",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Describe reference stills. Returns the model's raw text output.",
+    "args": [
+      "image_urls",
+      "prompt",
+      "schema_hint"
+    ]
+  },
+  "ecc.image_to_3d": {
+    "type": "PYTHON_NATIVE",
+    "name": "image_to_3d",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Mint a textured GLB from one still, or from up to 8 named views.",
+    "args": [
+      "image_url"
+    ]
+  },
+  "ecc.text_to_3d": {
+    "type": "PYTHON_NATIVE",
+    "name": "text_to_3d",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Mint a textured GLB from a description. Returns the mesh URL.",
+    "args": [
+      "prompt"
+    ]
+  },
+  "ecc.retopologize": {
+    "type": "PYTHON_NATIVE",
+    "name": "retopologize",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Rebuild a generated mesh's topology as clean quads (or tris).",
+    "args": [
+      "mesh_url"
+    ]
+  },
+  "ecc.split_parts": {
+    "type": "PYTHON_NATIVE",
+    "name": "split_parts",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Segment a mesh into separately editable parts. Returns part URLs.",
+    "args": [
+      "mesh_url"
+    ]
+  },
+  "ecc.images_to_video": {
+    "type": "PYTHON_NATIVE",
+    "name": "images_to_video",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Assemble ordered frames into a video.",
+    "args": [
+      "image_urls"
+    ]
+  },
+  "ecc.reference_to_video": {
+    "type": "PYTHON_NATIVE",
+    "name": "reference_to_video",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Generate one shot from a style-reference image. Returns the video URL.",
+    "args": [
+      "image_url",
+      "prompt",
+      "duration"
+    ]
+  },
+  "ecc.quantize_duration": {
+    "type": "PYTHON_NATIVE",
+    "name": "quantize_duration",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Round a planned shot length onto the video model's supported grid.",
+    "args": [
+      "duration",
+      "lo",
+      "hi"
+    ]
+  },
+  "ecc.text_to_image": {
+    "type": "PYTHON_NATIVE",
+    "name": "text_to_image",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Generate stills, optionally conditioned on reference images.",
+    "args": [
+      "prompt",
+      "image_refs"
+    ]
+  },
+  "ecc.extract_frame": {
+    "type": "PYTHON_NATIVE",
+    "name": "extract_frame",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Pull a single frame out of a hosted video. Returns the image URL.",
+    "args": [
+      "video_url",
+      "timestamp"
+    ]
+  },
+  "ecc.compose": {
+    "type": "PYTHON_NATIVE",
+    "name": "compose",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Composite timeline tracks into one video. Returns the output URL.",
+    "args": [
+      "tracks"
+    ]
+  },
+  "ecc.merge_videos": {
+    "type": "PYTHON_NATIVE",
+    "name": "merge_videos",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Concatenate videos end to end. Returns the merged URL.",
+    "args": [
+      "video_urls"
+    ]
+  },
+  "ecc.download": {
+    "type": "PYTHON_NATIVE",
+    "name": "download",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/falapi.py",
+    "repo_root": "repos/ecc",
+    "description": "Bounded HTTPS download; failed transfers preserve existing destinations.",
+    "args": [
+      "url",
+      "dest"
+    ]
+  },
+  "ecc.forge": {
+    "type": "PYTHON_NATIVE",
+    "name": "forge",
+    "file_path": "repos/ecc/skills/taste-application/scripts/forge.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'forge' from forge.py.",
+    "args": [
+      "genre",
+      "takes",
+      "out",
+      "root",
+      "base_video",
+      "base_ratio",
+      "overlays",
+      "overlay_every",
+      "overlay_opacity",
+      "duration",
+      "strength",
+      "grade_base",
+      "width",
+      "height",
+      "work",
+      "plan",
+      "fps"
+    ]
+  },
+  "ecc.mint": {
+    "type": "PYTHON_NATIVE",
+    "name": "mint",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/mint.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'mint' from mint.py.",
+    "args": [
+      "genre",
+      "refs",
+      "root",
+      "lut_size",
+      "strength",
+      "frames_per_ref",
+      "max_stills",
+      "mask_ui"
+    ]
+  },
+  "ecc.mint3d": {
+    "type": "PYTHON_NATIVE",
+    "name": "mint3d",
+    "file_path": "repos/ecc/skills/taste-application/scripts/mint3d.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'mint3d' from mint3d.py.",
+    "args": [
+      "genre",
+      "root",
+      "from_stills",
+      "prompt",
+      "plate",
+      "name",
+      "pbr",
+      "retopo",
+      "split",
+      "render",
+      "frames",
+      "size",
+      "backend",
+      "face_count"
+    ]
+  },
+  "ecc.load_resolve_module": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_resolve_module",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Import ``DaVinciResolveScript`` defensively. Returns the module or ``None``.",
+    "args": []
+  },
+  "ecc.resolve_unavailable_message": {
+    "type": "PYTHON_NATIVE",
+    "name": "resolve_unavailable_message",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'resolve_unavailable_message' from resolve_ingest.py.",
+    "args": []
+  },
+  "ecc.resolve_lut_dirs": {
+    "type": "PYTHON_NATIVE",
+    "name": "resolve_lut_dirs",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Per-platform Resolve LUT directories, most-preferred first.",
+    "args": []
+  },
+  "ecc.collect_media": {
+    "type": "PYTHON_NATIVE",
+    "name": "collect_media",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Expand ``--media`` (files and/or directories) into an ordered file list.",
+    "args": [
+      "entries",
+      "sp"
+    ]
+  },
+  "ecc.build_clips": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_clips",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Marry media files to the reference's shot-length distribution.",
+    "args": [
+      "media",
+      "cad"
+    ]
+  },
+  "ecc.detect_resolution": {
+    "type": "PYTHON_NATIVE",
+    "name": "detect_resolution",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Read frame size off the first readable media file; fall back to 1080p.",
+    "args": [
+      "media",
+      "default"
+    ]
+  },
+  "ecc.stage_lut": {
+    "type": "PYTHON_NATIVE",
+    "name": "stage_lut",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Copy ``look.cube`` into Resolve's LUT folder.",
+    "args": [
+      "sp",
+      "dry_run"
+    ]
+  },
+  "ecc.run_resolve": {
+    "type": "PYTHON_NATIVE",
+    "name": "run_resolve",
+    "file_path": "repos/ecc/skills/taste-application/scripts/resolve_ingest.py",
+    "repo_root": "repos/ecc",
+    "description": "Everything that touches the live Resolve instance. Returns an exit code.",
+    "args": [
+      "dvr",
+      "project_name",
+      "fps",
+      "media",
+      "fcpxml_path",
+      "lut_rel"
+    ]
+  },
+  "ecc.background_share": {
+    "type": "PYTHON_NATIVE",
+    "name": "background_share",
+    "file_path": "repos/ecc/skills/taste-application/scripts/verify.py",
+    "repo_root": "repos/ecc",
+    "description": "Share of pixels dark enough to read as unlit background.",
+    "args": [
+      "lab",
+      "thresh"
+    ]
+  },
+  "ecc.banding_score": {
+    "type": "PYTHON_NATIVE",
+    "name": "banding_score",
+    "file_path": "repos/ecc/skills/taste-application/scripts/verify.py",
+    "repo_root": "repos/ecc",
+    "description": "Empty L* histogram bins that sit between two occupied ones.",
+    "args": [
+      "lab",
+      "bins"
+    ]
+  },
+  "ecc.zone_chroma": {
+    "type": "PYTHON_NATIVE",
+    "name": "zone_chroma",
+    "file_path": "repos/ecc/skills/taste-application/scripts/verify.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'zone_chroma' from verify.py.",
+    "args": [
+      "lab"
+    ]
+  },
+  "ecc.verify": {
+    "type": "PYTHON_NATIVE",
+    "name": "verify",
+    "file_path": "repos/ecc/skills/taste-application/scripts/verify.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'verify' from verify.py.",
+    "args": [
+      "video",
+      "genre",
+      "root",
+      "source",
+      "bg_tolerance",
+      "chroma_tolerance",
+      "contrast_tolerance",
+      "cadence_tolerance",
+      "check_cadence"
+    ]
+  },
+  "ecc.nonempty": {
+    "type": "PYTHON_NATIVE",
+    "name": "nonempty",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'nonempty' from workflow_graphs.py.",
+    "args": [
+      "value",
+      "name"
+    ]
+  },
+  "ecc.https_url": {
+    "type": "PYTHON_NATIVE",
+    "name": "https_url",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'https_url' from workflow_graphs.py.",
+    "args": [
+      "value",
+      "name"
+    ]
+  },
+  "ecc.compile_application_input": {
+    "type": "PYTHON_NATIVE",
+    "name": "compile_application_input",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Source video contains the user's content; taste affects the HOW section.",
+    "args": [
+      "config"
+    ]
+  },
+  "ecc.prepare_distillation_input": {
+    "type": "PYTHON_NATIVE",
+    "name": "prepare_distillation_input",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Require externally measured grounding; never invent numerical evidence.",
+    "args": [
+      "config"
+    ]
+  },
+  "ecc.references_in": {
+    "type": "PYTHON_NATIVE",
+    "name": "references_in",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'references_in' from workflow_graphs.py.",
+    "args": [
+      "value"
+    ]
+  },
+  "ecc.validate_graph": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_graph",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Verify dependencies and every declared input; endpoint schemas need live QA.",
+    "args": [
+      "graph"
+    ]
+  },
+  "ecc.load_graph": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_graph",
+    "file_path": "repos/ecc/skills/taste-application/scripts/workflow_graphs.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'load_graph' from workflow_graphs.py.",
+    "args": [
+      "kind"
+    ]
+  },
+  "ecc.cut_take": {
+    "type": "PYTHON_NATIVE",
+    "name": "cut_take",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/assemble.py",
+    "repo_root": "repos/ecc",
+    "description": "Slice one generated take into its planned sub-shots.",
+    "args": [
+      "src",
+      "shots",
+      "dest_dir",
+      "prefix",
+      "fps"
+    ]
+  },
+  "ecc.overlay": {
+    "type": "PYTHON_NATIVE",
+    "name": "overlay",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/assemble.py",
+    "repo_root": "repos/ecc",
+    "description": "Composite a plate over a clip as a placed ELEMENT, not a full-frame wash.",
+    "args": [
+      "clip",
+      "image",
+      "dst",
+      "opacity",
+      "scale",
+      "position",
+      "blend",
+      "width",
+      "height",
+      "rotate"
+    ]
+  },
+  "ecc.concat": {
+    "type": "PYTHON_NATIVE",
+    "name": "concat",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/assemble.py",
+    "repo_root": "repos/ecc",
+    "description": "Join clips into one file. Assumes they already share codec and size.",
+    "args": [
+      "clips",
+      "dst",
+      "fps"
+    ]
+  },
+  "ecc.normalize": {
+    "type": "PYTHON_NATIVE",
+    "name": "normalize",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/assemble.py",
+    "repo_root": "repos/ecc",
+    "description": "Force a clip to one size and rate so it can be concatenated with others.",
+    "args": [
+      "src",
+      "dst",
+      "width",
+      "height",
+      "fps",
+      "crop",
+      "fit"
+    ]
+  },
+  "ecc.weave": {
+    "type": "PYTHON_NATIVE",
+    "name": "weave",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/assemble.py",
+    "repo_root": "repos/ecc",
+    "description": "Interleave generated shots with shots cut from a supplied base video.",
+    "args": [
+      "generated",
+      "base",
+      "ratio"
+    ]
+  },
+  "ecc.write_manifest": {
+    "type": "PYTHON_NATIVE",
+    "name": "write_manifest",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/assemble.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'write_manifest' from assemble.py.",
+    "args": [
+      "path",
+      "payload"
+    ]
+  },
+  "ecc.detect": {
+    "type": "PYTHON_NATIVE",
+    "name": "detect",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/cadence.py",
+    "repo_root": "repos/ecc",
+    "description": "Detect shot boundaries with PySceneDetect's content detector.",
+    "args": [
+      "path",
+      "threshold",
+      "min_scene_len"
+    ]
+  },
+  "ecc.merge": {
+    "type": "PYTHON_NATIVE",
+    "name": "merge",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/cadence.py",
+    "repo_root": "repos/ecc",
+    "description": "Pool several references into one cadence profile.",
+    "args": [
+      "cadences"
+    ]
+  },
+  "ecc.keyframe_timestamps": {
+    "type": "PYTHON_NATIVE",
+    "name": "keyframe_timestamps",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/cadence.py",
+    "repo_root": "repos/ecc",
+    "description": "Representative timestamps: a point ``per_shot`` of the way through each shot.",
+    "args": [
+      "cadence",
+      "per_shot",
+      "limit"
+    ]
+  },
+  "ecc.save": {
+    "type": "PYTHON_NATIVE",
+    "name": "save",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/cadence.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'save' from cadence.py.",
+    "args": [
+      "cadence",
+      "path"
+    ]
+  },
+  "ecc.load": {
+    "type": "PYTHON_NATIVE",
+    "name": "load",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/pack.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'load' from pack.py.",
+    "args": [
+      "name",
+      "root"
+    ]
+  },
+  "ecc.quantize_gen_duration": {
+    "type": "PYTHON_NATIVE",
+    "name": "quantize_gen_duration",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/cadence.py",
+    "repo_root": "repos/ecc",
+    "description": "Round up to the shortest generation length the model will accept.",
+    "args": [
+      "seconds"
+    ]
+  },
+  "ecc.plan_takes": {
+    "type": "PYTHON_NATIVE",
+    "name": "plan_takes",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/cadence.py",
+    "repo_root": "repos/ecc",
+    "description": "Group the shot plan into generated TAKES, then cut within each take.",
+    "args": [
+      "cadence",
+      "target_duration",
+      "take_len"
+    ]
+  },
+  "ecc.probe": {
+    "type": "PYTHON_NATIVE",
+    "name": "probe",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'probe' from frames.py.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.sample_frames": {
+    "type": "PYTHON_NATIVE",
+    "name": "sample_frames",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Evenly sample ``n`` frames as float32 RGB in [0, 1].",
+    "args": [
+      "path",
+      "n",
+      "max_edge",
+      "skip_edges"
+    ]
+  },
+  "ecc.export_stills": {
+    "type": "PYTHON_NATIVE",
+    "name": "export_stills",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Write full-resolution stills at the given timestamps (seconds).",
+    "args": [
+      "path",
+      "dest",
+      "timestamps",
+      "prefix"
+    ]
+  },
+  "ecc.ffprobe_json": {
+    "type": "PYTHON_NATIVE",
+    "name": "ffprobe_json",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'ffprobe_json' from frames.py.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.content_mask": {
+    "type": "PYTHON_NATIVE",
+    "name": "content_mask",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Boolean mask of pixels that actually change over time.",
+    "args": [
+      "frames_list",
+      "var_percentile",
+      "min_keep"
+    ]
+  },
+  "ecc.apply_mask": {
+    "type": "PYTHON_NATIVE",
+    "name": "apply_mask",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Flatten frames to only the masked pixels: (n_frames * n_kept, 3).",
+    "args": [
+      "frames_list",
+      "mask"
+    ]
+  },
+  "ecc.mask_bbox": {
+    "type": "PYTHON_NATIVE",
+    "name": "mask_bbox",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Tight bounding box (y0, y1, x0, x1) of the moving region.",
+    "args": [
+      "mask"
+    ]
+  },
+  "ecc.reject_outliers": {
+    "type": "PYTHON_NATIVE",
+    "name": "reject_outliers",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Drop frames whose color statistics are alien to the rest of the set.",
+    "args": [
+      "frames_list",
+      "z",
+      "max_drop"
+    ]
+  },
+  "ecc.ui_safe_crop": {
+    "type": "PYTHON_NATIVE",
+    "name": "ui_safe_crop",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "Crop rectangle (y0, y1, x0, x1) that excludes baked-in interface chrome.",
+    "args": [
+      "frames_list",
+      "strength",
+      "max_trim",
+      "pad"
+    ]
+  },
+  "ecc.crop_fractions": {
+    "type": "PYTHON_NATIVE",
+    "name": "crop_fractions",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/frames.py",
+    "repo_root": "repos/ecc",
+    "description": "``ui_safe_crop`` as fractions of frame, so it transfers across resolutions.",
+    "args": [
+      "frames_list"
+    ]
+  },
+  "ecc.analyze": {
+    "type": "PYTHON_NATIVE",
+    "name": "analyze",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Distill grade statistics from a list of float32 RGB frames in [0,1].",
+    "args": [
+      "frames"
+    ]
+  },
+  "ecc.neutral_stats": {
+    "type": "PYTHON_NATIVE",
+    "name": "neutral_stats",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Statistics of a uniformly-sampled sRGB cube.",
+    "args": [
+      "size"
+    ]
+  },
+  "ecc.transfer": {
+    "type": "PYTHON_NATIVE",
+    "name": "transfer",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Map ``rgb`` (float32 [0,1], any shape ending in 3) from source to target look.",
+    "args": [
+      "rgb",
+      "target",
+      "source",
+      "strength",
+      "tone",
+      "chroma",
+      "gamut_iters",
+      "chroma_mode",
+      "anchor",
+      "anchor_range",
+      "gamut",
+      "tone_mode"
+    ]
+  },
+  "ecc.bake_cube": {
+    "type": "PYTHON_NATIVE",
+    "name": "bake_cube",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Bake a 3D LUT in Adobe .cube format.",
+    "args": [
+      "target",
+      "source",
+      "size",
+      "strength",
+      "title",
+      "gamut_iters",
+      "chroma_mode",
+      "anchor"
+    ]
+  },
+  "ecc.write_cube": {
+    "type": "PYTHON_NATIVE",
+    "name": "write_cube",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'write_cube' from grade.py.",
+    "args": [
+      "path",
+      "text"
+    ]
+  },
+  "ecc.load_stats": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_stats",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'load_stats' from grade.py.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.analyze_pixels": {
+    "type": "PYTHON_NATIVE",
+    "name": "analyze_pixels",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Same statistics as :func:`analyze`, but from a flat (N, 3) pixel array.",
+    "args": [
+      "pixels",
+      "noise_frames",
+      "palette_pixels"
+    ]
+  },
+  "ecc.grade_clip": {
+    "type": "PYTHON_NATIVE",
+    "name": "grade_clip",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Apply a pack's .cube to a clip with ffmpeg. This is where the look happens.",
+    "args": [
+      "src",
+      "dst",
+      "lut",
+      "strength",
+      "crf"
+    ]
+  },
+  "ecc.grade_clip_adaptive": {
+    "type": "PYTHON_NATIVE",
+    "name": "grade_clip_adaptive",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Measure the clip, bake a LUT *for that clip*, then apply it.",
+    "args": [
+      "src",
+      "dst",
+      "target",
+      "strength",
+      "lut_size",
+      "n_frames",
+      "keep_lut"
+    ]
+  },
+  "ecc.grade_clip_direct": {
+    "type": "PYTHON_NATIVE",
+    "name": "grade_clip_direct",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/grade.py",
+    "repo_root": "repos/ecc",
+    "description": "Grade by transferring every frame's pixels, with no LUT in the path.",
+    "args": [
+      "src",
+      "dst",
+      "target",
+      "strength",
+      "n_measure",
+      "crf",
+      "batch",
+      "gamut",
+      "tone_mode"
+    ]
+  },
+  "ecc.create": {
+    "type": "PYTHON_NATIVE",
+    "name": "create",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/pack.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'create' from pack.py.",
+    "args": [
+      "name",
+      "root"
+    ]
+  },
+  "ecc.list_packs": {
+    "type": "PYTHON_NATIVE",
+    "name": "list_packs",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/pack.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'list_packs' from pack.py.",
+    "args": [
+      "root"
+    ]
+  },
+  "ecc.glow_plate": {
+    "type": "PYTHON_NATIVE",
+    "name": "glow_plate",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/plates.py",
+    "repo_root": "repos/ecc",
+    "description": "Lift the frame's brightest, most saturated elements onto black.",
+    "args": [
+      "frame",
+      "dest",
+      "feather"
+    ]
+  },
+  "ecc.streak_plate": {
+    "type": "PYTHON_NATIVE",
+    "name": "streak_plate",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/plates.py",
+    "repo_root": "repos/ecc",
+    "description": "Directional smear of the glow elements - anamorphic-style light streaks.",
+    "args": [
+      "frame",
+      "dest",
+      "angle",
+      "length",
+      "gain"
+    ]
+  },
+  "ecc.grain_plate": {
+    "type": "PYTHON_NATIVE",
+    "name": "grain_plate",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/plates.py",
+    "repo_root": "repos/ecc",
+    "description": "A plate of the reference's measured grain, centred on mid-grey.",
+    "args": [
+      "dest",
+      "sigma",
+      "width",
+      "height",
+      "seed"
+    ]
+  },
+  "ecc.mint_plates": {
+    "type": "PYTHON_NATIVE",
+    "name": "mint_plates",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/plates.py",
+    "repo_root": "repos/ecc",
+    "description": "Pick the most graphic frames in the set and render plates from them.",
+    "args": [
+      "frames",
+      "dest",
+      "noise_sigma",
+      "max_plates",
+      "mask"
+    ]
+  },
+  "ecc.tighten": {
+    "type": "PYTHON_NATIVE",
+    "name": "tighten",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/plates.py",
+    "repo_root": "repos/ecc",
+    "description": "Crop a plate to its own content, so the element fills the file.",
+    "args": [
+      "path",
+      "dest",
+      "pad"
+    ]
+  },
+  "ecc.plate_coverage": {
+    "type": "PYTHON_NATIVE",
+    "name": "plate_coverage",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/plates.py",
+    "repo_root": "repos/ecc",
+    "description": "Share of the plate that is actually lit. Drives element-vs-wash choice.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.have_blender": {
+    "type": "PYTHON_NATIVE",
+    "name": "have_blender",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/render3d.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'have_blender' from render3d.py.",
+    "args": []
+  },
+  "ecc.turntable_software": {
+    "type": "PYTHON_NATIVE",
+    "name": "turntable_software",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/render3d.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'turntable_software' from render3d.py.",
+    "args": [
+      "mesh_path",
+      "dest",
+      "n_frames",
+      "size",
+      "elevation_deg",
+      "base_rgb"
+    ]
+  },
+  "ecc.turntable_blender": {
+    "type": "PYTHON_NATIVE",
+    "name": "turntable_blender",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/render3d.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'turntable_blender' from render3d.py.",
+    "args": [
+      "mesh_path",
+      "dest",
+      "n_frames",
+      "size",
+      "engine",
+      "timeout"
+    ]
+  },
+  "ecc.turntable": {
+    "type": "PYTHON_NATIVE",
+    "name": "turntable",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/render3d.py",
+    "repo_root": "repos/ecc",
+    "description": "Render a turntable. Returns ``(frames, backend_used)``.",
+    "args": [
+      "mesh_path",
+      "dest",
+      "n_frames",
+      "size",
+      "backend"
+    ]
+  },
+  "ecc.frames_to_video": {
+    "type": "PYTHON_NATIVE",
+    "name": "frames_to_video",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/render3d.py",
+    "repo_root": "repos/ecc",
+    "description": "Encode rendered frames into a clip the rest of the pipeline can eat.",
+    "args": [
+      "frames",
+      "dst",
+      "fps"
+    ]
+  },
+  "ecc.fps_fraction": {
+    "type": "PYTHON_NATIVE",
+    "name": "fps_fraction",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Exact frame rate as a :class:`Fraction`, snapping NTSC decimals.",
+    "args": [
+      "fps"
+    ]
+  },
+  "ecc.frame_duration": {
+    "type": "PYTHON_NATIVE",
+    "name": "frame_duration",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Duration of one frame, in seconds, as an exact fraction.",
+    "args": [
+      "fps"
+    ]
+  },
+  "ecc.seconds_to_frames": {
+    "type": "PYTHON_NATIVE",
+    "name": "seconds_to_frames",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Quantise ``seconds`` to the nearest whole frame at ``fps``.",
+    "args": [
+      "seconds",
+      "fps"
+    ]
+  },
+  "ecc.frames_to_rational": {
+    "type": "PYTHON_NATIVE",
+    "name": "frames_to_rational",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Whole frames -> an FCPXML time string, e.g. ``\"1001/30000s\"``.",
+    "args": [
+      "frames",
+      "fps"
+    ]
+  },
+  "ecc.seconds_to_rational": {
+    "type": "PYTHON_NATIVE",
+    "name": "seconds_to_rational",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Seconds -> a frame-quantised FCPXML rational time string.",
+    "args": [
+      "seconds",
+      "fps"
+    ]
+  },
+  "ecc.frames_to_timecode": {
+    "type": "PYTHON_NATIVE",
+    "name": "frames_to_timecode",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Whole frames -> ``HH:MM:SS:FF`` timecode.",
+    "args": [
+      "frames",
+      "fps",
+      "drop"
+    ]
+  },
+  "ecc.build_fcpxml": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_fcpxml",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Build an FCPXML 1.9 document for ``clips``.",
+    "args": [
+      "clips",
+      "fps",
+      "title",
+      "width",
+      "height",
+      "version"
+    ]
+  },
+  "ecc.build_edl": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_edl",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Build a CMX3600 EDL - the fallback when FCPXML round-tripping fails.",
+    "args": [
+      "clips",
+      "fps",
+      "title",
+      "reel"
+    ]
+  },
+  "ecc.write_timeline": {
+    "type": "PYTHON_NATIVE",
+    "name": "write_timeline",
+    "file_path": "repos/ecc/skills/taste-distillation/scripts/taste/timeline.py",
+    "repo_root": "repos/ecc",
+    "description": "Write ``clips`` to ``out_path`` as ``fcpxml`` or ``edl``. Returns the path.",
+    "args": [
+      "clips",
+      "fps",
+      "out_path",
+      "fmt",
+      "title",
+      "width",
+      "height"
+    ]
+  },
+  "ecc.plan_shots": {
+    "type": "PYTHON_NATIVE",
+    "name": "plan_shots",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/apply.py",
+    "repo_root": "repos/ecc",
+    "description": "Propose shot durations filling ``target_duration`` at this cadence.",
+    "args": [
+      "cadence",
+      "target_duration"
+    ]
+  },
+  "ecc.apply_local": {
+    "type": "PYTHON_NATIVE",
+    "name": "apply_local",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/apply.py",
+    "repo_root": "repos/ecc",
+    "description": "Plan a cut from the pack's cadence over local media clips.",
+    "args": [
+      "sp",
+      "media",
+      "duration",
+      "fps",
+      "no_repeat"
+    ]
+  },
+  "ecc.apply_generate": {
+    "type": "PYTHON_NATIVE",
+    "name": "apply_generate",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/apply.py",
+    "repo_root": "repos/ecc",
+    "description": "Refuse provider generation. Fails closed, always.",
+    "args": [
+      "sp",
+      "brief"
+    ]
+  },
+  "ecc.ingest_assets": {
+    "type": "PYTHON_NATIVE",
+    "name": "ingest_assets",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/assets.py",
+    "repo_root": "repos/ecc",
+    "description": "Bind local assets/provenance/lineage; write a new receipt, never overwrite.",
+    "args": [
+      "config_path",
+      "out_receipt"
+    ]
+  },
+  "ecc.validate_assets": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_assets",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/assets.py",
+    "repo_root": "repos/ecc",
+    "description": "Re-hash every bound file and validate receipt semantics; no remote calls.",
+    "args": [
+      "receipt_path"
+    ]
+  },
+  "ecc.cmd_provenance": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_provenance",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_provenance' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_inspect": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_inspect",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_inspect' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_validate": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_validate",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_validate' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_interview": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_interview",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_interview' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_distill": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_distill",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_distill' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_apply": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_apply",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'cmd_apply' from cli.py.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.cmd_multimodal": {
+    "type": "PYTHON_NATIVE",
+    "name": "cmd_multimodal",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Run and validate the file-driven multimodal dry-run contract.",
+    "args": [
+      "args"
+    ]
+  },
+  "ecc.build_parser": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_parser",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/cli.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'build_parser' from cli.py.",
+    "args": []
+  },
+  "ecc.validate_genre_specs": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_genre_specs",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/contract.py",
+    "repo_root": "repos/ecc",
+    "description": "Require complete, semantically distinct numbered genre specs.",
+    "args": [
+      "specs"
+    ]
+  },
+  "ecc.validate_effect_recipe": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_effect_recipe",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/contract.py",
+    "repo_root": "repos/ecc",
+    "description": "Require a seeded aperiodic schedule and anchors on subject-aware effects.",
+    "args": [
+      "recipe"
+    ]
+  },
+  "ecc.validate_provenance": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_provenance",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/contract.py",
+    "repo_root": "repos/ecc",
+    "description": "Require every declared rule to cite immutable, timestamped evidence.",
+    "args": [
+      "payload"
+    ]
+  },
+  "ecc.validate_manifests": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_manifests",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/contract.py",
+    "repo_root": "repos/ecc",
+    "description": "Require image, video, and 3D-asset dry-run request manifests.",
+    "args": [
+      "manifests_dir"
+    ]
+  },
+  "ecc.validate_artifact_receipt": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_artifact_receipt",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/contract.py",
+    "repo_root": "repos/ecc",
+    "description": "Verify that the receipt binds every emitted artifact and its provenance.",
+    "args": [
+      "out_dir",
+      "receipt"
+    ]
+  },
+  "ecc.validate_bundle": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_bundle",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/contract.py",
+    "repo_root": "repos/ecc",
+    "description": "Validate required multimodal files and cross-artifact invariants.",
+    "args": [
+      "out_dir"
+    ]
+  },
+  "ecc.build_spec": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_spec",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Assemble a schema-valid spec from look constraints (offline).",
+    "args": [
+      "look"
+    ]
+  },
+  "ecc.distill_local": {
+    "type": "PYTHON_NATIVE",
+    "name": "distill_local",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Deterministic offline distillation of a taste profile.",
+    "args": [
+      "profile",
+      "sp"
+    ]
+  },
+  "ecc.distill_live": {
+    "type": "PYTHON_NATIVE",
+    "name": "distill_live",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Refuse live provider distillation. Fails closed, always.",
+    "args": [
+      "profile"
+    ]
+  },
+  "ecc.grounding_from_grade": {
+    "type": "PYTHON_NATIVE",
+    "name": "grounding_from_grade",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/distill.py",
+    "repo_root": "repos/ecc",
+    "description": "Measured ground truth as a factual preamble (canonicalized port).",
+    "args": [
+      "grade",
+      "cadence"
+    ]
+  },
+  "ecc.normalise_clips": {
+    "type": "PYTHON_NATIVE",
+    "name": "normalise_clips",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/export.py",
+    "repo_root": "repos/ecc",
+    "description": "Validate clips and pre-compute integer frame counts and offsets.",
+    "args": [
+      "clips",
+      "fps"
+    ]
+  },
+  "ecc.parse_edl": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_edl",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/export.py",
+    "repo_root": "repos/ecc",
+    "description": "Parse a CMX3600 EDL back into structured events (round-trip check).",
+    "args": [
+      "text",
+      "fps"
+    ]
+  },
+  "ecc.load_application_request": {
+    "type": "PYTHON_NATIVE",
+    "name": "load_application_request",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/integration.py",
+    "repo_root": "repos/ecc",
+    "description": "Load only a bounded resident request; never follow a config symlink.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.build_application_bundle": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_application_bundle",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/integration.py",
+    "repo_root": "repos/ecc",
+    "description": "Validate resident evidence and return a new deterministic, offline bundle.",
+    "args": [
+      "config",
+      "compiled_input"
+    ]
+  },
+  "ecc.validate_application_bundle": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate_application_bundle",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/integration.py",
+    "repo_root": "repos/ecc",
+    "description": "Recheck all files, derived state and exact flags; no mutation or execution.",
+    "args": [
+      "bundle"
+    ]
+  },
+  "ecc.conduct": {
+    "type": "PYTHON_NATIVE",
+    "name": "conduct",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/interview.py",
+    "repo_root": "repos/ecc",
+    "description": "Build a TasteProfile from free-text answers. Deterministic, offline.",
+    "args": [
+      "answers",
+      "genre"
+    ]
+  },
+  "ecc.lineage_report": {
+    "type": "PYTHON_NATIVE",
+    "name": "lineage_report",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/provenance.py",
+    "repo_root": "repos/ecc",
+    "description": "Full, deterministic lineage of the recovered TasteForge implementation.",
+    "args": []
+  },
+  "ecc.provider_reference": {
+    "type": "PYTHON_NATIVE",
+    "name": "provider_reference",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/provenance.py",
+    "repo_root": "repos/ecc",
+    "description": "A pointer to a provider-side workflow. Never state, never authority.",
+    "args": [
+      "provider"
+    ]
+  },
+  "ecc.assert_no_saved_provider_workflow": {
+    "type": "PYTHON_NATIVE",
+    "name": "assert_no_saved_provider_workflow",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/provenance.py",
+    "repo_root": "repos/ecc",
+    "description": "Raise if any record claims persisted provider workflow state.",
+    "args": [
+      "records"
+    ]
+  },
+  "ecc.list_providers": {
+    "type": "PYTHON_NATIVE",
+    "name": "list_providers",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/providers.py",
+    "repo_root": "repos/ecc",
+    "description": "Registered provider ids. Always empty in this lane.",
+    "args": []
+  },
+  "ecc.get": {
+    "type": "PYTHON_NATIVE",
+    "name": "get",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/providers.py",
+    "repo_root": "repos/ecc",
+    "description": "Return the adapter for ``provider`` or fail closed.",
+    "args": [
+      "provider"
+    ]
+  },
+  "ecc.register": {
+    "type": "PYTHON_NATIVE",
+    "name": "register",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/providers.py",
+    "repo_root": "repos/ecc",
+    "description": "Register an adapter factory. Refuses silent authorization.",
+    "args": [
+      "provider",
+      "callable_factory"
+    ]
+  },
+  "ecc.reset": {
+    "type": "PYTHON_NATIVE",
+    "name": "reset",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/providers.py",
+    "repo_root": "repos/ecc",
+    "description": "Clear the registry (test helper).",
+    "args": []
+  },
+  "ecc.probe_asset": {
+    "type": "PYTHON_NATIVE",
+    "name": "probe_asset",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/resolve.py",
+    "repo_root": "repos/ecc",
+    "description": "Count decoded video frames; never infer source length from duration.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.allocate_placements": {
+    "type": "PYTHON_NATIVE",
+    "name": "allocate_placements",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/resolve.py",
+    "repo_root": "repos/ecc",
+    "description": "Validate assets and interval-color overlays above preserved video tracks.",
+    "args": [
+      "placements"
+    ]
+  },
+  "ecc.apply_placements": {
+    "type": "PYTHON_NATIVE",
+    "name": "apply_placements",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/resolve.py",
+    "repo_root": "repos/ecc",
+    "description": "Append and verify overlays; returns an in-memory placement receipt only.",
+    "args": [
+      "timeline",
+      "media_pool",
+      "placements"
+    ]
+  },
+  "ecc.validate": {
+    "type": "PYTHON_NATIVE",
+    "name": "validate",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/schema.py",
+    "repo_root": "repos/ecc",
+    "description": "Validate ``instance`` against ``schema``; return a list of problems.",
+    "args": [
+      "instance",
+      "schema",
+      "path"
+    ]
+  },
+  "ecc.parse_feature_output": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_feature_output",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/workflow.py",
+    "repo_root": "repos/ecc",
+    "description": "Parse ffmpeg ``metadata=print`` output into timestamped measurements.",
+    "args": [
+      "output"
+    ]
+  },
+  "ecc.probe_media": {
+    "type": "PYTHON_NATIVE",
+    "name": "probe_media",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/workflow.py",
+    "repo_root": "repos/ecc",
+    "description": "Probe local media and extract timestamped style/temporal features.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.run_workflow": {
+    "type": "PYTHON_NATIVE",
+    "name": "run_workflow",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/workflow.py",
+    "repo_root": "repos/ecc",
+    "description": "Execute the deterministic offline contract and return its receipt.",
+    "args": [
+      "config_path",
+      "out_dir"
+    ]
+  },
+  "ecc.duration_of": {
+    "type": "PYTHON_NATIVE",
+    "name": "duration_of",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/capcut.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'duration_of' from capcut.py.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.read_concat": {
+    "type": "PYTHON_NATIVE",
+    "name": "read_concat",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/capcut.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'read_concat' from capcut.py.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.export_draft": {
+    "type": "PYTHON_NATIVE",
+    "name": "export_draft",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/capcut.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'export_draft' from capcut.py.",
+    "args": [
+      "files",
+      "drafts",
+      "name",
+      "width",
+      "height",
+      "fps",
+      "overwrite",
+      "cc",
+      "probe"
+    ]
+  },
+  "ecc.geometry": {
+    "type": "PYTHON_NATIVE",
+    "name": "geometry",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/common.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'geometry' from common.py.",
+    "args": [
+      "width",
+      "height",
+      "fps",
+      "duration"
+    ]
+  },
+  "ecc.output_file": {
+    "type": "PYTHON_NATIVE",
+    "name": "output_file",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/common.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'output_file' from common.py.",
+    "args": [
+      "destination",
+      "overwrite"
+    ]
+  },
+  "ecc.transform_stream": {
+    "type": "PYTHON_NATIVE",
+    "name": "transform_stream",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/glitch.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'transform_stream' from glitch.py.",
+    "args": [
+      "dec",
+      "enc",
+      "duration",
+      "width",
+      "height",
+      "fps",
+      "seed",
+      "mode"
+    ]
+  },
+  "ecc.render": {
+    "type": "PYTHON_NATIVE",
+    "name": "render",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/glitch.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'render' from glitch.py.",
+    "args": [
+      "source",
+      "start",
+      "duration",
+      "output",
+      "seed",
+      "mode",
+      "width",
+      "height",
+      "fps",
+      "overwrite"
+    ]
+  },
+  "ecc.build_tick_grid": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_tick_grid",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/manim_geo.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'build_tick_grid' from manim_geo.py.",
+    "args": [
+      "n_ticks",
+      "r_inner",
+      "r_outer"
+    ]
+  },
+  "ecc.build_flower_ring": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_flower_ring",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/manim_geo.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'build_flower_ring' from manim_geo.py.",
+    "args": [
+      "radius"
+    ]
+  },
+  "ecc.build_golden_spiral": {
+    "type": "PYTHON_NATIVE",
+    "name": "build_golden_spiral",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/manim_geo.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'build_golden_spiral' from manim_geo.py.",
+    "args": [
+      "a",
+      "quarter_turns"
+    ]
+  },
+  "ecc.filter_graph": {
+    "type": "PYTHON_NATIVE",
+    "name": "filter_graph",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/stills.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'filter_graph' from stills.py.",
+    "args": [
+      "start",
+      "end",
+      "frames",
+      "width",
+      "height",
+      "fps"
+    ]
+  },
+  "ecc.make_clip": {
+    "type": "PYTHON_NATIVE",
+    "name": "make_clip",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/media/stills.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'make_clip' from stills.py.",
+    "args": [
+      "source",
+      "output",
+      "duration",
+      "start_crop",
+      "end_crop",
+      "width",
+      "height",
+      "fps",
+      "overwrite",
+      "runner"
+    ]
+  },
+  "ecc.default_output_dir": {
+    "type": "PYTHON_NATIVE",
+    "name": "default_output_dir",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Return a private per-user state directory for listener artifacts.",
+    "args": []
+  },
+  "ecc.ensure_private_dir": {
+    "type": "PYTHON_NATIVE",
+    "name": "ensure_private_dir",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Create the listener state directory with private permissions.",
+    "args": [
+      "path"
+    ]
+  },
+  "ecc.parse_args": {
+    "type": "PYTHON_NATIVE",
+    "name": "parse_args",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'parse_args' from ws_listener.py.",
+    "args": []
+  },
+  "ecc.log": {
+    "type": "PYTHON_NATIVE",
+    "name": "log",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Log with timestamp.",
+    "args": [
+      "msg"
+    ]
+  },
+  "ecc.append_event": {
+    "type": "PYTHON_NATIVE",
+    "name": "append_event",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Append event to JSONL file with timestamps.",
+    "args": [
+      "event"
+    ]
+  },
+  "ecc.write_pid": {
+    "type": "PYTHON_NATIVE",
+    "name": "write_pid",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Write PID file for easy process management.",
+    "args": []
+  },
+  "ecc.cleanup_pid": {
+    "type": "PYTHON_NATIVE",
+    "name": "cleanup_pid",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Remove PID file on exit.",
+    "args": []
+  },
+  "ecc.is_fatal_error": {
+    "type": "PYTHON_NATIVE",
+    "name": "is_fatal_error",
+    "file_path": "repos/ecc/skills/videodb/scripts/ws_listener.py",
+    "repo_root": "repos/ecc",
+    "description": "Return True when retrying would hide a permanent configuration error.",
+    "args": [
+      "exc"
+    ]
+  },
+  "ecc.gui": {
+    "type": "PYTHON_NATIVE",
+    "name": "gui",
+    "file_path": "repos/ecc/src/llm/__init__.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'gui' from __init__.py.",
+    "args": []
+  },
+  "ecc.print_banner": {
+    "type": "PYTHON_NATIVE",
+    "name": "print_banner",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'print_banner' from selector.py.",
+    "args": []
+  },
+  "ecc.print_providers": {
+    "type": "PYTHON_NATIVE",
+    "name": "print_providers",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'print_providers' from selector.py.",
+    "args": [
+      "providers"
+    ]
+  },
+  "ecc.print_self_host_compute_notice": {
+    "type": "PYTHON_NATIVE",
+    "name": "print_self_host_compute_notice",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'print_self_host_compute_notice' from selector.py.",
+    "args": [
+      "provider"
+    ]
+  },
+  "ecc.select_provider": {
+    "type": "PYTHON_NATIVE",
+    "name": "select_provider",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'select_provider' from selector.py.",
+    "args": [
+      "providers"
+    ]
+  },
+  "ecc.select_model": {
+    "type": "PYTHON_NATIVE",
+    "name": "select_model",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'select_model' from selector.py.",
+    "args": [
+      "models"
+    ]
+  },
+  "ecc.save_config": {
+    "type": "PYTHON_NATIVE",
+    "name": "save_config",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'save_config' from selector.py.",
+    "args": [
+      "provider",
+      "model",
+      "persist"
+    ]
+  },
+  "ecc.interactive_select": {
+    "type": "PYTHON_NATIVE",
+    "name": "interactive_select",
+    "file_path": "repos/ecc/src/llm/cli/selector.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'interactive_select' from selector.py.",
+    "args": [
+      "providers",
+      "models_per_provider",
+      "persist"
+    ]
+  },
+  "ecc.get_provider_builder": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_provider_builder",
+    "file_path": "repos/ecc/src/llm/prompt/builder.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'get_provider_builder' from builder.py.",
+    "args": [
+      "provider_name"
+    ]
+  },
+  "ecc.adapt_messages_for_provider": {
+    "type": "PYTHON_NATIVE",
+    "name": "adapt_messages_for_provider",
+    "file_path": "repos/ecc/src/llm/prompt/builder.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'adapt_messages_for_provider' from builder.py.",
+    "args": [
+      "messages",
+      "provider",
+      "tools"
+    ]
+  },
+  "ecc.register_template": {
+    "type": "PYTHON_NATIVE",
+    "name": "register_template",
+    "file_path": "repos/ecc/src/llm/prompt/templates/__init__.py",
+    "repo_root": "repos/ecc",
+    "description": "Register or replace a named prompt template.",
+    "args": [
+      "name",
+      "template"
+    ]
+  },
+  "ecc.deregister_template": {
+    "type": "PYTHON_NATIVE",
+    "name": "deregister_template",
+    "file_path": "repos/ecc/src/llm/prompt/templates/__init__.py",
+    "repo_root": "repos/ecc",
+    "description": "Remove a named prompt template if it is registered.",
+    "args": [
+      "name"
+    ]
+  },
+  "ecc.clear_templates": {
+    "type": "PYTHON_NATIVE",
+    "name": "clear_templates",
+    "file_path": "repos/ecc/src/llm/prompt/templates/__init__.py",
+    "repo_root": "repos/ecc",
+    "description": "Remove all registered prompt templates.",
+    "args": []
+  },
+  "ecc.get_template": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_template",
+    "file_path": "repos/ecc/src/llm/prompt/templates/__init__.py",
+    "repo_root": "repos/ecc",
+    "description": "Return a named prompt template when one is registered.",
+    "args": [
+      "name"
+    ]
+  },
+  "ecc.get_template_or_default": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_template_or_default",
+    "file_path": "repos/ecc/src/llm/prompt/templates/__init__.py",
+    "repo_root": "repos/ecc",
+    "description": "Return a named prompt template or a caller-provided default.",
+    "args": [
+      "name",
+      "default"
+    ]
+  },
+  "ecc.get_provider": {
+    "type": "PYTHON_NATIVE",
+    "name": "get_provider",
+    "file_path": "repos/ecc/src/llm/providers/resolver.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'get_provider' from resolver.py.",
+    "args": [
+      "provider_type"
+    ]
+  },
+  "ecc.register_provider": {
+    "type": "PYTHON_NATIVE",
+    "name": "register_provider",
+    "file_path": "repos/ecc/src/llm/providers/resolver.py",
+    "repo_root": "repos/ecc",
+    "description": "Native Python function 'register_provider' from resolver.py.",
+    "args": [
+      "provider_type",
+      "provider_cls"
+    ]
+  },
+  "ecc.md.---": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "---",
+    "file_path": "repos/ecc/skills/x-api/SKILL.md",
+    "description": "[Markdown Skill/Agent] name: x-api",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.reglas_(rules)": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "reglas_(rules)",
+    "file_path": "repos/ecc/docs/es/rules/README.md",
+    "description": "[Markdown Skill/Agent] Reglas (Rules)",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.orquestaci\u00f3n_de_agentes": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "orquestaci\u00f3n_de_agentes",
+    "file_path": "repos/ecc/docs/es/rules/common/agents.md",
+    "description": "[Markdown Skill/Agent] Orquestaci\u00f3n de Agentes",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.estilo_de_c\u00f3digo": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "estilo_de_c\u00f3digo",
+    "file_path": "repos/ecc/docs/pt-BR/rules/coding-style.md",
+    "description": "[Markdown Skill/Agent] Estilo de C\u00f3digo",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.flujo_de_trabajo_de_desarrollo": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "flujo_de_trabajo_de_desarrollo",
+    "file_path": "repos/ecc/docs/es/rules/common/development-workflow.md",
+    "description": "[Markdown Skill/Agent] Flujo de Trabajo de Desarrollo",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.flujo_de_trabajo_con_git": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "flujo_de_trabajo_con_git",
+    "file_path": "repos/ecc/docs/es/rules/common/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Flujo de Trabajo con Git",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.sistema_de_hooks": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "sistema_de_hooks",
+    "file_path": "repos/ecc/docs/pt-BR/rules/hooks.md",
+    "description": "[Markdown Skill/Agent] Sistema de Hooks",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.patrones_comunes": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "patrones_comunes",
+    "file_path": "repos/ecc/docs/es/rules/common/patterns.md",
+    "description": "[Markdown Skill/Agent] Patrones Comunes",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.optimizaci\u00f3n_de_rendimiento": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "optimizaci\u00f3n_de_rendimiento",
+    "file_path": "repos/ecc/docs/es/rules/common/performance.md",
+    "description": "[Markdown Skill/Agent] Optimizaci\u00f3n de Rendimiento",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.directrices_de_seguridad": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "directrices_de_seguridad",
+    "file_path": "repos/ecc/docs/es/rules/common/security.md",
+    "description": "[Markdown Skill/Agent] Directrices de Seguridad",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.requisitos_de_pruebas": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "requisitos_de_pruebas",
+    "file_path": "repos/ecc/docs/es/rules/common/testing.md",
+    "description": "[Markdown Skill/Agent] Requisitos de Pruebas",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30eb\u30fc\u30eb": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30eb\u30fc\u30eb",
+    "file_path": "repos/ecc/docs/ja-JP/rules/README.md",
+    "description": "[Markdown Skill/Agent] \u30eb\u30fc\u30eb",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.agent_\u30aa\u30fc\u30b1\u30b9\u30c8\u30ec\u30fc\u30b7\u30e7\u30f3": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "agent_\u30aa\u30fc\u30b1\u30b9\u30c8\u30ec\u30fc\u30b7\u30e7\u30f3",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/agents.md",
+    "description": "[Markdown Skill/Agent] Agent \u30aa\u30fc\u30b1\u30b9\u30c8\u30ec\u30fc\u30b7\u30e7\u30f3",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30b3\u30fc\u30c9\u30ec\u30d3\u30e5\u30fc\u57fa\u6e96": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30b3\u30fc\u30c9\u30ec\u30d3\u30e5\u30fc\u57fa\u6e96",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/code-review.md",
+    "description": "[Markdown Skill/Agent] \u30b3\u30fc\u30c9\u30ec\u30d3\u30e5\u30fc\u57fa\u6e96",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30b3\u30fc\u30c7\u30a3\u30f3\u30b0\u30b9\u30bf\u30a4\u30eb": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30b3\u30fc\u30c7\u30a3\u30f3\u30b0\u30b9\u30bf\u30a4\u30eb",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/coding-style.md",
+    "description": "[Markdown Skill/Agent] \u30b3\u30fc\u30c7\u30a3\u30f3\u30b0\u30b9\u30bf\u30a4\u30eb",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u958b\u767a\u30ef\u30fc\u30af\u30d5\u30ed\u30fc": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u958b\u767a\u30ef\u30fc\u30af\u30d5\u30ed\u30fc",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/development-workflow.md",
+    "description": "[Markdown Skill/Agent] \u958b\u767a\u30ef\u30fc\u30af\u30d5\u30ed\u30fc",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.git_\u30ef\u30fc\u30af\u30d5\u30ed\u30fc": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "git_\u30ef\u30fc\u30af\u30d5\u30ed\u30fc",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Git \u30ef\u30fc\u30af\u30d5\u30ed\u30fc",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hooks_\u30b7\u30b9\u30c6\u30e0": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hooks_\u30b7\u30b9\u30c6\u30e0",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/hooks.md",
+    "description": "[Markdown Skill/Agent] Hooks \u30b7\u30b9\u30c6\u30e0",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5171\u901a\u30d1\u30bf\u30fc\u30f3": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5171\u901a\u30d1\u30bf\u30fc\u30f3",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/patterns.md",
+    "description": "[Markdown Skill/Agent] \u5171\u901a\u30d1\u30bf\u30fc\u30f3",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30d1\u30d5\u30a9\u30fc\u30de\u30f3\u30b9\u6700\u9069\u5316": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30d1\u30d5\u30a9\u30fc\u30de\u30f3\u30b9\u6700\u9069\u5316",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/performance.md",
+    "description": "[Markdown Skill/Agent] \u30d1\u30d5\u30a9\u30fc\u30de\u30f3\u30b9\u6700\u9069\u5316",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30bb\u30ad\u30e5\u30ea\u30c6\u30a3\u30ac\u30a4\u30c9\u30e9\u30a4\u30f3": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30bb\u30ad\u30e5\u30ea\u30c6\u30a3\u30ac\u30a4\u30c9\u30e9\u30a4\u30f3",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/security.md",
+    "description": "[Markdown Skill/Agent] \u30bb\u30ad\u30e5\u30ea\u30c6\u30a3\u30ac\u30a4\u30c9\u30e9\u30a4\u30f3",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30c6\u30b9\u30c8\u8981\u4ef6": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30c6\u30b9\u30c8\u8981\u4ef6",
+    "file_path": "repos/ecc/docs/ja-JP/rules/common/testing.md",
+    "description": "[Markdown Skill/Agent] \u30c6\u30b9\u30c8\u8981\u4ef6",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/coding-style.md](../common/coding-style.md)_\u3092_web_\u56fa\u6709\u306e\u30d5\u30ed\u30f3\u30c8\u30a8\u30f3\u30c9\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/coding-style.md](../common/coding-style.md)_\u3092_web_\u56fa\u6709\u306e\u30d5\u30ed\u30f3\u30c8\u30a8\u30f3\u30c9\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/coding-style.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/coding-style.md](../common/coding-style.md) \u3092 Web \u56fa\u6709\u306e\u30d5\u30ed\u30f3\u30c8\u30a8\u30f3\u30c9\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/patterns.md](../common/patterns.md)_\u3092_web_\u56fa\u6709\u306e\u30c7\u30b6\u30a4\u30f3\u54c1\u8cea\u30ac\u30a4\u30c0\u30f3\u30b9\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/patterns.md](../common/patterns.md)_\u3092_web_\u56fa\u6709\u306e\u30c7\u30b6\u30a4\u30f3\u54c1\u8cea\u30ac\u30a4\u30c0\u30f3\u30b9\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/design-quality.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/patterns.md](../common/patterns.md) \u3092 Web \u56fa\u6709\u306e\u30c7\u30b6\u30a4\u30f3\u54c1\u8cea\u30ac\u30a4\u30c0\u30f3\u30b9\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/hooks.md](../common/hooks.md)_\u3092_web_\u56fa\u6709\u306e\u30d5\u30c3\u30af\u63a8\u5968\u4e8b\u9805\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/hooks.md](../common/hooks.md)_\u3092_web_\u56fa\u6709\u306e\u30d5\u30c3\u30af\u63a8\u5968\u4e8b\u9805\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/hooks.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/hooks.md](../common/hooks.md) \u3092 Web \u56fa\u6709\u306e\u30d5\u30c3\u30af\u63a8\u5968\u4e8b\u9805\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/patterns.md](../common/patterns.md)_\u3092_web_\u56fa\u6709\u306e\u30d1\u30bf\u30fc\u30f3\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/patterns.md](../common/patterns.md)_\u3092_web_\u56fa\u6709\u306e\u30d1\u30bf\u30fc\u30f3\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/patterns.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/patterns.md](../common/patterns.md) \u3092 Web \u56fa\u6709\u306e\u30d1\u30bf\u30fc\u30f3\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/performance.md](../common/performance.md)_\u3092_web_\u56fa\u6709\u306e\u30d1\u30d5\u30a9\u30fc\u30de\u30f3\u30b9\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/performance.md](../common/performance.md)_\u3092_web_\u56fa\u6709\u306e\u30d1\u30d5\u30a9\u30fc\u30de\u30f3\u30b9\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/performance.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/performance.md](../common/performance.md) \u3092 Web \u56fa\u6709\u306e\u30d1\u30d5\u30a9\u30fc\u30de\u30f3\u30b9\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/security.md](../common/security.md)_\u3092_web_\u56fa\u6709\u306e\u30bb\u30ad\u30e5\u30ea\u30c6\u30a3\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/security.md](../common/security.md)_\u3092_web_\u56fa\u6709\u306e\u30bb\u30ad\u30e5\u30ea\u30c6\u30a3\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/security.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/security.md](../common/security.md) \u3092 Web \u56fa\u6709\u306e\u30bb\u30ad\u30e5\u30ea\u30c6\u30a3\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.>_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/testing.md](../common/testing.md)_\u3092_web_\u56fa\u6709\u306e\u30c6\u30b9\u30c8\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002": {
+    "type": "MARKDOWN_PROMPT",
+    "name": ">_\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f_[common/testing.md](../common/testing.md)_\u3092_web_\u56fa\u6709\u306e\u30c6\u30b9\u30c8\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "file_path": "repos/ecc/docs/ja-JP/rules/web/testing.md",
+    "description": "[Markdown Skill/Agent] > \u3053\u306e\u30d5\u30a1\u30a4\u30eb\u306f [common/testing.md](../common/testing.md) \u3092 Web \u56fa\u6709\u306e\u30c6\u30b9\u30c8\u30b3\u30f3\u30c6\u30f3\u30c4\u3067\u62e1\u5f35\u3057\u307e\u3059\u3002",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30b9\u30ad\u30eb": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30b9\u30ad\u30eb",
+    "file_path": "repos/ecc/docs/ja-JP/skills/README.md",
+    "description": "[Markdown Skill/Agent] \u30b9\u30ad\u30eb",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/frontend-slides/STYLE_PRESETS.md",
+    "description": "[Markdown Skill/Agent] \u30b9\u30bf\u30a4\u30eb\u30d7\u30ea\u30bb\u30c3\u30c8\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.|_name_|_description_|": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "|_name_|_description_|",
+    "file_path": "repos/ecc/skills/security-review/cloud-infrastructure-security.md",
+    "description": "[Markdown Skill/Agent] |------|-------------|",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5b8c\u5168api\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5b8c\u5168api\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/api-reference.md",
+    "description": "[Markdown Skill/Agent] \u5b8c\u5168API\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30ad\u30e3\u30d7\u30c1\u30e3\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30ad\u30e3\u30d7\u30c1\u30e3\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/capture-reference.md",
+    "description": "[Markdown Skill/Agent] \u30ad\u30e3\u30d7\u30c1\u30e3\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30ad\u30e3\u30d7\u30c1\u30e3\u30ac\u30a4\u30c9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30ad\u30e3\u30d7\u30c1\u30e3\u30ac\u30a4\u30c9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/capture.md",
+    "description": "[Markdown Skill/Agent] \u30ad\u30e3\u30d7\u30c1\u30e3\u30ac\u30a4\u30c9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30bf\u30a4\u30e0\u30e9\u30a4\u30f3\u7de8\u96c6\u30ac\u30a4\u30c9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30bf\u30a4\u30e0\u30e9\u30a4\u30f3\u7de8\u96c6\u30ac\u30a4\u30c9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/editor.md",
+    "description": "[Markdown Skill/Agent] \u30bf\u30a4\u30e0\u30e9\u30a4\u30f3\u7de8\u96c6\u30ac\u30a4\u30c9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u751f\u6210\u30e1\u30c7\u30a3\u30a2\u30ac\u30a4\u30c9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u751f\u6210\u30e1\u30c7\u30a3\u30a2\u30ac\u30a4\u30c9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/generative.md",
+    "description": "[Markdown Skill/Agent] \u751f\u6210\u30e1\u30c7\u30a3\u30a2\u30ac\u30a4\u30c9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rtstream\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rtstream\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/rtstream-reference.md",
+    "description": "[Markdown Skill/Agent] RTStream\u30ea\u30d5\u30a1\u30ec\u30f3\u30b9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rtstream\u30ac\u30a4\u30c9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rtstream\u30ac\u30a4\u30c9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/rtstream.md",
+    "description": "[Markdown Skill/Agent] RTStream\u30ac\u30a4\u30c9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u691c\u7d22\u3068\u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u30ac\u30a4\u30c9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u691c\u7d22\u3068\u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u30ac\u30a4\u30c9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/search.md",
+    "description": "[Markdown Skill/Agent] \u691c\u7d22\u3068\u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u30ac\u30a4\u30c9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30b9\u30c8\u30ea\u30fc\u30df\u30f3\u30b0\u3068\u518d\u751f": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30b9\u30c8\u30ea\u30fc\u30df\u30f3\u30b0\u3068\u518d\u751f",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/streaming.md",
+    "description": "[Markdown Skill/Agent] \u30b9\u30c8\u30ea\u30fc\u30df\u30f3\u30b0\u3068\u518d\u751f",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30e6\u30fc\u30b9\u30b1\u30fc\u30b9": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30e6\u30fc\u30b9\u30b1\u30fc\u30b9",
+    "file_path": "repos/ecc/docs/ja-JP/skills/videodb/reference/use-cases.md",
+    "description": "[Markdown Skill/Agent] \u30e6\u30fc\u30b9\u30b1\u30fc\u30b9",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u30d3\u30b6\u66f8\u985e\u7ffb\u8a33\u30c4\u30fc\u30eb": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u30d3\u30b6\u66f8\u985e\u7ffb\u8a33\u30c4\u30fc\u30eb",
+    "file_path": "repos/ecc/docs/ja-JP/skills/visa-doc-translate/README.md",
+    "description": "[Markdown Skill/Agent] \u30d3\u30b6\u66f8\u985e\u7ffb\u8a33\u30c4\u30fc\u30eb",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\uc5d0\uc774\uc804\ud2b8_\uc624\ucf00\uc2a4\ud2b8\ub808\uc774\uc158": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\uc5d0\uc774\uc804\ud2b8_\uc624\ucf00\uc2a4\ud2b8\ub808\uc774\uc158",
+    "file_path": "repos/ecc/docs/ko-KR/rules/agents.md",
+    "description": "[Markdown Skill/Agent] \uc5d0\uc774\uc804\ud2b8 \uc624\ucf00\uc2a4\ud2b8\ub808\uc774\uc158",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\ucf54\ub529_\uc2a4\ud0c0\uc77c": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\ucf54\ub529_\uc2a4\ud0c0\uc77c",
+    "file_path": "repos/ecc/docs/ko-KR/rules/coding-style.md",
+    "description": "[Markdown Skill/Agent] \ucf54\ub529 \uc2a4\ud0c0\uc77c",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.git_\uc6cc\ud06c\ud50c\ub85c\uc6b0": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "git_\uc6cc\ud06c\ud50c\ub85c\uc6b0",
+    "file_path": "repos/ecc/docs/ko-KR/rules/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Git \uc6cc\ud06c\ud50c\ub85c\uc6b0",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\ud6c5_\uc2dc\uc2a4\ud15c": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\ud6c5_\uc2dc\uc2a4\ud15c",
+    "file_path": "repos/ecc/docs/ko-KR/rules/hooks.md",
+    "description": "[Markdown Skill/Agent] \ud6c5 \uc2dc\uc2a4\ud15c",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\uacf5\ud1b5_\ud328\ud134": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\uacf5\ud1b5_\ud328\ud134",
+    "file_path": "repos/ecc/docs/ko-KR/rules/patterns.md",
+    "description": "[Markdown Skill/Agent] \uacf5\ud1b5 \ud328\ud134",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\uc131\ub2a5_\ucd5c\uc801\ud654": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\uc131\ub2a5_\ucd5c\uc801\ud654",
+    "file_path": "repos/ecc/docs/ko-KR/rules/performance.md",
+    "description": "[Markdown Skill/Agent] \uc131\ub2a5 \ucd5c\uc801\ud654",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\ubcf4\uc548_\uac00\uc774\ub4dc\ub77c\uc778": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\ubcf4\uc548_\uac00\uc774\ub4dc\ub77c\uc778",
+    "file_path": "repos/ecc/docs/ko-KR/rules/security.md",
+    "description": "[Markdown Skill/Agent] \ubcf4\uc548 \uac00\uc774\ub4dc\ub77c\uc778",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\ud14c\uc2a4\ud305_\uc694\uad6c\uc0ac\ud56d": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\ud14c\uc2a4\ud305_\uc694\uad6c\uc0ac\ud56d",
+    "file_path": "repos/ecc/docs/ko-KR/rules/testing.md",
+    "description": "[Markdown Skill/Agent] \ud14c\uc2a4\ud305 \uc694\uad6c\uc0ac\ud56d",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.orquestra\u00e7\u00e3o_de_agentes": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "orquestra\u00e7\u00e3o_de_agentes",
+    "file_path": "repos/ecc/docs/pt-BR/rules/agents.md",
+    "description": "[Markdown Skill/Agent] Orquestra\u00e7\u00e3o de Agentes",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.fluxo_de_trabalho_git": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "fluxo_de_trabalho_git",
+    "file_path": "repos/ecc/docs/pt-BR/rules/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Fluxo de Trabalho Git",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.padr\u00f5es_comuns": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "padr\u00f5es_comuns",
+    "file_path": "repos/ecc/docs/pt-BR/rules/patterns.md",
+    "description": "[Markdown Skill/Agent] Padr\u00f5es Comuns",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.otimiza\u00e7\u00e3o_de_desempenho": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "otimiza\u00e7\u00e3o_de_desempenho",
+    "file_path": "repos/ecc/docs/pt-BR/rules/performance.md",
+    "description": "[Markdown Skill/Agent] Otimiza\u00e7\u00e3o de Desempenho",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.diretrizes_de_seguran\u00e7a": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "diretrizes_de_seguran\u00e7a",
+    "file_path": "repos/ecc/docs/pt-BR/rules/security.md",
+    "description": "[Markdown Skill/Agent] Diretrizes de Seguran\u00e7a",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.requisitos_de_teste": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "requisitos_de_teste",
+    "file_path": "repos/ecc/docs/pt-BR/rules/testing.md",
+    "description": "[Markdown Skill/Agent] Requisitos de Teste",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.kurallar_(rules)": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "kurallar_(rules)",
+    "file_path": "repos/ecc/docs/tr/rules/README.md",
+    "description": "[Markdown Skill/Agent] Kurallar (Rules)",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.agent_orkestrasyonu": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "agent_orkestrasyonu",
+    "file_path": "repos/ecc/docs/tr/rules/common/agents.md",
+    "description": "[Markdown Skill/Agent] Agent Orkestrasyonu",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.kodlama_stili": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "kodlama_stili",
+    "file_path": "repos/ecc/docs/tr/rules/common/coding-style.md",
+    "description": "[Markdown Skill/Agent] Kodlama Stili",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.geli\u015ftirme_i\u0307\u015f_ak\u0131\u015f\u0131": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "geli\u015ftirme_i\u0307\u015f_ak\u0131\u015f\u0131",
+    "file_path": "repos/ecc/docs/tr/rules/common/development-workflow.md",
+    "description": "[Markdown Skill/Agent] Geli\u015ftirme \u0130\u015f Ak\u0131\u015f\u0131",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.git_i\u0307\u015f_ak\u0131\u015f\u0131": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "git_i\u0307\u015f_ak\u0131\u015f\u0131",
+    "file_path": "repos/ecc/docs/tr/rules/common/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Git \u0130\u015f Ak\u0131\u015f\u0131",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hooks_sistemi": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hooks_sistemi",
+    "file_path": "repos/ecc/docs/tr/rules/common/hooks.md",
+    "description": "[Markdown Skill/Agent] Hooks Sistemi",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.yayg\u0131n_pattern'ler": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "yayg\u0131n_pattern'ler",
+    "file_path": "repos/ecc/docs/tr/rules/common/patterns.md",
+    "description": "[Markdown Skill/Agent] Yayg\u0131n Pattern'ler",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.performans_optimizasyonu": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "performans_optimizasyonu",
+    "file_path": "repos/ecc/docs/tr/rules/common/performance.md",
+    "description": "[Markdown Skill/Agent] Performans Optimizasyonu",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.g\u00fcvenlik_kurallar\u0131": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "g\u00fcvenlik_kurallar\u0131",
+    "file_path": "repos/ecc/docs/tr/rules/common/security.md",
+    "description": "[Markdown Skill/Agent] G\u00fcvenlik Kurallar\u0131",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.test_gereksinimleri": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "test_gereksinimleri",
+    "file_path": "repos/ecc/docs/tr/rules/common/testing.md",
+    "description": "[Markdown Skill/Agent] Test Gereksinimleri",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u89c4\u5219": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u89c4\u5219",
+    "file_path": "repos/ecc/docs/zh-CN/rules/README.md",
+    "description": "[Markdown Skill/Agent] \u89c4\u5219",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u667a\u80fd\u4f53\u7f16\u6392": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u667a\u80fd\u4f53\u7f16\u6392",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/agents.md",
+    "description": "[Markdown Skill/Agent] \u667a\u80fd\u4f53\u7f16\u6392",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u4ee3\u7801\u5ba1\u67e5\u6807\u51c6": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u4ee3\u7801\u5ba1\u67e5\u6807\u51c6",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/code-review.md",
+    "description": "[Markdown Skill/Agent] \u4ee3\u7801\u5ba1\u67e5\u6807\u51c6",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u7f16\u7801\u98ce\u683c": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u7f16\u7801\u98ce\u683c",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/coding-style.md",
+    "description": "[Markdown Skill/Agent] \u7f16\u7801\u98ce\u683c",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5f00\u53d1\u5de5\u4f5c\u6d41\u7a0b": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5f00\u53d1\u5de5\u4f5c\u6d41\u7a0b",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/development-workflow.md",
+    "description": "[Markdown Skill/Agent] \u5f00\u53d1\u5de5\u4f5c\u6d41\u7a0b",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.git_\u5de5\u4f5c\u6d41\u7a0b": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "git_\u5de5\u4f5c\u6d41\u7a0b",
+    "file_path": "repos/ecc/docs/zh-TW/rules/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Git \u5de5\u4f5c\u6d41\u7a0b",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hooks_\u7cfb\u7edf": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hooks_\u7cfb\u7edf",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/hooks.md",
+    "description": "[Markdown Skill/Agent] Hooks \u7cfb\u7edf",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5e38\u89c1\u6a21\u5f0f": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5e38\u89c1\u6a21\u5f0f",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/patterns.md",
+    "description": "[Markdown Skill/Agent] \u5e38\u89c1\u6a21\u5f0f",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6027\u80fd\u4f18\u5316": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6027\u80fd\u4f18\u5316",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/performance.md",
+    "description": "[Markdown Skill/Agent] \u6027\u80fd\u4f18\u5316",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5b89\u5168\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5b89\u5168\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/security.md",
+    "description": "[Markdown Skill/Agent] \u5b89\u5168\u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6d4b\u8bd5\u8981\u6c42": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6d4b\u8bd5\u8981\u6c42",
+    "file_path": "repos/ecc/docs/zh-CN/rules/common/testing.md",
+    "description": "[Markdown Skill/Agent] \u6d4b\u8bd5\u8981\u6c42",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6837\u5f0f\u9884\u8bbe\u53c2\u8003": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6837\u5f0f\u9884\u8bbe\u53c2\u8003",
+    "file_path": "repos/ecc/docs/zh-CN/skills/frontend-slides/STYLE_PRESETS.md",
+    "description": "[Markdown Skill/Agent] \u6837\u5f0f\u9884\u8bbe\u53c2\u8003",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5b8c\u6574_api_\u53c2\u8003": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5b8c\u6574_api_\u53c2\u8003",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/api-reference.md",
+    "description": "[Markdown Skill/Agent] \u5b8c\u6574 API \u53c2\u8003",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6355\u83b7\u53c2\u8003": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6355\u83b7\u53c2\u8003",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/capture-reference.md",
+    "description": "[Markdown Skill/Agent] \u6355\u83b7\u53c2\u8003",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.capture_\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "capture_\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/capture.md",
+    "description": "[Markdown Skill/Agent] Capture \u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u65f6\u95f4\u7ebf\u7f16\u8f91\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u65f6\u95f4\u7ebf\u7f16\u8f91\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/editor.md",
+    "description": "[Markdown Skill/Agent] \u65f6\u95f4\u7ebf\u7f16\u8f91\u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u751f\u6210\u5f0f\u5a92\u4f53\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u751f\u6210\u5f0f\u5a92\u4f53\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/generative.md",
+    "description": "[Markdown Skill/Agent] \u751f\u6210\u5f0f\u5a92\u4f53\u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rtstream_\u53c2\u8003": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rtstream_\u53c2\u8003",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/rtstream-reference.md",
+    "description": "[Markdown Skill/Agent] RTStream \u53c2\u8003",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rtstream_\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rtstream_\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/rtstream.md",
+    "description": "[Markdown Skill/Agent] RTStream \u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u641c\u7d22\u4e0e\u7d22\u5f15\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u641c\u7d22\u4e0e\u7d22\u5f15\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/search.md",
+    "description": "[Markdown Skill/Agent] \u641c\u7d22\u4e0e\u7d22\u5f15\u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6d41\u5a92\u4f53\u4e0e\u64ad\u653e": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6d41\u5a92\u4f53\u4e0e\u64ad\u653e",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/streaming.md",
+    "description": "[Markdown Skill/Agent] \u6d41\u5a92\u4f53\u4e0e\u64ad\u653e",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u4f7f\u7528\u573a\u666f": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u4f7f\u7528\u573a\u666f",
+    "file_path": "repos/ecc/docs/zh-CN/skills/videodb/reference/use-cases.md",
+    "description": "[Markdown Skill/Agent] \u4f7f\u7528\u573a\u666f",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u7b7e\u8bc1\u6587\u4ef6\u7ffb\u8bd1\u5668": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u7b7e\u8bc1\u6587\u4ef6\u7ffb\u8bd1\u5668",
+    "file_path": "repos/ecc/docs/zh-CN/skills/visa-doc-translate/README.md",
+    "description": "[Markdown Skill/Agent] \u7b7e\u8bc1\u6587\u4ef6\u7ffb\u8bd1\u5668",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.agent_\u5354\u8abf": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "agent_\u5354\u8abf",
+    "file_path": "repos/ecc/docs/zh-TW/rules/agents.md",
+    "description": "[Markdown Skill/Agent] Agent \u5354\u8abf",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u7a0b\u5f0f\u78bc\u98a8\u683c": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u7a0b\u5f0f\u78bc\u98a8\u683c",
+    "file_path": "repos/ecc/docs/zh-TW/rules/coding-style.md",
+    "description": "[Markdown Skill/Agent] \u7a0b\u5f0f\u78bc\u98a8\u683c",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hook_\u7cfb\u7d71": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hook_\u7cfb\u7d71",
+    "file_path": "repos/ecc/docs/zh-TW/rules/hooks.md",
+    "description": "[Markdown Skill/Agent] Hook \u7cfb\u7d71",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5e38\u898b\u6a21\u5f0f": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5e38\u898b\u6a21\u5f0f",
+    "file_path": "repos/ecc/docs/zh-TW/rules/patterns.md",
+    "description": "[Markdown Skill/Agent] \u5e38\u898b\u6a21\u5f0f",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6548\u80fd\u512a\u5316": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6548\u80fd\u512a\u5316",
+    "file_path": "repos/ecc/docs/zh-TW/rules/performance.md",
+    "description": "[Markdown Skill/Agent] \u6548\u80fd\u512a\u5316",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u5b89\u5168\u6027\u6307\u5357": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u5b89\u5168\u6027\u6307\u5357",
+    "file_path": "repos/ecc/docs/zh-TW/rules/security.md",
+    "description": "[Markdown Skill/Agent] \u5b89\u5168\u6027\u6307\u5357",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u6e2c\u8a66\u9700\u6c42": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u6e2c\u8a66\u9700\u6c42",
+    "file_path": "repos/ecc/docs/zh-TW/rules/testing.md",
+    "description": "[Markdown Skill/Agent] \u6e2c\u8a66\u9700\u6c42",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.agentshield_policy_exception_playbook": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "agentshield_policy_exception_playbook",
+    "file_path": "repos/ecc/examples/evaluator-rag-prototype/agentshield-policy-exception/candidate-playbook.md",
+    "description": "[Markdown Skill/Agent] AgentShield Policy Exception Playbook",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.skill_quality_evidence_playbook": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "skill_quality_evidence_playbook",
+    "file_path": "repos/ecc/examples/evaluator-rag-prototype/skill-quality-evidence/candidate-playbook.md",
+    "description": "[Markdown Skill/Agent] Skill Quality Evidence Playbook",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.high-score_example:_adding_retry_logic": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "high-score_example:_adding_retry_logic",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/examples/high-score-example.md",
+    "description": "[Markdown Skill/Agent] High-Score Example: Adding Retry Logic",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.low-score_example:_adding_retry_logic": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "low-score_example:_adding_retry_logic",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/examples/low-score-example.md",
+    "description": "[Markdown Skill/Agent] Low-Score Example: Adding Retry Logic",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.evaluation_criteria_\u2014_detailed_scoring_guide": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "evaluation_criteria_\u2014_detailed_scoring_guide",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/references/evaluation-criteria.md",
+    "description": "[Markdown Skill/Agent] Evaluation Criteria \u2014 Detailed Scoring Guide",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hook_integration_for_session-stop_self-evaluation": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hook_integration_for_session-stop_self-evaluation",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/references/hook-integration.md",
+    "description": "[Markdown Skill/Agent] Hook Integration for Session-Stop Self-Evaluation",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.agent_self-evaluation_report_template": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "agent_self-evaluation_report_template",
+    "file_path": "repos/ecc/skills/agent-self-evaluation/templates/evaluation-report.md",
+    "description": "[Markdown Skill/Agent] Agent Self-Evaluation Report Template",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.angular_animations": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "angular_animations",
+    "file_path": "repos/ecc/skills/angular-developer/references/angular-animations.md",
+    "description": "[Markdown Skill/Agent] Angular Animations",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.angular_aria": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "angular_aria",
+    "file_path": "repos/ecc/skills/angular-developer/references/angular-aria.md",
+    "description": "[Markdown Skill/Agent] Angular Aria",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.angular_cli_guide_for_agents": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "angular_cli_guide_for_agents",
+    "file_path": "repos/ecc/skills/angular-developer/references/cli.md",
+    "description": "[Markdown Skill/Agent] Angular CLI Guide for Agents",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.testing_with_component_harnesses": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "testing_with_component_harnesses",
+    "file_path": "repos/ecc/skills/angular-developer/references/component-harnesses.md",
+    "description": "[Markdown Skill/Agent] Testing with Component Harnesses",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.component_styling": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "component_styling",
+    "file_path": "repos/ecc/skills/angular-developer/references/component-styling.md",
+    "description": "[Markdown Skill/Agent] Component Styling",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.components": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "components",
+    "file_path": "repos/ecc/skills/angular-developer/references/components.md",
+    "description": "[Markdown Skill/Agent] Components",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.creating_and_using_services": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "creating_and_using_services",
+    "file_path": "repos/ecc/skills/angular-developer/references/creating-services.md",
+    "description": "[Markdown Skill/Agent] Creating and Using Services",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.data_resolvers": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "data_resolvers",
+    "file_path": "repos/ecc/skills/angular-developer/references/data-resolvers.md",
+    "description": "[Markdown Skill/Agent] Data Resolvers",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.define_routes": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "define_routes",
+    "file_path": "repos/ecc/skills/angular-developer/references/define-routes.md",
+    "description": "[Markdown Skill/Agent] Define Routes",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.defining_dependency_providers": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "defining_dependency_providers",
+    "file_path": "repos/ecc/skills/angular-developer/references/defining-providers.md",
+    "description": "[Markdown Skill/Agent] Defining Dependency Providers",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.dependency_injection_(di)_fundamentals": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "dependency_injection_(di)_fundamentals",
+    "file_path": "repos/ecc/skills/angular-developer/references/di-fundamentals.md",
+    "description": "[Markdown Skill/Agent] Dependency Injection (DI) Fundamentals",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.end-to-end_(e2e)_testing": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "end-to-end_(e2e)_testing",
+    "file_path": "repos/ecc/skills/angular-developer/references/e2e-testing.md",
+    "description": "[Markdown Skill/Agent] End-to-End (E2E) Testing",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.side_effects_with_`effect`_and_`afterrendereffect`": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "side_effects_with_`effect`_and_`afterrendereffect`",
+    "file_path": "repos/ecc/skills/angular-developer/references/effects.md",
+    "description": "[Markdown Skill/Agent] Side Effects with `effect` and `afterRenderEffect`",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hierarchical_injectors": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hierarchical_injectors",
+    "file_path": "repos/ecc/skills/angular-developer/references/hierarchical-injectors.md",
+    "description": "[Markdown Skill/Agent] Hierarchical Injectors",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.component_host_elements": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "component_host_elements",
+    "file_path": "repos/ecc/skills/angular-developer/references/host-elements.md",
+    "description": "[Markdown Skill/Agent] Component Host Elements",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.injection_context": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "injection_context",
+    "file_path": "repos/ecc/skills/angular-developer/references/injection-context.md",
+    "description": "[Markdown Skill/Agent] Injection Context",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.inputs": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "inputs",
+    "file_path": "repos/ecc/skills/angular-developer/references/inputs.md",
+    "description": "[Markdown Skill/Agent] Inputs",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.dependent_state_with_`linkedsignal`": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "dependent_state_with_`linkedsignal`",
+    "file_path": "repos/ecc/skills/angular-developer/references/linked-signal.md",
+    "description": "[Markdown Skill/Agent] Dependent State with `linkedSignal`",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.route_loading_strategies": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "route_loading_strategies",
+    "file_path": "repos/ecc/skills/angular-developer/references/loading-strategies.md",
+    "description": "[Markdown Skill/Agent] Route Loading Strategies",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.angular_cli_mcp_server": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "angular_cli_mcp_server",
+    "file_path": "repos/ecc/skills/angular-developer/references/mcp.md",
+    "description": "[Markdown Skill/Agent] Angular CLI MCP Server",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.navigate_to_routes": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "navigate_to_routes",
+    "file_path": "repos/ecc/skills/angular-developer/references/navigate-to-routes.md",
+    "description": "[Markdown Skill/Agent] Navigate to Routes",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.outputs_(custom_events)": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "outputs_(custom_events)",
+    "file_path": "repos/ecc/skills/angular-developer/references/outputs.md",
+    "description": "[Markdown Skill/Agent] Outputs (Custom Events)",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.reactive_forms": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "reactive_forms",
+    "file_path": "repos/ecc/skills/angular-developer/references/reactive-forms.md",
+    "description": "[Markdown Skill/Agent] Reactive Forms",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rendering_strategies": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rendering_strategies",
+    "file_path": "repos/ecc/skills/angular-developer/references/rendering-strategies.md",
+    "description": "[Markdown Skill/Agent] Rendering Strategies",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.async_reactivity_with_`resource`": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "async_reactivity_with_`resource`",
+    "file_path": "repos/ecc/skills/angular-developer/references/resource.md",
+    "description": "[Markdown Skill/Agent] Async Reactivity with `resource`",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.route_transition_animations": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "route_transition_animations",
+    "file_path": "repos/ecc/skills/angular-developer/references/route-animations.md",
+    "description": "[Markdown Skill/Agent] Route Transition Animations",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.route_guards": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "route_guards",
+    "file_path": "repos/ecc/skills/angular-developer/references/route-guards.md",
+    "description": "[Markdown Skill/Agent] Route Guards",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.router_lifecycle_and_events": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "router_lifecycle_and_events",
+    "file_path": "repos/ecc/skills/angular-developer/references/router-lifecycle.md",
+    "description": "[Markdown Skill/Agent] Router Lifecycle and Events",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.testing_with_the_routertestingharness": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "testing_with_the_routertestingharness",
+    "file_path": "repos/ecc/skills/angular-developer/references/router-testing.md",
+    "description": "[Markdown Skill/Agent] Testing with the RouterTestingHarness",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.show_routes_with_outlets": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "show_routes_with_outlets",
+    "file_path": "repos/ecc/skills/angular-developer/references/show-routes-with-outlets.md",
+    "description": "[Markdown Skill/Agent] Show Routes with Outlets",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.signal_forms": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "signal_forms",
+    "file_path": "repos/ecc/skills/angular-developer/references/signal-forms.md",
+    "description": "[Markdown Skill/Agent] Signal Forms",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.angular_signals_overview": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "angular_signals_overview",
+    "file_path": "repos/ecc/skills/angular-developer/references/signals-overview.md",
+    "description": "[Markdown Skill/Agent] Angular Signals Overview",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.using_tailwind_css_with_angular": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "using_tailwind_css_with_angular",
+    "file_path": "repos/ecc/skills/angular-developer/references/tailwind-css.md",
+    "description": "[Markdown Skill/Agent] Using Tailwind CSS with Angular",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.template-driven_forms": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "template-driven_forms",
+    "file_path": "repos/ecc/skills/angular-developer/references/template-driven-forms.md",
+    "description": "[Markdown Skill/Agent] Template-Driven Forms",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.testing_fundamentals": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "testing_fundamentals",
+    "file_path": "repos/ecc/skills/angular-developer/references/testing-fundamentals.md",
+    "description": "[Markdown Skill/Agent] Testing Fundamentals",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rules": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rules",
+    "file_path": "repos/ecc/rules/README.md",
+    "description": "[Markdown Skill/Agent] Rules",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.agent_orchestration": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "agent_orchestration",
+    "file_path": "repos/ecc/rules/common/agents.md",
+    "description": "[Markdown Skill/Agent] Agent Orchestration",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.code_review_standards": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "code_review_standards",
+    "file_path": "repos/ecc/rules/common/code-review.md",
+    "description": "[Markdown Skill/Agent] Code Review Standards",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.coding_style": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "coding_style",
+    "file_path": "repos/ecc/rules/common/coding-style.md",
+    "description": "[Markdown Skill/Agent] Coding Style",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.development_workflow": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "development_workflow",
+    "file_path": "repos/ecc/rules/common/development-workflow.md",
+    "description": "[Markdown Skill/Agent] Development Workflow",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.git_workflow": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "git_workflow",
+    "file_path": "repos/ecc/rules/common/git-workflow.md",
+    "description": "[Markdown Skill/Agent] Git Workflow",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.hooks_system": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "hooks_system",
+    "file_path": "repos/ecc/rules/common/hooks.md",
+    "description": "[Markdown Skill/Agent] Hooks System",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.common_patterns": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "common_patterns",
+    "file_path": "repos/ecc/rules/common/patterns.md",
+    "description": "[Markdown Skill/Agent] Common Patterns",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.performance_optimization": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "performance_optimization",
+    "file_path": "repos/ecc/rules/common/performance.md",
+    "description": "[Markdown Skill/Agent] Performance Optimization",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.security_guidelines": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "security_guidelines",
+    "file_path": "repos/ecc/rules/common/security.md",
+    "description": "[Markdown Skill/Agent] Security Guidelines",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.testing_requirements": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "testing_requirements",
+    "file_path": "repos/ecc/rules/common/testing.md",
+    "description": "[Markdown Skill/Agent] Testing Requirements",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_10_\u2014_purpose_/_why": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_10_\u2014_purpose_/_why",
+    "file_path": "repos/ecc/skills/brand-discovery/references/10_purpose-why.md",
+    "description": "[Markdown Skill/Agent] Module 10 \u2014 Purpose / Why",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_20_\u2014_positioning": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_20_\u2014_positioning",
+    "file_path": "repos/ecc/skills/brand-discovery/references/20_positioning.md",
+    "description": "[Markdown Skill/Agent] Module 20 \u2014 Positioning",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_30_\u2014_audience_&_niche": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_30_\u2014_audience_&_niche",
+    "file_path": "repos/ecc/skills/brand-discovery/references/30_audience-niche.md",
+    "description": "[Markdown Skill/Agent] Module 30 \u2014 Audience & Niche",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_40_\u2014_personality_&_archetype": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_40_\u2014_personality_&_archetype",
+    "file_path": "repos/ecc/skills/brand-discovery/references/40_personality-archetype.md",
+    "description": "[Markdown Skill/Agent] Module 40 \u2014 Personality & Archetype",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_50_\u2014_voice_&_tone": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_50_\u2014_voice_&_tone",
+    "file_path": "repos/ecc/skills/brand-discovery/references/50_voice-tone.md",
+    "description": "[Markdown Skill/Agent] Module 50 \u2014 Voice & Tone",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_60_\u2014_narrative_/_story": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_60_\u2014_narrative_/_story",
+    "file_path": "repos/ecc/skills/brand-discovery/references/60_narrative-story.md",
+    "description": "[Markdown Skill/Agent] Module 60 \u2014 Narrative / Story",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_70_\u2014_founder_brand_vs_organisation_brand": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_70_\u2014_founder_brand_vs_organisation_brand",
+    "file_path": "repos/ecc/skills/brand-discovery/references/70_founder-tension.md",
+    "description": "[Markdown Skill/Agent] Module 70 \u2014 Founder Brand vs Organisation Brand",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.module_90_\u2014_master_brandbook_(synthesis)": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "module_90_\u2014_master_brandbook_(synthesis)",
+    "file_path": "repos/ecc/skills/brand-discovery/references/90_SYNTHESIS.md",
+    "description": "[Markdown Skill/Agent] Module 90 \u2014 Master Brandbook (Synthesis)",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.voice_profile_schema": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "voice_profile_schema",
+    "file_path": "repos/ecc/skills/brand-voice/references/voice-profile-schema.md",
+    "description": "[Markdown Skill/Agent] Voice Profile Schema",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.strict_prompt_for_counterparty-visible_channels": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "strict_prompt_for_counterparty-visible_channels",
+    "file_path": "repos/ecc/skills/counterparty-channel-discipline/references/strict-prompt.template.md",
+    "description": "[Markdown Skill/Agent] Strict prompt for counterparty-visible channels",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.placement_checklist": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "placement_checklist",
+    "file_path": "repos/ecc/skills/esign-field-placement/references/placement-checklist.md",
+    "description": "[Markdown Skill/Agent] Placement checklist",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.animation_patterns_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "animation_patterns_reference",
+    "file_path": "repos/ecc/skills/frontend-slides/animation-patterns.md",
+    "description": "[Markdown Skill/Agent] Animation Patterns Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.html_presentation_template": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "html_presentation_template",
+    "file_path": "repos/ecc/skills/frontend-slides/html-template.md",
+    "description": "[Markdown Skill/Agent] HTML Presentation Template",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.style_presets_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "style_presets_reference",
+    "file_path": "repos/ecc/skills/frontend-slides/STYLE_PRESETS.md",
+    "description": "[Markdown Skill/Agent] Style Presets Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.ecc_signed_patch_release_checklist": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "ecc_signed_patch_release_checklist",
+    "file_path": "repos/ecc/skills/github-ops/references/ecc-release-checklist.md",
+    "description": "[Markdown Skill/Agent] ECC Signed Patch Release Checklist",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.master_agreement:_mutual_non-disclosure,_{{fee_title}}_and_non-circumvention": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "master_agreement:_mutual_non-disclosure,_{{fee_title}}_and_non-circumvention",
+    "file_path": "repos/ecc/skills/master-agreement-generator/references/master-template.example.md",
+    "description": "[Markdown Skill/Agent] MASTER AGREEMENT: MUTUAL NON-DISCLOSURE, {{FEE_TITLE}} AND NON-CIRCUMVENTION",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.step_5\uff1a\u5934\u50cf\u98ce\u683c_&_\u751f\u56fe": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "step_5\uff1a\u5934\u50cf\u98ce\u683c_&_\u751f\u56fe",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/references/avatar-style.md",
+    "description": "[Markdown Skill/Agent] Step 5\uff1a\u5934\u50cf\u98ce\u683c & \u751f\u56fe",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.step_3\uff1a\u63a8\u5bfc\u5e95\u7ebf\u89c4\u5219": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "step_3\uff1a\u63a8\u5bfc\u5e95\u7ebf\u89c4\u5219",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/references/boundary-rules.md",
+    "description": "[Markdown Skill/Agent] Step 3\uff1a\u63a8\u5bfc\u5e95\u7ebf\u89c4\u5219",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.\u9519\u8bef\u5904\u7406\u4e0e\u964d\u7ea7\u7b56\u7565": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "\u9519\u8bef\u5904\u7406\u4e0e\u964d\u7ea7\u7b56\u7565",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/references/error-handling.md",
+    "description": "[Markdown Skill/Agent] \u9519\u8bef\u5904\u7406\u4e0e\u964d\u7ea7\u7b56\u7565",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.step_2\uff1a\u953b\u9020\u8eab\u4efd\u5f20\u529b": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "step_2\uff1a\u953b\u9020\u8eab\u4efd\u5f20\u529b",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/references/identity-tension.md",
+    "description": "[Markdown Skill/Agent] Step 2\uff1a\u953b\u9020\u8eab\u4efd\u5f20\u529b",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.step_4\uff1a\u953b\u9020\u540d\u5b57": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "step_4\uff1a\u953b\u9020\u540d\u5b57",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/references/naming-system.md",
+    "description": "[Markdown Skill/Agent] Step 4\uff1a\u953b\u9020\u540d\u5b57",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.step_6\uff1a\u5b8c\u6574\u65b9\u6848\u8f93\u51fa\u6a21\u677f": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "step_6\uff1a\u5b8c\u6574\u65b9\u6848\u8f93\u51fa\u6a21\u677f",
+    "file_path": "repos/ecc/skills/openclaw-persona-forge/references/output-template.md",
+    "description": "[Markdown Skill/Agent] Step 6\uff1a\u5b8c\u6574\u65b9\u6848\u8f93\u51fa\u6a21\u677f",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.you_are_classifying_tool_calls_from_a_coding_agent_session_against_expected_behavioral_steps.": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "you_are_classifying_tool_calls_from_a_coding_agent_session_against_expected_behavioral_steps.",
+    "file_path": "repos/ecc/skills/skill-comply/prompts/classifier.md",
+    "description": "[Markdown Skill/Agent] You are classifying tool calls from a coding agent session against expected behavioral steps.",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.<!--_markdownlint-disable_md007_-->": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "<!--_markdownlint-disable_md007_-->",
+    "file_path": "repos/ecc/skills/skill-comply/prompts/spec_generator.md",
+    "description": "[Markdown Skill/Agent] You are analyzing a skill/rule file for a coding agent (Claude Code).",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.visual-genre_taxonomy": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "visual-genre_taxonomy",
+    "file_path": "repos/ecc/skills/taste/references/genre-taxonomy.md",
+    "description": "[Markdown Skill/Agent] Visual-Genre Taxonomy",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.source_and_verification": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "source_and_verification",
+    "file_path": "repos/ecc/skills/taste-application/SOURCE.md",
+    "description": "[Markdown Skill/Agent] Source and verification",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.flashethereal_\u2014_handoff_to_resolve_and_blender": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "flashethereal_\u2014_handoff_to_resolve_and_blender",
+    "file_path": "repos/ecc/skills/taste-application/scripts/HANDOFF-TEMPLATE.md",
+    "description": "[Markdown Skill/Agent] flashethereal \u2014 handoff to Resolve and Blender",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.ecc_reusable_tasteforge_engine": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "ecc_reusable_tasteforge_engine",
+    "file_path": "repos/ecc/skills/taste-application/scripts/tasteforge/README.md",
+    "description": "[Markdown Skill/Agent] ECC reusable TasteForge engine",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.offline_fal_workflow_clones": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "offline_fal_workflow_clones",
+    "file_path": "repos/ecc/skills/taste-application/workflows/README.md",
+    "description": "[Markdown Skill/Agent] Offline Fal workflow clones",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.tinystruct_architecture_and_configuration": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "tinystruct_architecture_and_configuration",
+    "file_path": "repos/ecc/skills/tinystruct-patterns/references/architecture.md",
+    "description": "[Markdown Skill/Agent] tinystruct Architecture and Configuration",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.tinystruct_data_handling_(json)": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "tinystruct_data_handling_(json)",
+    "file_path": "repos/ecc/skills/tinystruct-patterns/references/data-handling.md",
+    "description": "[Markdown Skill/Agent] tinystruct Data Handling (JSON)",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.tinystruct_database_persistence": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "tinystruct_database_persistence",
+    "file_path": "repos/ecc/skills/tinystruct-patterns/references/database.md",
+    "description": "[Markdown Skill/Agent] tinystruct Database Persistence",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.tinystruct_@action_routing_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "tinystruct_@action_routing_reference",
+    "file_path": "repos/ecc/skills/tinystruct-patterns/references/routing.md",
+    "description": "[Markdown Skill/Agent] tinystruct @Action Routing Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.tinystruct_system_and_usage_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "tinystruct_system_and_usage_reference",
+    "file_path": "repos/ecc/skills/tinystruct-patterns/references/system-usage.md",
+    "description": "[Markdown Skill/Agent] tinystruct System and Usage Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.tinystruct_testing_patterns": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "tinystruct_testing_patterns",
+    "file_path": "repos/ecc/skills/tinystruct-patterns/references/testing.md",
+    "description": "[Markdown Skill/Agent] tinystruct Testing Patterns",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.ito_production_v1_native_fusion_presets": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "ito_production_v1_native_fusion_presets",
+    "file_path": "repos/ecc/skills/video-editing/assets/fusion/ito-production-v1/README.md",
+    "description": "[Markdown Skill/Agent] ITO Production v1 native Fusion presets",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.ito_v28_fusion_compatibility_examples": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "ito_v28_fusion_compatibility_examples",
+    "file_path": "repos/ecc/skills/video-editing/assets/fusion/ito-v28/README.md",
+    "description": "[Markdown Skill/Agent] ITO V28 Fusion compatibility examples",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.complete_api_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "complete_api_reference",
+    "file_path": "repos/ecc/skills/videodb/reference/api-reference.md",
+    "description": "[Markdown Skill/Agent] Complete API Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.capture_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "capture_reference",
+    "file_path": "repos/ecc/skills/videodb/reference/capture-reference.md",
+    "description": "[Markdown Skill/Agent] Capture Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.capture_guide": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "capture_guide",
+    "file_path": "repos/ecc/skills/videodb/reference/capture.md",
+    "description": "[Markdown Skill/Agent] Capture Guide",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.timeline_editing_guide": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "timeline_editing_guide",
+    "file_path": "repos/ecc/skills/videodb/reference/editor.md",
+    "description": "[Markdown Skill/Agent] Timeline Editing Guide",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.generative_media_guide": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "generative_media_guide",
+    "file_path": "repos/ecc/skills/videodb/reference/generative.md",
+    "description": "[Markdown Skill/Agent] Generative Media Guide",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rtstream_reference": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rtstream_reference",
+    "file_path": "repos/ecc/skills/videodb/reference/rtstream-reference.md",
+    "description": "[Markdown Skill/Agent] RTStream Reference",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.rtstream_guide": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "rtstream_guide",
+    "file_path": "repos/ecc/skills/videodb/reference/rtstream.md",
+    "description": "[Markdown Skill/Agent] RTStream Guide",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.search_&_indexing_guide": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "search_&_indexing_guide",
+    "file_path": "repos/ecc/skills/videodb/reference/search.md",
+    "description": "[Markdown Skill/Agent] Search & Indexing Guide",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.streaming_&_playback": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "streaming_&_playback",
+    "file_path": "repos/ecc/skills/videodb/reference/streaming.md",
+    "description": "[Markdown Skill/Agent] Streaming & Playback",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.use_cases": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "use_cases",
+    "file_path": "repos/ecc/skills/videodb/reference/use-cases.md",
+    "description": "[Markdown Skill/Agent] Use Cases",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  },
+  "ecc.md.visa_document_translator": {
+    "type": "MARKDOWN_PROMPT",
+    "name": "visa_document_translator",
+    "file_path": "repos/ecc/skills/visa-doc-translate/README.md",
+    "description": "[Markdown Skill/Agent] Visa Document Translator",
+    "args": [
+      "project_path",
+      "context_payload"
+    ]
+  }
+}

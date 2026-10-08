@@ -18,7 +18,7 @@ afterEach(() => {
     mc.connection.destroy();
     mc.wizard.destroy();
     mc.workforce.destroy();
-    mc.stopHeader();
+    mc.newProject.destroy();
     mc.tabs.destroy();
     mc.theme.destroy();
     mc.quickSetup.destroy();
@@ -64,8 +64,9 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   // Phone header budget (measured in a 375px browser: 69px calm, 90px with the greeting, 117px with an attention strip):
   // one row of direct flex items, the eyebrow dropped, the greeting on its own line, attention states as a full-width strip.
   expect(html).toContain('.mc-heading, .mc-actions { display: contents; }');
-  expect(html).toMatch(/\.mc-crumbs \{ display: none; \}/);
-  expect(html).toMatch(/\.mc-greeting \{ order: 10; flex: 0 0 100%;/);
+  expect(html).not.toContain('mc-crumbs');
+  // No greeting: the header is one line, the title and the status pill.
+  expect(html).not.toContain('mc-greeting');
   expect(html).toContain('.mc-status:has(.status-pill[data-kind="alert"]), .mc-status:has(.status-pill[data-kind="halted"]) { order: 8; flex: 1 0 100%; }');
   expect(html).not.toMatch(/\n\s*\.btn-primary \{ width: 42px;/);
   expect(html).toMatch(/\.wfc-prompt \{[^}]*width: 100%;[^}]*min-width: 0;/);
@@ -117,14 +118,13 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   mc = await mountMissionControl(document, { api, connection: { fetch: portalFetch, ...store }, dock: { storage: { get: () => null, set() {} }, Recognition: null, synth: null } });
   await new Promise((r) => setTimeout(r, 30));
 
-  // Header: breadcrumbs, greeting with the user's name, master breaker and New agent.
+  // Header: one line, the page title and the status pill; no greeting, no crumbs.
   const header = document.querySelector('header.mc-top');
-  expect(header.querySelector('.mc-crumbs').textContent).toBe('Operations');
+  expect(document.getElementById('mc-greeting')).toBe(null);
   expect(header.querySelector('h1').textContent).toBe('Mission Control');
   expect(document.title).toBe('Mission Control - Aether Portal');
-  expect(document.getElementById('mc-greeting').textContent).toMatch(/^Good (morning|afternoon|evening), Alex$/);
   expect(document.getElementById('mc-clock')).toBe(null);
-  expect(document.querySelector('#mc-status .status-pill [data-status="text"]').textContent).toBe('All idle');
+  expect(document.querySelector('#mc-status .status-pill [data-status="text"]').textContent).toBe('Engine Live');
   expect(header.querySelector('#mc-breaker .engine-badge').dataset.state).toBe('ACTIVE');
   expect(header.querySelector('.engine-trip')).not.toBe(null);
   expect(document.querySelector('.rail-avatar').textContent).toBe('A');
@@ -178,32 +178,38 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(document.title).toBe('Projects - Mission Control - Aether Portal');
   expect(document.getElementById('mc-route').textContent).toBe('Projects');
 
-  // One input per page: the command bar is gone on Projects, and focus that was in it moves to the page title, not nowhere.
+  // Reaching for the composer opens the Elarion drawer and puts the cursor in its message box.
   const composerInput = document.getElementById('mc-command-input');
   mc.tabs.select('overview');
   composerInput.focus();
-  expect(document.activeElement).toBe(composerInput);
+  expect(mc.drawer.isOpen()).toBe(true);
+  expect(document.activeElement).toBe(mc.dock.elements.input);
+  mc.drawer.close();
   mc.tabs.select('studio');
   expect(document.body.dataset.view).toBe('studio');
-  expect(document.activeElement).toBe(document.getElementById('mc-title'));
   // Sending from the command bar opens Elarion and keeps the cursor in Elarion's own box.
   mc.tabs.select('overview');
   composerInput.value = 'status?';
   document.getElementById('mc-command').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-  expect(document.getElementById('mc-view-elaron').hidden).toBe(false);
+  expect(mc.drawer.isOpen()).toBe(true);
+  expect(document.getElementById('mc-drawer').hasAttribute('inert')).toBe(false);
   expect(document.activeElement).toBe(mc.dock.elements.input);
+  mc.drawer.close();
+  expect(document.getElementById('mc-drawer').hasAttribute('inert')).toBe(true);
   mc.tabs.select('blueprints');
   expect(window.location.hash).toBe('#blueprints');
-  expect(document.querySelector('#mc-blueprints .bp-ingest')).not.toBe(null);
+  expect(document.querySelector('#mc-blueprints .bp-advanced .bp-ingest')).not.toBe(null);
   expect(document.querySelector('#mc-blueprints .bp-tier').textContent).toBe('Pro Engine');
 
-  // Elarion has its own view; Agent spec opens a popup over whatever view is showing and starts nothing.
-  document.getElementById('mc-nav-elaron').click();
-  expect(document.getElementById('mc-view-elaron').hidden).toBe(false);
-  expect(window.location.hash).toBe('#elaron');
+  // Elarion is a drawer, not a page: the old #elaron route opens it over the current page. Agent spec (Studio) opens a popup and starts nothing.
+  mc.tabs.select('elaron');
+  expect(mc.drawer.isOpen()).toBe(true);
+  expect(mc.tabs.getView()).not.toBe('elaron');
+  mc.drawer.close();
+  document.getElementById('mc-nav-studio').click();
   document.getElementById('mc-agent-spec').click();
   expect(document.querySelector('.dc-modal .dc-title').textContent).toBe('Agent spec');
-  expect(mc.tabs.getView()).toBe('elaron');
+  expect(mc.tabs.getView()).toBe('studio');
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   expect(document.querySelector('.dc-modal')).toBeNull();
   // The page title is the menu button, and a view change rewrites its text without replacing the button.
@@ -217,22 +223,28 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(window.location.hash).toBe('');
 });
 
-it('Create / Templates: a template and its brief become a blueprint opened under Projects', async () => {
+it('New (+) opens the unified New project dialog: a template and its brief become a reviewed plan', async () => {
   await mountPage();
-  document.getElementById('mc-nav-create').click();
-  expect(document.getElementById('mc-view-create').hidden).toBe(false);
-  expect(document.getElementById('mc-title').textContent).toBe('Create / Templates');
-  expect(window.location.hash).toBe('#create');
-  document.querySelector('#mc-templates [data-template="landing-waitlist"]').click();
-  document.querySelector('.tp-brief input[name="domain"]').value = 'waitlist.example.com';
-  document.querySelector('.tp-brief .tp-submit').click();
-  for (let i = 0; i < 12; i++) await new Promise((r) => setTimeout(r, 0));
-  expect(document.querySelector('.tp-brief')).toBeNull();
-  expect(mc.tabs.getView()).toBe('blueprints');
-  expect(document.querySelector('#mc-blueprints .bp-viewer h3').textContent).toBe('Landing page + waitlist');
-  expect(document.getElementById('bp-feedback').textContent).toBe('Created bp_tpl from the Landing page + waitlist template and your brief. Press Deploy & Execute to start the run.');
-  expect(document.activeElement).toBe(document.querySelector('#mc-blueprints .bp-deploy'));
-  mc.templates.destroy();
+  document.getElementById('mc-nav-new').click();
+  const dialog = document.querySelector('.np-modal');
+  expect(dialog).not.toBeNull();
+  expect([...dialog.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Pick Template', 'Select Space Cards', 'Describe Goal', 'Paste Links']);
+  expect(window.location.hash).toBe('');
+  dialog.querySelector('input[value="landing-waitlist"]').click();
+  dialog.querySelector('[data-field="domain"]').value = 'waitlist.example.com';
+  dialog.querySelector('.np-next').click();
+  for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+  // One review card, whichever tab fed it: the plain-language plan, what it will use, and the approve button.
+  expect(dialog.querySelector('.np-project').textContent).toBe('Landing page + waitlist');
+  expect(dialog.querySelector('.np-estimate')).not.toBeNull();
+  expect(dialog.querySelector('.np-next').textContent).toBe('Approve & Run (Pro)');
+  expect(document.getElementById('mc-nav-blueprints').getAttribute('aria-current')).toBe(null);
+  // The old #create route opens the same dialog.
+  dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(document.querySelector('.np-modal')).toBeNull();
+  mc.tabs.select('create');
+  expect(document.querySelector('.np-modal')).not.toBeNull();
+  mc.newProject.close();
 });
 
 it('a pairing link (?engine=<url>) opens Connection and asks before switching engines', async () => {
@@ -320,7 +332,7 @@ it('has one H1 and a heading outline that never skips a level, and keeps one inp
     if (i > 0) expect(level, 'heading #' + i + ' follows an h' + levels[i - 1]).toBeLessThanOrEqual(levels[i - 1] + 1);
   });
   // Hidden for the pages that own an input; the style rule lives in the page template.
-  expect(html).toMatch(/body\[data-view="elaron"\] \.mc-command, body\[data-view="studio"\] \.mc-command, body\[data-view="blueprints"\] \.mc-command \{ display: none; \}/);
+  expect(html).toMatch(/body\[data-view="studio"\] \.mc-command, body\[data-view="blueprints"\] \.mc-command \{ display: none; \}/);
   expect(document.querySelector('label[for="mc-command-input"]').textContent).toBe('Ask Elarion');
   expect(document.getElementById('mc-command-input').getAttribute('placeholder')).toBe('Ask Elarion…');
   expect(document.getElementById('mc-command-input').getAttribute('aria-describedby')).toBe('mc-command-hint');
@@ -369,7 +381,7 @@ it('with no model key at all the banner asks for one, only where it helps, and n
   // The Settings checklist already reflects it: reachable, authorized, key still to do.
   expect([...document.querySelectorAll('.qs-step')].map((li) => li.dataset.state)).toEqual(['ok', 'ok', 'fail']);
   // The status pill agrees something needs attention.
-  expect(document.querySelector('[data-status="pill"]').textContent.trim()).toBe('Setup needed');
+  expect(document.querySelector('[data-status="pill"]').textContent.trim()).toBe('Engine Live · Setup needed');
 });
 
 it('Miserly is optional: with no Miserly key but the engine calling the provider directly, nothing asks for one', async () => {

@@ -73,7 +73,11 @@ describe('Mission Control routes', () => {
 		expect(html).toContain('<meta name="aether-upgrade-url" content="https://billing.example/up?a=1&amp;b=2">');
 		expect(renderMissionControlPage({ upgradeUrl: 'javascript:alert(1)' })).toContain('<meta name="aether-upgrade-url" content="">');
 		expect(renderMissionControlPage()).toContain('<meta name="aether-tier" content="free">');
-		for (const id of ['mc-nav-overview', 'mc-nav-monitor', 'mc-nav-blueprints', 'mc-nav-elaron', 'mc-nav-connect', 'mc-workforce', 'mc-view-blueprints', 'mc-blueprints', 'mc-view-connect', 'mc-connect']) expect(html, id).toContain(`id="${id}"`);
+		for (const id of ['mc-nav-overview', 'mc-nav-monitor', 'mc-nav-blueprints', 'mc-nav-new', 'mc-nav-studio', 'mc-drawer', 'mc-elaron', 'mc-nav-connect', 'mc-workforce', 'mc-view-blueprints', 'mc-blueprints', 'mc-view-connect', 'mc-connect']) expect(html, id).toContain(`id="${id}"`);
+		// The rail: six core items (Mission Control, Space, New, Projects, Runs, Studio) and Settings at the bottom; Elarion is a drawer.
+		const rail = /<aside[^>]*id="mc-rail"[\s\S]*?<\/aside>/.exec(html)[0];
+		expect([...rail.matchAll(/id="(mc-nav-[a-z]+)"/g)].map((m) => m[1])).toEqual(['mc-nav-overview', 'mc-nav-space', 'mc-nav-new', 'mc-nav-blueprints', 'mc-nav-monitor', 'mc-nav-studio', 'mc-nav-connect']);
+		expect(html).not.toContain('id="mc-view-elaron"');
 	});
 
 	it('greets the signed-in user by name, escaped, with their initials in the rail', () => {
