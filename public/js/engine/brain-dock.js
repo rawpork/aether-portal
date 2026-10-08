@@ -5,6 +5,7 @@
 // Voice input: when the engine reports STT (ready.stt), the mic streams webm-opus audio to it. Until an engine
 // STT provider exists (engine Step 2.4a), the browser's SpeechRecognition transcribes and the text is sent as a
 // client transcript. Voice replies play the engine's TTS audio when it has some, else the browser speaks them.
+import { createConversationStore, replayContext } from './conversation-store.js';
 import { choiceReply, parseNumberedOptions, renderChoiceChips } from './choice-chips.js';
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
@@ -123,6 +124,12 @@ export function mountBrainDock(container, options = {}) {
   let sessionId = storage.get(SESSION_STORAGE_KEY) || createSessionId();
   storage.set(SESSION_STORAGE_KEY, sessionId);
   let speakReplies = storage.get(SPEAK_STORAGE_KEY) !== 'false';
+  // Saved conversations (conversation-store.js). A thread is "main", or "project:<id>" when the chosen scope is a project; the
+  // engine session follows the thread so each project keeps its own line of talk.
+  const history = options.history || null;
+  const threadSessions = {};
+  let loadedThread = null;
+  let replay = null;
   // What this browser can do. A button for something it cannot do is disabled and says why, instead of failing when tapped.
   const canListen = Boolean(Recognition) || Boolean(MediaRecorderImpl && getUserMedia);
   const canSpeak = Boolean(synth && Utterance);
@@ -221,8 +228,33 @@ export function mountBrainDock(container, options = {}) {
     return 'Enter sends · Shift+Enter for a new line';
   }
 
+  const chosenScope = () => scopes.find((s) => s.id === scope) || null;
+  const thread = () => {
+    const chosen = chosenScope();
+    return chosen && chosen.thread ? chosen.thread : 'main';
+  };
+  const activeSession = () => (thread() === 'main' ? sessionId : threadSessions[thread()] || (threadSessions[thread()] = 'thread-' + thread()));
+  const saveMessage = (role, text) => {
+    if (!history) return;
+    const chosen = chosenScope();
+    history.save(thread(), [{ role, content: text }], { title: chosen && chosen.thread ? chosen.label : 'Elarion conversation', project_id: chosen && chosen.project_id });
+  };
+  // Shows the saved messages of the current thread (the screen follows the scope: project talk is kept apart from the main thread).
+  async function loadThread() {
+    if (!history) return;
+    const wanted = thread();
+    loadedThread = wanted;
+    const saved = await history.load(wanted);
+    if (thread() !== wanted || view.busy) return;
+    const messages = saved && Array.isArray(saved.messages) ? saved.messages : [];
+    log.replaceChildren(empty);
+    for (const m of messages) addMessage(m.role === 'user' ? 'user' : 'assistant', m.content, { persist: false });
+    replay = messages.length ? replayContext(messages) : null;
+  }
+
   function addMessage(kind, text, meta = {}) {
     empty.remove();
+    if (meta.persist !== false && (kind === 'user' || kind === 'assistant')) saveMessage(kind, text);
     const item = el(doc, 'li', { class: 'brain-msg brain-' + kind });
     item.append(el(doc, 'p', { class: 'brain-text', text }));
     const details = [];
@@ -292,7 +324,9 @@ export function mountBrainDock(container, options = {}) {
     addMessage('user', text, { scope: chosen ? chosen.label : null });
     setMode('thinking');
     try {
-      const reply = await api.sendMasterBrainChat(text, sessionId, { agentId, ...(chosen && chosen.context ? { context: { asking_about: chosen.label, ...chosen.context } } : {}) });
+      const context = { ...(chosen && chosen.context ? { asking_about: chosen.label, ...chosen.context } : {}), ...(replay ? { earlier_conversation: replay } : {}) };
+      replay = null;
+      const reply = await api.sendMasterBrainChat(text, activeSession(), { agentId, ...(Object.keys(context).length ? { context } : {}) });
       addMessage('assistant', reply.response, { tokens: reply.tokens });
       setMode('idle');
     } catch (error) {
@@ -372,7 +406,7 @@ export function mountBrainDock(container, options = {}) {
       markHalted(state.reason);
       return null;
     }
-    const stream = api.openVoiceStream({ sessionId, agentId, format: 'webm-opus' }, { onFrame: onVoiceFrame, onClose: onVoiceClose });
+    const stream = api.openVoiceStream({ sessionId: activeSession(), agentId, format: 'webm-opus' }, { onFrame: onVoiceFrame, onClose: onVoiceClose });
     voice.stream = stream;
     voice.ready = await stream.ready;
     // The hint depends on what the engine says it can do, so it is redrawn now that it has said.
@@ -630,8 +664,15 @@ export function mountBrainDock(container, options = {}) {
     stopCapture(false);
     stopSpeaking();
     closeVoice();
-    sessionId = createSessionId();
-    storage.set(SESSION_STORAGE_KEY, sessionId);
+    if (thread() === 'main') {
+      sessionId = createSessionId();
+      storage.set(SESSION_STORAGE_KEY, sessionId);
+    } else {
+      threadSessions[thread()] = 'thread-' + thread() + '-' + Date.now().toString(36);
+    }
+    // A new session starts the conversation over: the saved thread goes too, so a reload does not bring the old one back.
+    if (history) history.clear(thread());
+    replay = null;
     log.replaceChildren(empty);
     addMessage('system', 'New session started.');
     setMode(view.halted ? 'halted' : 'idle');
@@ -651,14 +692,17 @@ export function mountBrainDock(container, options = {}) {
     scopes = Array.isArray(list) ? list.filter((s) => s && s.id && s.label) : [];
     scope = scopes.some((s) => s.id === selectedId) ? selectedId : null;
     renderScopes();
+    if (history && thread() !== loadedThread) loadThread();
   }
 
   function setScope(id) {
     scope = id !== null && scopes.some((s) => s.id === id) ? id : null;
     renderScopes();
+    if (history && thread() !== loadedThread) loadThread();
   }
 
   render();
+  loadThread();
 
   return {
     setScopes,
@@ -673,6 +717,8 @@ export function mountBrainDock(container, options = {}) {
     },
     getMode: () => view.mode,
     getSessionId: () => sessionId,
+    getThread: thread,
+    loadThread,
     elements: { panel, avatar, status, log, input, form, micButton, speakButton, sendButton, newButton, interim, hint, scopeBar },
     destroy() {
       onPageHide();

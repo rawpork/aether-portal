@@ -649,3 +649,56 @@ describe('scope chips', () => {
     expect(second.body.context).toBeUndefined();
   });
 });
+
+describe('saved conversations', () => {
+  const makeHistory = (saved = {}) => {
+    const calls = { saves: [], loads: [], clears: [] };
+    return {
+      calls,
+      load: async (thread) => (calls.loads.push(thread), saved[thread] ? { messages: saved[thread] } : null),
+      save: async (thread, messages, meta) => { calls.saves.push({ thread, messages, meta }); },
+      clear: async (thread) => { calls.clears.push(thread); },
+    };
+  };
+
+  it('shows the saved main thread on mount and reminds the engine of it with the first message', async () => {
+    const history = makeHistory({ main: [{ role: 'user', content: 'Earlier question' }, { role: 'assistant', content: 'Earlier answer' }] });
+    mount({ history });
+    await flush();
+    expect(messages()).toEqual(['user: Earlier question', 'assistant: Earlier answer']);
+    expect(history.calls.saves).toEqual([]);
+    await type('Follow up');
+    const chat = engine.calls.find((c) => c.path === '/api/master-brain/chat');
+    expect(chat.body.context.earlier_conversation).toEqual([{ role: 'user', content: 'Earlier question' }, { role: 'assistant', content: 'Earlier answer' }]);
+    await type('Another');
+    expect(engine.calls.filter((c) => c.path === '/api/master-brain/chat')[1].body.context).toBeUndefined();
+  });
+
+  it('saves each message to the thread, and keeps project talk in its own thread and engine session', async () => {
+    const history = makeHistory({ 'project:bp_1': [{ role: 'user', content: 'About the bakery' }] });
+    mount({ history });
+    await flush();
+    await type('General question');
+    expect(history.calls.saves.map((s) => [s.thread, s.messages[0].role, s.messages[0].content])).toEqual([['main', 'user', 'General question'], ['main', 'assistant', 'Reply to: General question']]);
+    dock.setScopes([{ id: 'project', label: 'Bakery', thread: 'project:bp_1', project_id: 'bp_1', context: { project: 'Bakery' } }], 'project');
+    await flush();
+    expect(dock.getThread()).toBe('project:bp_1');
+    expect(messages()).toEqual(['user: About the bakery']);
+    await type('Project question');
+    const last = history.calls.saves.at(-1);
+    expect(last.thread).toBe('project:bp_1');
+    expect(last.meta).toEqual({ title: 'Bakery', project_id: 'bp_1' });
+    const chats = engine.calls.filter((c) => c.path === '/api/master-brain/chat');
+    expect(chats.at(-1).body.session_id).toBe('thread-project:bp_1');
+    expect(chats[0].body.session_id).toBe(dock.getSessionId());
+  });
+
+  it('New session clears the saved thread so a reload does not bring it back', async () => {
+    const history = makeHistory({ main: [{ role: 'user', content: 'old' }] });
+    mount({ history });
+    await flush();
+    dock.elements.newButton.click();
+    expect(history.calls.clears).toEqual(['main']);
+    expect(messages()).toEqual(['system: New session started.']);
+  });
+});

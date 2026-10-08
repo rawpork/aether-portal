@@ -24,6 +24,7 @@ import { mountOutcomesList, takeProjectPayload } from './outcomes.js';
 import { projectTitle } from './labels.js';
 import { mountStudioCanvas } from './studio-canvas.js';
 import { mountNewProject } from './new-project.js';
+import { createConversationStore } from './conversation-store.js';
 import { saveBlueprintRecord } from './records-write.js';
 import { setupElarionDrawer } from './elarion-drawer.js';
 import { mountWorkflowConsole } from './workflow-console.js';
@@ -193,6 +194,8 @@ export function takeSpaceHandoff(win, now = Date.now()) {
   } catch { /* no storage, nothing handed over */ }
   return null;
 }
+// Other spellings of a route that open the same thing (#elarion is the conversation drawer, like #elaron).
+const VIEW_ALIASES = { elarion: 'elaron', conversation: 'elaron', chat: 'elaron' };
 const composerHiddenFor = () => false; // the composer is docked on every page
 
 // Pages: each rail button opens its page and is marked aria-current="page" while it (or a sub-page under it) is open. The small
@@ -210,6 +213,7 @@ export function setupTabs(doc, onSelect = () => {}, { redirects = {} } = {}) {
   const railButtons = Object.keys(RAIL_OPENS).map((id) => doc.getElementById(id)).filter(Boolean);
 
   function select(view, focus = false) {
+    view = VIEW_ALIASES[view] || view;
     if (view in redirects) {
       redirects[view]();
       return;
@@ -264,20 +268,35 @@ export function setupTabs(doc, onSelect = () => {}, { redirects = {} } = {}) {
     if (sw) select(sw.dataset.gotoView, false);
   });
   const hash = win && win.location ? win.location.hash.slice(1) : '';
+  // Showing the first page rewrites the address, so the link the page was opened with is kept for openFromHash.
+  let openedWith = hash;
   select(hash in PANELS ? hash : 'overview');
+  // A link to #elarion, #create or a page while Mission Control is already open follows the link instead of doing nothing.
+  const onHashChange = () => {
+    const wanted = VIEW_ALIASES[win.location.hash.slice(1)] || win.location.hash.slice(1);
+    if (wanted in redirects) {
+      win.history.replaceState(null, '', win.location.pathname + win.location.search);
+      redirects[wanted]();
+    } else if (wanted in PANELS && wanted !== current) select(wanted);
+  };
+  if (win && win.addEventListener) win.addEventListener('hashchange', onHashChange);
 
   return {
     select,
     getView: () => current,
     // An old link to #elaron or #create opens that over the overview, once everything it needs has been mounted.
     openFromHash() {
-      const wanted = win && win.location ? win.location.hash.slice(1) : '';
+      const raw = openedWith || (win && win.location ? win.location.hash.slice(1) : '');
+      openedWith = '';
+      const wanted = VIEW_ALIASES[raw] || raw;
       if (wanted in redirects) {
         if (win.history) win.history.replaceState(null, '', win.location.pathname + win.location.search);
         redirects[wanted]();
       }
     },
-    destroy() {},
+    destroy() {
+      if (win && win.removeEventListener) win.removeEventListener('hashchange', onHashChange);
+    },
   };
 }
 
@@ -410,7 +429,8 @@ export async function mountMissionControl(doc = document, options = {}) {
     onCompleted: (bp, outcome) => { if (outcomes) outcomes.recordRun(bp, outcome); },
   });
   const outcomes = byId('mc-outcomes') ? mountOutcomesList(byId('mc-outcomes'), { api, portalFetch: options.portalFetch, storage: options.storage }) : null;
-  const dock = mountBrainDock(byId('mc-elaron'), { api, ...options.dock });
+  // The conversation is saved to the portal as it happens (conversation-store.js) so it survives a reload and can be searched.
+  const dock = mountBrainDock(byId('mc-elaron'), { api, history: createConversationStore(recordsFetch), ...options.dock });
   // The conversation lives in a drawer that slides in over any page. The composer opens it.
   let drawerClosing = false;
   const drawer = setupElarionDrawer(doc, {
@@ -426,7 +446,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     const list = [{ id: 'page', label: VIEW_TITLES[view] || 'This page', context: { page: VIEW_TITLES[view] || view } }];
     const open = blueprints && blueprints.getSelected ? blueprints.getSelected() : null;
     if (open && open.project_name && (view === 'blueprints' || view === 'roadmap')) {
-      list.unshift({ id: 'project', label: projectTitle(open), context: { project: open.project_name, blueprint_id: open.blueprint_id, page: VIEW_TITLES[view] } });
+      list.unshift({ id: 'project', label: projectTitle(open), thread: 'project:' + open.blueprint_id, project_id: open.blueprint_id, context: { project: open.project_name, blueprint_id: open.blueprint_id, page: VIEW_TITLES[view] } });
     }
     dock.setScopes(list, list[0].id);
   }

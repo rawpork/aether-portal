@@ -19,6 +19,7 @@ export { GraphEvents } from "./graph-events.js";
 export { UserHub } from "./realtime/user-hub.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { getRecord, searchRecords, upsertRecord } from "./records.js";
+import { appendMessages, deleteThread, getThread, listThreads } from "./conversations.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
@@ -201,15 +202,38 @@ export default {
     // Context retrieval (src/records.js, migrations/0019_records.sql): the engine's search_records and get_record tools, and the
     // write blueprints use to enter the index. The engine authenticates with an engine:push token, a signed-in tab with its session.
     //   GET  /api/records/search?q=&project_id=&type=&limit=   GET /api/records/<id>   POST /api/records { id, type, title, ... }
-    if (url.pathname === "/api/records" || url.pathname.startsWith("/api/records/")) {
-      const bearer = /^Bearer (.+)$/.exec(request.headers.get("Authorization") || "");
-      let userId = bearer ? (await verifyEnginePushToken(bearer[1], env.ENGINE_JWT_SECRET))?.userId : null;
-      if (!userId) {
-        if (bearer) return jsonResponse({ error: "Unauthorized" }, 401);
-        const auth = await authenticateUser(request, env, url);
-        if (auth.error) return auth.error;
-        userId = auth.user.id;
+    // Conversations (src/conversations.js): Elarion's threads, saved as they happen and loaded back when the drawer opens.
+    //   GET /api/conversations?project_id=   GET|DELETE /api/conversations/<thread>   POST /api/conversations/<thread> { messages, project_id?, title? }
+    if (url.pathname === "/api/conversations" || url.pathname.startsWith("/api/conversations/")) {
+      const who = await recordsUser(request, env, url);
+      if (who.error) return who.error;
+      const threadId = url.pathname.startsWith("/api/conversations/") ? decodeURIComponent(url.pathname.slice("/api/conversations/".length)) : null;
+      try {
+        if (!threadId) {
+          if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+          return jsonResponse(await listThreads(env, who.userId, { project_id: url.searchParams.get("project_id") }), 200, { "Cache-Control": "no-store" });
+        }
+        if (request.method === "POST") {
+          const saved = await appendMessages(env, who.userId, threadId, await request.json().catch(() => null));
+          return saved.error ? jsonResponse({ error: saved.error }, 400) : jsonResponse(saved, 201);
+        }
+        if (request.method === "DELETE") {
+          await deleteThread(env, who.userId, threadId);
+          return jsonResponse({ deleted: true });
+        }
+        if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET, POST, DELETE" });
+        const thread = await getThread(env, who.userId, threadId, url.searchParams.get("limit"));
+        return thread ? jsonResponse(thread, 200, { "Cache-Control": "no-store" }) : jsonResponse({ error: "Not found" }, 404);
+      } catch (err) {
+        console.error("Conversations request failed:", err);
+        return jsonResponse({ error: "The conversation could not be read or saved." }, 500);
       }
+    }
+
+    if (url.pathname === "/api/records" || url.pathname.startsWith("/api/records/")) {
+      const who = await recordsUser(request, env, url);
+      if (who.error) return who.error;
+      const userId = who.userId;
       try {
         if (url.pathname === "/api/records" && request.method === "POST") {
           const saved = await upsertRecord(env, userId, await request.json().catch(() => null));
@@ -10484,6 +10508,17 @@ async function connectRealtime(request, env, url) {
   const hub = env.USER_HUB.get(env.USER_HUB.idFromName(String(userId)));
   const forwarded = new Request("https://user-hub/connect", { headers: { Upgrade: "websocket", "X-Hub-Role": isEngine ? "engine" : "client" } });
   return hub.fetch(forwarded);
+}
+
+// Who is asking the records and conversations routes: the engine (an engine:push token) or a signed-in tab (session cookie).
+async function recordsUser(request, env, url) {
+  const bearer = /^Bearer (.+)$/.exec(request.headers.get("Authorization") || "");
+  if (bearer) {
+    const pushed = await verifyEnginePushToken(bearer[1], env.ENGINE_JWT_SECRET);
+    return pushed ? { userId: pushed.userId } : { error: jsonResponse({ error: "Unauthorized" }, 401) };
+  }
+  const auth = await authenticateUser(request, env, url);
+  return auth.error ? { error: auth.error } : { userId: auth.user.id };
 }
 
 async function authenticateUser(request, env, url) {

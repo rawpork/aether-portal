@@ -269,7 +269,7 @@ it('loads an outcome blueprint from the portal into the Blueprints editor (?outc
   const requested = [];
   try {
     await mountPage({ portalFetch: async (url) => (requested.push(url), new Response(JSON.stringify(outcome), { status: 200 })) });
-    expect(requested.filter((u) => u !== '/api/graph')).toEqual(['/api/outcome/node_42/blueprint']);
+    expect(requested.filter((u) => u !== '/api/graph' && !u.startsWith('/api/conversations/'))).toEqual(['/api/outcome/node_42/blueprint']);
     expect(mc.tabs.getView()).toBe('blueprints');
     expect(window.location.search).toBe('');
     expect(window.location.hash).toBe('#blueprints');
@@ -428,4 +428,23 @@ it('ignores a stale or empty Space message', () => {
   expect(takeSpaceHandoff(win, 1000 + 5000)).toBe('old');
   expect(takeSpaceHandoff({ sessionStorage: { getItem: () => JSON.stringify({ text: '  ', at: 1000 }), removeItem() {} } }, 2000)).toBe(null);
   expect(takeSpaceHandoff({})).toBe(null);
+});
+
+it('#elarion opens the conversation drawer, at load and from a link while the page is open', async () => {
+  window.location.hash = '#elarion';
+  try {
+    await mountPage();
+    expect(mc.drawer.isOpen()).toBe(true);
+    expect(window.location.hash).toBe('');
+    mc.drawer.close();
+    window.location.hash = '#elarion';
+    window.dispatchEvent(new Event('hashchange'));
+    expect(mc.drawer.isOpen()).toBe(true);
+    mc.drawer.close();
+    window.location.hash = '#monitor';
+    window.dispatchEvent(new Event('hashchange'));
+    expect(mc.tabs.getView()).toBe('monitor');
+  } finally {
+    window.history.replaceState(null, '', '/');
+  }
 });

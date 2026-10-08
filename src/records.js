@@ -4,7 +4,7 @@
 
 export const RECORDS_LIMIT_DEFAULT = 10;
 export const RECORDS_LIMIT_MAX = 50;
-export const RECORD_TYPES = ["card", "blueprint", "phase_output", "deliverable", "note", "run"];
+export const RECORD_TYPES = ["card", "blueprint", "phase_output", "deliverable", "note", "run", "conversation"];
 const TEXT_MAX = 2000;
 const ID_MAX = 200;
 const COLUMNS = "r.id, r.project_id, r.run_id, r.type, r.title, r.summary, r.body_ref, r.tags, r.created_at, r.updated_at";
@@ -43,6 +43,11 @@ export async function searchRecords(env, userId, { query, project_id, type, limi
 export async function getRecord(env, userId, id) {
 	const record = await env.DB.prepare("SELECT " + COLUMNS + " FROM records r WHERE r.id = ? AND r.user_id = ?").bind(String(id), userId).first();
 	if (!record) return null;
+	const thread = /^conversation:(.+)$/.exec(record.body_ref || "");
+	if (thread) {
+		const { results } = await env.DB.prepare("SELECT role, content FROM conversation_messages WHERE user_id = ? AND thread_id = ? ORDER BY id DESC LIMIT 30").bind(userId, thread[1]).all();
+		return { ...record, body: (results || []).reverse().map(m => (m.role === "user" ? "You: " : "Elarion: ") + m.content).join("\n\n") };
+	}
 	const node = /^saved_nodes:(.+)$/.exec(record.body_ref || "");
 	if (!node) return { ...record, body: null };
 	const row = await env.DB.prepare("SELECT url, description, user_note, research FROM saved_nodes WHERE id = ? AND user_id = ?").bind(node[1], userId).first();
