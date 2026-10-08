@@ -21,6 +21,9 @@
     "binding": "CF_VERSION_METADATA"
   },
   // Live sync (src/graph-events.js): one GraphEvents object per user holds its open /api/events streams.
+  // Realtime switch (src/graph-events.js): "on" starts the WebSocket client in Space and Mission Control; unset leaves pages on SSE
+  // and polling with the hub still reachable; "off" turns the hub off too.
+  "vars": { "REALTIME": "on" },
   // Realtime (src/realtime/user-hub.js, PHASE2_PLAN.md): one hibernating WebSocket UserHub per user, behind /api/realtime and /api/engine/connect.
   "durable_objects": {
     "bindings": [
