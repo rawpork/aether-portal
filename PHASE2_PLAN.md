@@ -1,6 +1,6 @@
 # Phase 2 Plan: Real-Time WebSockets and Durable Object State Sync
 
-Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 and R2 are built (section 2.6); R3 to R6 are not started.
+Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 to R3 are built (section 2.6); R4 to R6 are not started.
 
 ## 0. Naming
 
@@ -124,6 +124,12 @@ out the 60 s silence, and a trip reaches the browser without batching delay.
 - **Publishing:** `POST /publish {event, origin}` on the hub stamps and fans out a graph event. Nothing in the Worker calls it yet; that is R2.
 - **R2 dual publish:** `publishGraphEvent` (`src/graph-events.js`) now sends each graph event to the SSE stream and to the hub, independently (one failing does not stop the other, and the error is still raised for the caller to log). It serves both callers: the post-write announcement in `fetch` (successful writes only, with the writer's `X-Aether-Client` as `origin`) and the Telegram save. `REALTIME=off` skips the hub. Event names stay the nine in `GRAPH_EVENT_TYPES` (`node.updated`, `link.created`, `settings.updated`, ...); the protocol has no `graph.updated` or `graph.node_changed`.
 - **No throttling on internal publishing:** there is no rate-limit middleware in the Worker. The hub's only limits are per-socket message rates (tabs 10/s, engine 50/s), which `POST /publish` never passes through (it is a stub call, and no public route forwards to it). Pinned by `test/graph-publish.spec.js`.
+- **R3 browser client:** `public/js/realtime-client.js` (connection, hello/ready/ack, gap handling, backoff, keepalive, visibility), `public/js/realtime-boot.js` (starts it from page meta tags and re-emits hub messages as window events `aether-realtime-event|gap|ready|fallback`), `public/js/engine/realtime-refresh.js` (engine event -> existing Mission Control refreshers, coalesced to one run per 500 ms per refresher; polling is untouched). The plan called the client `realtime.js`; the file is `realtime-client.js`.
+  - **Flag:** `REALTIME=on` puts `<meta name="aether-realtime" content="1">` on Space and Mission Control. Unset: hub reachable, pages on SSE and polling. `off`: hub off too.
+  - **Space:** with the flag on, the WebSocket replaces the SSE stream; a graph event schedules the same debounced reload, a `gap` does too, and showing the tab needs no catch-up reload (the socket resumes itself). If the client gives up (6 failed attempts in a row) `aether-realtime-fallback` reopens SSE.
+  - **Self events:** the page's `LIVE_CLIENT_ID` (also sent as `X-Aether-Client` with its writes) is the client's `origin`; events carrying it are not dispatched but their seq is still counted and acked.
+  - **Gap:** the client emits `gap {seq}`, resumes from that seq with a new `hello`, and the page refetches through its existing REST load. A fresh page load starts at seq 0, so on a hub with history it may see one redundant refetch.
+  - **Mission Control:** subscribes to the `engine` topic, which stays quiet until R4 (the engine push). Not yet done there: spoken announcements for `task.awaiting` and lowering the poll rates (R5).
 - **Not done in R1:** per-hub counters for the owner (section 4), and the browser client (R3).
 
 ## 3. Milestones
@@ -133,7 +139,7 @@ out the 60 s silence, and a trip reaches the browser without batching delay.
 | **R0 (signed off)** | Message format and engine contract written and agreed (this file's sections 2.2 and 2.4 become the spec); `public/js/realtime-protocol.js` with validators and tests | The owner and the engine side sign off on topics, event types, auth scope and A or B |
 | R1 (built) | `UserHub` Durable Object (migration `v2`), `/api/realtime` upgrade with auth and Origin check, hibernation, storage ring, resume and gap | Upgrade, auth, resume, gap and cap tests pass in the existing Worker test setup |
 | R2 (built) | Dual publish: the Worker publishes each graph write to the hub and to `GraphEvents` | Parity tests show both deliver the same events |
-| R3 | `realtime.js` in Space behind the flag | Two tabs stay in sync; a mid-stream disconnect resumes with no missed event; a long gap refetches cleanly |
+| R3 (built) | `realtime-client.js` in Space behind the flag | Two tabs stay in sync; a mid-stream disconnect resumes with no missed event; a long gap refetches cleanly |
 | R4 | Engine push (A or B) into the hub, with the engine-side change in the Aether_Engine repo | A run's progress and a breaker trip reach Mission Control with polling disabled |
 | R5 | Mission Control switches from polling to realtime, polling kept as fallback | Breaker, tasks, choices and the engine row update live; unplugging realtime falls back with no visible error |
 | R6 | Remove SSE and `GraphEvents`; docs (`ARCHITECTURE.md`, `ROADMAP.md`); flag defaults on | A full week of stable use; no open realtime bugs |

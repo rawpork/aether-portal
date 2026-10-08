@@ -77,6 +77,12 @@ export function realtimeEnabled(env) {
   return Boolean(env.USER_HUB) && String(env.REALTIME || "").toLowerCase() !== "off";
 }
 
+// The browser client (public/js/realtime-boot.js) is opt-in while it rolls out: REALTIME=on in the Worker environment.
+// Unset leaves the hub reachable (R1, R2) but pages on SSE and polling; REALTIME=off turns the hub off as well.
+export function realtimeClientEnabled(env) {
+  return realtimeEnabled(env) && String(env.REALTIME || "").toLowerCase() === "on";
+}
+
 async function publishToHub(env, userId, event, origin) {
   if (!realtimeEnabled(env)) return;
   const stub = env.USER_HUB.get(env.USER_HUB.idFromName(String(userId)));

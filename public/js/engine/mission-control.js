@@ -12,6 +12,7 @@ import { mountBrainDock } from './brain-dock.js';
 import { describeUnreachableEngine, mountConnection } from './connection.js';
 import { mountTaskMonitor } from './task-monitor.js';
 import { mountOperatorConsole } from './operator-console.js';
+import { mountRealtimeRefresh } from './realtime-refresh.js';
 import { mountAgentDialogue } from './agent-dialogue.js';
 import { mountDualAgents } from './dual-agents.js';
 import { mountRoadmap } from './roadmap.js';
@@ -516,7 +517,15 @@ export async function mountMissionControl(doc = document, options = {}) {
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
   if (skillButton && decisions) skillButton.addEventListener('click', () => decisions.askSource());
-  return { connection, breaker, monitor, templates, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
+  // Realtime (off unless the page asks for it): an engine event wakes the same refreshers the poll timers use, which stay as the fallback.
+  const realtimeRefresh = mountRealtimeRefresh(doc.defaultView || globalThis, {
+    connection: () => connection.refresh(),
+    breaker: () => breaker.refresh(),
+    workforce: () => workforce && workforce.refresh(),
+    monitor: () => monitor.refresh(),
+    banner: () => decisions && decisions.refreshBanner(),
+  });
+  return { realtimeRefresh, connection, breaker, monitor, templates, outcomes, operator, dialogue, dual, roadmap, decisions, operatorTabs, tray, commandBar, blueprints, dock, wizard, quickSetup, workforce, studio, workflowConsole, studioTabs, tabs, stopHeader, theme };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('mc-breaker')) mountMissionControl();

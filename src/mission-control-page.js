@@ -49,7 +49,7 @@ export function initialsOf(name) {
 // 'light' / 'dark' from ?theme= or the aether_theme cookie (UNIFIED_BRAND.md); anything else follows the system.
 export const parseTheme = (value) => (value === 'light' || value === 'dark' ? value : '');
 
-export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '', userName = '', role = '', theme = '', enginePublicUrl = '' } = {}) {
+export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', upgradeUrl = '', userName = '', role = '', theme = '', enginePublicUrl = '', realtime = false } = {}) {
 	const v = encodeURIComponent(assetVersion);
 	const safeUpgradeUrl = /^https:[/][/]/i.test(upgradeUrl) ? upgradeUrl : '';
 	const displayName = userName ? userName.charAt(0).toUpperCase() + userName.slice(1) : '';
@@ -71,6 +71,8 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <meta name="aether-upgrade-url" content="${escapeAttr(safeUpgradeUrl)}">
   <meta name="aether-user" content="${escapeAttr(displayName)}">
   <meta name="aether-engine-relay" content="${enginePublicUrl ? '1' : ''}">
+  <meta name="aether-realtime" content="${realtime ? '1' : ''}">
+  <meta name="aether-realtime-topics" content="engine">
   <meta name="aether-engine-public" content="${escapeAttr(enginePublicUrl)}">
   <style>
     /* One visual system with the portal and the 3D viewer (DESIGN.md, System 2: the teal accent hybrid): navy rail,
@@ -1423,6 +1425,7 @@ ${SHELL_SWITCH_CSS}
     </form>
   </div>
   <noscript><p class="mc-section">Mission Control needs JavaScript.</p></noscript>
+  <script type="module" src="/js/realtime-boot.js?v=${v}"></script>
   <script type="module" src="/js/engine/mission-control.js?v=${v}"></script>
   <script type="module" src="/js/update-check.js?v=${v}"></script>
 </body>

@@ -11,7 +11,7 @@ export default defineConfig({
 						wrangler: { configPath: "./wrangler.jsonc" },
 					}),
 				],
-				test: { name: "worker", include: ["test/*.spec.js"] },
+				test: { name: "worker", include: ["test/*.spec.js"], exclude: ["test/realtime-client.spec.js"] },
 			},
 			// Browser-side spatial modules (public/js/spatial/): pure functions, run in plain Node.
 			{
@@ -24,6 +24,10 @@ export default defineConfig({
 			// Engine breaker bar (public/js/engine/): DOM component, run in happy-dom against the built client bundle.
 			{
 				test: { name: "engine-ui", environment: "happy-dom", include: ["test/engine/**/*.spec.js"] },
+			},
+			// Browser realtime client (public/js/realtime-client.js and friends): a fake WebSocket and manual timers, in happy-dom.
+			{
+				test: { name: "realtime-ui", environment: "happy-dom", include: ["test/realtime-client.spec.js"] },
 			},
 		],
 	},

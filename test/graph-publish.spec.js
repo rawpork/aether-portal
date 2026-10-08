@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { publishGraphEvent } from "../src/graph-events.js";
+import { publishGraphEvent, realtimeClientEnabled, realtimeEnabled } from "../src/graph-events.js";
+import { renderMissionControlPage } from "../src/mission-control-page.js";
 import { signSession } from "../src/index.js";
 import { helloMessage, validateEnvelope } from "../public/js/realtime-protocol.js";
 
@@ -186,5 +187,32 @@ describe("internal publishing is not throttled", () => {
 		expect(messages.slice(1).every((m) => validateEnvelope(m).ok)).toBe(true);
 		engine.close(1000, "done");
 		tab.ws.close(1000, "done");
+	});
+});
+
+describe("the REALTIME flag", () => {
+	it("is a three-way switch: unset keeps the hub reachable, on starts the browser client, off kills both", () => {
+		const hub = { USER_HUB: {} };
+		expect([realtimeEnabled(hub), realtimeClientEnabled(hub)]).toEqual([true, false]);
+		expect([realtimeEnabled({ ...hub, REALTIME: "on" }), realtimeClientEnabled({ ...hub, REALTIME: "ON" })]).toEqual([true, true]);
+		expect([realtimeEnabled({ ...hub, REALTIME: "off" }), realtimeClientEnabled({ ...hub, REALTIME: "off" })]).toEqual([false, false]);
+		expect(realtimeClientEnabled({ REALTIME: "on" })).toBe(false);
+	});
+
+	it("reaches the Mission Control page as a meta tag and a boot script for the engine topic", () => {
+		const on = renderMissionControlPage({ assetVersion: "t1", realtime: true });
+		expect(on).toContain('<meta name="aether-realtime" content="1">');
+		expect(on).toContain('<meta name="aether-realtime-topics" content="engine">');
+		expect(on).toContain('src="/js/realtime-boot.js?v=t1"');
+		expect(renderMissionControlPage({ assetVersion: "t1" })).toContain('<meta name="aether-realtime" content="">');
+	});
+
+	it("reaches the Space page for the graph topic, with the tab id exposed for origin matching", async () => {
+		const response = await SELF.fetch("http://example.com/");
+		const html = await response.text();
+		expect(html).toContain('<meta name="aether-realtime" content="');
+		expect(html).toContain('<meta name="aether-realtime-topics" content="graph">');
+		expect(html).toContain("/js/realtime-boot.js?v=");
+		expect(html).toContain("window.AetherLiveClientId = LIVE_CLIENT_ID;");
 	});
 });

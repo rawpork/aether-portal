@@ -59,7 +59,9 @@ describe('Mission Control routes', () => {
 		const header = /<header class="mc-top">([\s\S]*?)<\/header>/.exec(html)[1];
 		expect(header).toContain('id="mc-breaker"');
 		for (const id of ['mc-monitor', 'mc-elaron', 'mc-connection']) expect(html, id).toContain(`id="${id}"`);
-		expect(html.match(/<script/g)).toHaveLength(2);
+		// Three module scripts: the realtime boot (inert unless the page's aether-realtime meta is on), the workspace and the update check.
+		expect(html.match(/<script/g)).toHaveLength(3);
+		expect(html).toContain('src="/js/realtime-boot.js?v=v1"');
 		expect(html).toContain('src="/js/engine/mission-control.js?v=v1"');
 		expect(html).toContain('src="/js/update-check.js?v=v1"');
 		expect(html).toContain('<meta name="aether-version" content="v1">');

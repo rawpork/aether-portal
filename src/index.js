@@ -11,7 +11,7 @@ import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken, verifyEnginePushToken } from
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { seedOnboardingGraph } from "./onboarding.js";
 import { handleSitesApi, serveSite } from "./sites.js";
-import { graphEventFor, publishGraphEvent, realtimeEnabled, subscribeGraphEvents } from "./graph-events.js";
+import { graphEventFor, publishGraphEvent, realtimeClientEnabled, realtimeEnabled, subscribeGraphEvents } from "./graph-events.js";
 import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from "../public/js/shell-surfaces.js";
 
 // The live sync Durable Object (wrangler.jsonc durable_objects).
@@ -1053,6 +1053,7 @@ export default {
         role: devRoleFor(env, url, session.id) || "",
         // The engine relay and the engine's public address (for the Engine State link) when ENGINE_PUBLIC_URL is set.
         enginePublicUrl: enginePublicUrl(env) || "",
+        realtime: realtimeClientEnabled(env),
         upgradeUrl: env.PRO_UPGRADE_URL || "",
         // ?theme= (from the Engine status page) wins over the saved cookie, so the first paint already matches.
         theme: url.searchParams.get("theme") || readCookie(request, "aether_theme") || ""
@@ -1197,6 +1198,8 @@ export default {
   <meta name="google-client-id" content="${escapeHtmlText(env.GOOGLE_CLIENT_ID || "")}">
   <meta name="aether-dev-login" content="${isDevAuthEnabled(env, url) ? "1" : ""}">
   <meta name="aether-version" content="${assetVersion}">
+  <meta name="aether-realtime" content="${realtimeClientEnabled(env) ? "1" : ""}">
+  <meta name="aether-realtime-topics" content="graph">
   <style>
     /* DESIGN.md, main portal: navy surfaces and a teal accent for the brand, selected states and primary buttons;
        6-8px corners, hairline borders, no backdrop blur, glows or heavy shadows. */
@@ -3072,6 +3075,7 @@ ${SHELL_SWITCH_CSS}
   <!-- Pinned and self-hosted from public/vendor/ (SPATIAL_ARCHITECTURE.md, section 4.2). -->
   <script src="/vendor/3d-force-graph-1.80.0.min.js"></script>
   <script type="module" src="/js/spatial/index.js?v=${assetVersion}"></script>
+  <script type="module" src="/js/realtime-boot.js?v=${assetVersion}"></script>
   <script type="module" src="/js/update-check.js?v=${assetVersion}"></script>
 </head>
 <body data-shell-surface="space">
@@ -3597,6 +3601,8 @@ ${SHELL_SWITCH_CSS}
     const commandBar = document.getElementById('command-bar');
     // This tab's id for live sync (sent with API writes, so the tab skips its own events).
     const LIVE_CLIENT_ID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + String(Math.random()).slice(2);
+    // The realtime client (public/js/realtime-boot.js) reads this to skip events this tab's own writes caused.
+    window.AetherLiveClientId = LIVE_CLIENT_ID;
     // Link to… pick mode: { source, relation } while waiting for a tap on the target card (declared early: node clicks read it).
     let linkPick = null;
 
@@ -6646,7 +6652,25 @@ ${SHELL_SWITCH_CSS}
       // For any view that wants to react to a particular change.
       window.dispatchEvent(new CustomEvent('aether-graph-event', { detail: event }));
     };
+    // Realtime (WebSocket) replaces the SSE stream while it works: it resumes from the last event it saw, or tells the page to
+    // refetch (a gap). If it cannot connect at all, the SSE stream below takes over as before.
+    const metaRealtime = document.querySelector('meta[name="aether-realtime"]');
+    const realtimeOn = Boolean(metaRealtime && metaRealtime.content === '1');
+    let realtimeFailed = false;
+    const realtimeActive = () => realtimeOn && !realtimeFailed;
+    window.addEventListener('aether-realtime-event', message => {
+      const event = message.detail;
+      if (!event || event.topic !== 'graph') return;
+      scheduleLiveReload();
+      window.dispatchEvent(new CustomEvent('aether-graph-event', { detail: event }));
+    });
+    window.addEventListener('aether-realtime-gap', () => scheduleLiveReload());
+    window.addEventListener('aether-realtime-fallback', () => {
+      realtimeFailed = true;
+      openLiveSync();
+    });
     function openLiveSync() {
+      if (realtimeActive()) return;
       if (liveEvents || typeof EventSource !== 'function' || document.visibilityState === 'hidden' || !graphLoaded) return;
       liveEvents = new EventSource('/api/events');
       LIVE_EVENT_TYPES.forEach(type => liveEvents.addEventListener(type, onLiveEvent));
@@ -6665,7 +6689,8 @@ ${SHELL_SWITCH_CSS}
         closeLiveSync();
         return;
       }
-      if (!graphLoaded || liveEvents) return;
+      // With realtime the socket resumes by itself (replay or gap), so showing the tab needs no catch-up reload.
+      if (!graphLoaded || liveEvents || realtimeActive()) return;
       openLiveSync();
       scheduleLiveReload();
     });
