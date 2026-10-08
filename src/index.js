@@ -1311,6 +1311,39 @@ export default {
     /* The ☰ sits in the top-left corner, flush with the screen edge: a 64px column the height of the bar, with a hairline on its right
        (the same 64px a menu rail would take), so it lines up with the left edge the way the Mission Control rail does. */
     #topbar #menu-toggle { flex: none; align-self: stretch; width: 64px; height: 54px; margin: 0 4px 0 0; padding: 0; justify-content: center; border: 0; border-right: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; color: var(--text-muted); }
+    #tools-toggle { flex: none; width: 36px; padding: 0; justify-content: center; }
+    #tools-toggle[aria-expanded="true"] { border-color: var(--accent-line); color: var(--accent); }
+    /* Primary menu: Mission Control's drawer on Space: 260px wide at most, #0B0D10, 8% hairlines, Geist where installed. */
+    #space-menu-scrim { position: fixed; inset: 0; z-index: 37; border: 0; padding: 0; background: rgba(0, 0, 0, 0.55); }
+    #space-menu-scrim[hidden] { display: none; }
+    #space-menu {
+      position: fixed; z-index: 38; top: 0; bottom: 0; left: 0; width: min(260px, 86vw); max-width: 260px; box-sizing: border-box;
+      display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overscroll-behavior: contain;
+      padding: calc(14px + env(safe-area-inset-top, 0px)) 12px calc(14px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+      background: #0B0D10; color: var(--text); border-right: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.005em;
+      transform: translateX(-102%); visibility: hidden; transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1), visibility 0s linear 0.26s;
+    }
+    body.menu-open #space-menu { transform: none; visibility: visible; transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1); }
+    @media (prefers-reduced-motion: reduce) { #space-menu, body.menu-open #space-menu { transition: none; } }
+    #space-menu .sm-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 10px 8px; }
+    #space-menu .sm-brand { color: var(--text); font-size: 16px; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
+    #space-menu .sm-close { width: 44px; height: 44px; border: 0; border-radius: var(--radius-m); background: none; color: var(--text-muted); font-size: 22px; cursor: pointer; }
+    #space-menu .sm-close:hover { background: #15181D; color: var(--text); }
+    #space-menu .sm-nav { display: flex; flex-direction: column; gap: 2px; }
+    #space-menu .sm-link { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--radius-m); color: var(--text-muted); font-size: 14px; text-decoration: none; }
+    #space-menu .sm-link:hover { background: #15181D; color: var(--text); }
+    #space-menu .sm-link[aria-current="page"] { background: #15181D; border-color: rgba(255, 255, 255, 0.08); color: var(--text); font-weight: 600; }
+    #space-menu .sm-link svg { flex: none; }
+    #space-menu .sm-user { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: auto; padding: 14px 4px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+    #space-menu .sm-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 50%; background: #15181D; border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text); font-size: 14px; font-weight: 600; }
+    #space-menu .sm-user-text { flex: 1 1 calc(100% - 52px); min-width: 0; display: flex; flex-direction: column; }
+    #space-menu .sm-name { color: var(--text); font-size: 13px; font-weight: 600; white-space: nowrap; }
+    #space-menu .sm-user::after { content: none; }
+    #space-menu .user-greeting { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #space-menu .sm-small { flex: 1 1 100px; min-height: 44px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-s); background: none; color: var(--text-muted); font: inherit; font-size: 13px; cursor: pointer; }
+    #space-menu .sm-small:hover { background: #15181D; color: var(--text); }
+    body.xr-presenting #space-menu, body.xr-presenting #space-menu-scrim { display: none; }
     #topbar #menu-toggle:hover, #topbar #menu-toggle[aria-expanded="true"] { background: #15181D; color: var(--text); }
     /* Time range chip (top bar): the span on screen, one tap to change it. */
     .scope-chip-wrap { position: relative; flex: none; }
@@ -1358,7 +1391,7 @@ export default {
       z-index: 36;
       top: 0;
       bottom: 0;
-      left: 0;
+      right: 0;
       width: min(340px, 88vw);
       box-sizing: border-box;
       display: flex;
@@ -1367,10 +1400,10 @@ export default {
       padding: calc(14px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
       overflow-y: auto;
       overscroll-behavior: contain;
-      border-right: var(--hairline);
+      border-left: var(--hairline);
       background: var(--bg-panel);
       color: var(--text);
-      transform: translateX(-102%);
+      transform: translateX(102%);
       visibility: hidden;
       transition: transform 0.26s cubic-bezier(0.25, 1, 0.5, 1), visibility 0s linear 0.26s;
     }
@@ -1433,7 +1466,7 @@ export default {
     }
     /* Minimal shell: the drawer matches Mission Control's dark surface. Dark ground, 8% hairlines, Geist where installed (system sans
        otherwise), no section sub-headers (each section keeps its aria-label; the header is hidden from sight only). */
-    #portal-tray { --bg-raised: #15181D; background: #0B0D10; border-right: 1px solid rgba(255, 255, 255, 0.08); font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.005em; }
+    #portal-tray { --bg-raised: #15181D; background: #0B0D10; border-left: 1px solid rgba(255, 255, 255, 0.08); font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.005em; }
     #portal-tray .tray-section { border-top: 1px solid rgba(255, 255, 255, 0.08); }
     #portal-tray .tray-section h3 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     #portal-tray .tray-head .brand { color: var(--text); font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
@@ -3186,7 +3219,7 @@ ${SHELL_SWITCH_CSS}
 </head>
 <body data-shell-surface="space">
   <header id="topbar">
-    <button type="button" class="bar-btn" id="menu-toggle" aria-controls="portal-tray" aria-expanded="false" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <button type="button" class="bar-btn" id="menu-toggle" aria-controls="space-menu" aria-expanded="false" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     ${renderSurfaceSwitch('space')}
     <span class="brand">Aether</span>
     <label class="search-wrap" for="search-input"><input type="text" id="search-input" placeholder="🔍 Search nodes..." aria-label="Search nodes"></label>
@@ -3194,6 +3227,7 @@ ${SHELL_SWITCH_CSS}
       <button type="button" class="bar-btn" id="scope-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="scope-menu" title="Time range"><span id="scope-chip-label">All</span><span class="scope-chip-caret" aria-hidden="true">▾</span></button>
       <div id="scope-menu" role="menu" aria-label="Time range" hidden></div>
     </div>
+    <button type="button" class="bar-btn" id="tools-toggle" aria-controls="portal-tray" aria-expanded="false" title="View and filters" aria-label="View and filters"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
     <button class="bar-btn" id="add-node-button" title="Add node" aria-label="Add node">+</button>
   </header>
   <nav id="space-rail" aria-label="Primary">
@@ -3206,15 +3240,34 @@ ${SHELL_SWITCH_CSS}
     <span class="rail-spacer"></span>
     <a class="rail-link" href="/mission-control#connect" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg></a>
   </nav>
-  <!-- Menu tray (☰): everything that used to crowd the top bar and the filter row, in one panel that slides in from the left. -->
+  <!-- Primary menu (☰): the same drawer as Mission Control's: the Aether header, the seven places, and who is signed in. The view,
+       filter and help controls live in the View panel (the sliders button), not here. -->
+  <button type="button" id="space-menu-scrim" aria-label="Close menu" tabindex="-1" hidden></button>
+  <aside id="space-menu" aria-label="Menu" aria-hidden="true" inert>
+    <div class="sm-head"><a class="sm-brand" href="/">Aether</a><button type="button" id="space-menu-close" class="sm-close" title="Close menu" aria-label="Close menu">×</button></div>
+    <nav class="sm-nav" aria-label="Primary">
+      <a class="sm-link" href="/mission-control"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span>Mission Control</span></a>
+      <a class="sm-link" href="/" aria-current="page"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.6"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(-28 12 12)"/></svg><span>Space</span></a>
+      <a class="sm-link" href="/mission-control#create"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg><span>New project</span></a>
+      <a class="sm-link" href="/mission-control#blueprints"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></svg><span>Projects</span></a>
+      <a class="sm-link" href="/mission-control#monitor"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6H21"/></svg><span>Runs</span></a>
+      <a class="sm-link" href="/mission-control#studio"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1.5"/><rect x="3" y="15" width="6" height="5" rx="1.5"/><rect x="15" y="9.5" width="6" height="5" rx="1.5"/><path d="M9 6.5c3 0 3 5.5 6 5.5M9 17.5c3 0 3-5.5 6-5.5"/></svg><span>Studio</span></a>
+      <a class="sm-link" href="/mission-control#connect"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>Settings</span></a>
+    </nav>
+    <div class="sm-user">
+      <span class="sm-avatar" id="sm-avatar" aria-hidden="true">A</span>
+      <div class="sm-user-text"><span class="sm-name">Aether Portal</span><span class="user-greeting" id="user-greeting" hidden></span></div>
+      <button type="button" class="sm-small" id="display-name-button" title="Change your display name">Name</button>
+      <button type="button" class="sm-small" id="logout-button" title="Sign out">Sign out</button>
+    </div>
+  </aside>
+  <!-- View panel (sliders button): the view modes, zoom, depth, filters, help and graph tools, in one panel that slides in from the right. -->
   <button type="button" id="tray-scrim" aria-label="Close menu" tabindex="-1" hidden></button>
-  <aside id="portal-tray" aria-label="Menu" aria-hidden="true" inert>
+  <aside id="portal-tray" aria-label="View and filters" aria-hidden="true" inert>
     <div class="tray-head">
-      <span class="brand">Aether Portal</span>
-      <span class="user-greeting" id="user-greeting" hidden></span>
+      <span class="brand">View &amp; filters</span>
       <button type="button" id="tray-close" class="card-close" title="Close menu" aria-label="Close menu">×</button>
     </div>
-    <a class="bar-btn mc-tab tray-row" id="mission-control-tab" href="/mission-control" title="Mission Control: Elarion, agent tasks and the circuit breaker" aria-label="Mission Control"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="bar-label">Mission Control</span><span class="tray-chevron" aria-hidden="true">›</span></a>
     <section class="tray-section" aria-label="View">
       <h3>View</h3>
       <div class="tray-wheel-actions"><button type="button" id="wheel-home" title="Home: recentre the current view (Home or H)" aria-label="Recentre view"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7.4 8 2.8l5.5 4.6M4.2 6.2V13h2.9V9.6h1.8V13h2.9V6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg><span>Home</span></button><button type="button" id="wheel-mode" role="switch" aria-checked="true" title="Wheel mode: Advanced shows every ring; Simple keeps to the view and its main ring"><span class="wheel-mode-track"><span class="wheel-mode-knob"></span></span><span class="wheel-mode-label">Advanced</span></button></div>
@@ -3311,8 +3364,6 @@ ${SHELL_SWITCH_CSS}
           <button class="settings-option" id="remine-button">Mine Tags &amp; Groups for Old Nodes</button>
           <button class="settings-option" id="clear-filters-button">Clear Filters</button>
               <button class="settings-option phone-only" id="dial-sound-option" hidden>Wheel clicks: On</button>
-          <button class="settings-option" id="display-name-button">Display Name</button>
-          <button class="settings-option" id="logout-button">Sign Out</button>
         </div>
       </div>
     </section>
@@ -8202,7 +8253,7 @@ ${SHELL_SWITCH_CSS}
     // Control or anything that opens a dialog closes it too; filters and sliders keep it open so changes show behind. ----
     const portalTray = document.getElementById('portal-tray');
     const trayScrim = document.getElementById('tray-scrim');
-    const menuToggle = document.getElementById('menu-toggle');
+    const menuToggle = document.getElementById('tools-toggle');
     const trayIsOpen = () => document.body.classList.contains('tray-open');
     let trayTrap = null;
     const openTray = () => {
@@ -8226,7 +8277,11 @@ ${SHELL_SWITCH_CSS}
       if (trayTrap) { trayTrap.release({ restore: false }); trayTrap = null; }
       if (focusToggle) menuToggle.focus();
     };
-    menuToggle.addEventListener('click', () => (trayIsOpen() ? closeTray() : openTray()));
+    menuToggle.addEventListener('click', () => {
+      if (trayIsOpen()) return closeTray();
+      closeSpaceMenu(false);
+      openTray();
+    });
     document.getElementById('tray-close').addEventListener('click', () => closeTray());
     trayScrim.addEventListener('click', () => closeTray());
     document.addEventListener('keydown', event => {
@@ -8234,6 +8289,44 @@ ${SHELL_SWITCH_CSS}
     });
     portalTray.addEventListener('click', event => {
       if (event.target.closest('#view-switch button, #view-toggle, #wheel-home, #mission-control-tab, #telegram-help-button, #display-name-button, #logout-button, [data-xr-mode]')) closeTray(false);
+    });
+
+    // ---- Primary menu (☰): the Aether header, seven places and the signed-in footer, the same drawer as Mission Control's. ✕, the
+    // scrim, Escape or following a link close it. ----
+    const spaceMenu = document.getElementById('space-menu');
+    const spaceMenuScrim = document.getElementById('space-menu-scrim');
+    const spaceMenuToggle = document.getElementById('menu-toggle');
+    const spaceMenuIsOpen = () => document.body.classList.contains('menu-open');
+    let spaceMenuTrap = null;
+    function openSpaceMenu() {
+      closeTray(false);
+      document.body.classList.add('menu-open');
+      spaceMenu.removeAttribute('inert');
+      spaceMenu.setAttribute('aria-hidden', 'false');
+      spaceMenuScrim.hidden = false;
+      spaceMenuToggle.setAttribute('aria-expanded', 'true');
+      const first = spaceMenu.querySelector('.sm-link');
+      if (first) first.focus();
+      if (window.AetherA11y) spaceMenuTrap = window.AetherA11y.trapFocus(spaceMenu, { returnTo: spaceMenuToggle });
+    }
+    function closeSpaceMenu(focusToggle = true) {
+      if (!spaceMenuIsOpen()) return;
+      document.body.classList.remove('menu-open');
+      spaceMenu.setAttribute('inert', '');
+      spaceMenu.setAttribute('aria-hidden', 'true');
+      spaceMenuScrim.hidden = true;
+      spaceMenuToggle.setAttribute('aria-expanded', 'false');
+      if (spaceMenuTrap) { spaceMenuTrap.release({ restore: false }); spaceMenuTrap = null; }
+      if (focusToggle) spaceMenuToggle.focus();
+    }
+    spaceMenuToggle.addEventListener('click', () => (spaceMenuIsOpen() ? closeSpaceMenu() : openSpaceMenu()));
+    document.getElementById('space-menu-close').addEventListener('click', () => closeSpaceMenu());
+    spaceMenuScrim.addEventListener('click', () => closeSpaceMenu());
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && spaceMenuIsOpen() && !document.querySelector('.modal-backdrop:not([hidden])')) closeSpaceMenu();
+    });
+    spaceMenu.addEventListener('click', event => {
+      if (event.target.closest('.sm-link, #display-name-button, #logout-button')) closeSpaceMenu(false);
     });
 
     const settingsToggle = document.getElementById('settings-toggle');
@@ -10344,6 +10437,8 @@ ${SHELL_SWITCH_CSS}
       el.textContent = preferredName ? 'Hi, ' + preferredName : '';
       el.title = preferredName ? 'Signed in as ' + preferredName : '';
       el.hidden = !preferredName;
+      const avatar = document.getElementById('sm-avatar');
+      if (avatar) avatar.textContent = preferredName ? preferredName.trim().charAt(0).toUpperCase() : 'A';
     }
     document.getElementById('display-name-button').addEventListener('click', async () => {
       const next = window.prompt('Display name for the header and Mission Control (leave empty to use your username):', preferredName || '');

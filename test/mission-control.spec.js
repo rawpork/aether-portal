@@ -44,8 +44,19 @@ describe('Mission Control routes', () => {
 
 	it('keeps engine controls out of the main portal header, linking to Mission Control instead', async () => {
 		const html = await (await SELF.fetch('http://example.com/')).text();
-		expect(html).toContain('id="mission-control-tab"');
 		expect(html).toContain('href="/mission-control"');
+		// The ☰ opens Mission Control's drawer: the Aether header, the seven places, and the signed-in footer (name, sign out). The view,
+		// filter and help controls are in the separate View panel, never in this drawer.
+		const menu = /<aside id="space-menu"[\s\S]*?<\/aside>/.exec(html)[0];
+		expect([...menu.matchAll(/class="sm-link"[^>]*href="([^"]+)"|href="([^"]+)"[^>]*class="sm-link"/g)].map((m) => m[1] || m[2])).toEqual(['/mission-control', '/', '/mission-control#create', '/mission-control#blueprints', '/mission-control#monitor', '/mission-control#studio', '/mission-control#connect']);
+		expect(menu).toContain('class="sm-brand"');
+		expect(menu).toContain('id="logout-button"');
+		expect(menu).toContain('id="display-name-button"');
+		for (const legacy of ['view-switch', 'depth-slider', 'zoom-slider', 'telegram-help-button', 'filter-menu']) expect(menu, legacy).not.toContain(legacy);
+		expect(html).toMatch(/id="menu-toggle"[^>]*aria-controls="space-menu"/);
+		expect(html).toMatch(/#space-menu \{[^}]*width: min\(260px, 86vw\); max-width: 260px;/);
+		expect(html).toMatch(/<aside id="portal-tray" aria-label="View and filters"/);
+		expect(html).toContain('id="tools-toggle"');
 		// The same link also sits in the top bar's second slot, mirroring Space's link in Mission Control's header (WCAG 3.2.3).
 		expect(html).toMatch(/<nav class="shell-switch" aria-label="Aether"><a class="shell-item" data-surface="space" href="\/" aria-current="page"[^>]*>[\s\S]*?<a class="shell-item" data-surface="mission-control" href="\/mission-control" aria-label="Mission Control" aria-keyshortcuts="Alt\+M"/);
 		expect(html).toContain('data-shell-surface="space"');
