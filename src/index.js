@@ -1253,19 +1253,20 @@ export default {
     body { margin: 0; overflow: hidden; background-color: var(--bg-page); font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
     #topbar {
       position: absolute;
-      top: 10px;
-      left: 10px;
-      right: 10px;
-      height: 44px;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 54px;
       box-sizing: border-box;
       z-index: 30;
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 0 10px;
-      border-radius: var(--radius-m);
-      background: var(--bg-panel);
-      border: var(--hairline);
+      padding: 0 10px 0 0;
+      border-radius: 0;
+      background: #0B0D10;
+      border: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
     /* One high-contrast focus ring on every control. Many rules below swap the outline for a faint border or tint on focus; the
        accent on this dark ground is well over 3:1, and the ring stays visible whatever else changes. */
@@ -1280,7 +1281,10 @@ export default {
        focuses it, and the bar keeps its layout. */
     #topbar .search-wrap { flex: 1; min-width: 0; max-width: 640px; margin: -1px auto -1px 0; align-self: stretch; display: flex; align-items: center; cursor: text; }
     #topbar .search-wrap #search-input { flex: 1 1 auto; width: 100%; }
-    #menu-toggle { flex: none; width: 36px; padding: 0; justify-content: center; }
+    /* The ☰ sits in the top-left corner, flush with the screen edge: a 64px column the height of the bar, with a hairline on its right
+       (the same 64px a menu rail would take), so it lines up with the left edge the way the Mission Control rail does. */
+    #topbar #menu-toggle { flex: none; align-self: stretch; width: 64px; margin: 0 4px 0 0; padding: 0; justify-content: center; border: 0; border-right: 1px solid rgba(255, 255, 255, 0.08); border-radius: 0; background: none; color: var(--text-muted); }
+    #topbar #menu-toggle:hover, #topbar #menu-toggle[aria-expanded="true"] { background: #15181D; color: var(--text); }
     /* Time range chip (top bar): the span on screen, one tap to change it. */
     .scope-chip-wrap { position: relative; flex: none; }
     #scope-chip { gap: 6px; padding: 0 10px; font-weight: 600; white-space: nowrap; }
@@ -1369,6 +1373,14 @@ export default {
     .tray-head .card-close { position: absolute; top: -4px; right: -6px; width: 44px; height: 44px; border: 0; background: none; color: var(--text-muted); font-size: 22px; cursor: pointer; }
     .tray-section { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--hairline); }
     .tray-section h3 { margin: 0; color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    /* Minimal shell: the drawer matches Mission Control's dark surface. Dark ground, 8% hairlines, Geist where installed (system sans
+       otherwise), no section sub-headers (each section keeps its aria-label; the header is hidden from sight only). */
+    #portal-tray { --bg-raised: #15181D; background: #0B0D10; border-right: 1px solid rgba(255, 255, 255, 0.08); font-family: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; letter-spacing: -0.005em; }
+    #portal-tray .tray-section { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+    #portal-tray .tray-section h3 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    #portal-tray .tray-head .brand { color: var(--text); font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+    #portal-tray button, #portal-tray a, #portal-tray summary, #portal-tray select { font-family: inherit; }
+    #tray-scrim { background: rgba(0, 0, 0, 0.55); }
     #portal-tray .tray-row { width: 100%; height: 44px; justify-content: flex-start; gap: 10px; }
     #portal-tray .tray-row .bar-label { display: inline !important; }
     #portal-tray #view-switch { display: flex; flex-direction: column; height: auto; overflow: visible; }
