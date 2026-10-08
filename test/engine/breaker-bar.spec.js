@@ -240,3 +240,36 @@ it('stops polling after destroy', async () => {
   await vi.advanceTimersByTimeAsync(20000);
   expect(engine.count('GET', STATE_PATH)).toBe(1);
 });
+
+describe('stop dialog focus', () => {
+  const tabKey = (shiftKey = false) => {
+    const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(event);
+    return event;
+  };
+
+  it('keeps Tab between Cancel and the confirm button while open, and lets go when it closes', async () => {
+    const { elements } = mount();
+    await flush();
+    elements.tripButton.focus();
+    elements.tripButton.click();
+    expect(elements.confirmModal.hidden).toBe(false);
+    expect(document.activeElement).toBe(elements.confirmCancel);
+    // Cancel -> confirm is the browser's own Tab; from the confirm button, Tab wraps back to Cancel, and Shift+Tab from Cancel wraps to confirm.
+    elements.confirmTrip.focus();
+    expect(tabKey().defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(elements.confirmCancel);
+    expect(tabKey(true).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(elements.confirmTrip);
+    // Focus that strays outside is pulled back in.
+    elements.badge.focus();
+    expect(tabKey().defaultPrevented).toBe(true);
+    expect(elements.confirmModal.contains(document.activeElement)).toBe(true);
+
+    elements.confirmCancel.click();
+    expect(elements.confirmModal.hidden).toBe(true);
+    expect(document.activeElement).toBe(elements.tripButton);
+    elements.badge.focus();
+    expect(tabKey().defaultPrevented).toBe(false);
+  });
+});

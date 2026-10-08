@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { labelOpacity, wheelGrowth } from "../../public/js/spatial/thumb-wheel.js";
+import { MIN_TARGET, hubHitRadius, labelOpacity, wheelGrowth } from "../../public/js/spatial/thumb-wheel.js";
 
 describe("wheelGrowth", () => {
 	it("keeps the base corner for two and three rings", () => {
@@ -36,5 +36,16 @@ describe("labelOpacity", () => {
 		expect(labelOpacity(edge - half, half)).toBe(1);
 		expect(labelOpacity(edge + half, half)).toBe(0);
 		expect(labelOpacity(start - half, half)).toBe(0);
+	});
+});
+
+describe("hubHitRadius", () => {
+	it("gives the + hub at least a 44px touch area, however small the hub draws", () => {
+		expect(MIN_TARGET).toBe(44);
+		// A phone's hub is 30px collapsed and 34px open: the transparent pad under it is a 44px quarter-disc.
+		expect(hubHitRadius(30)).toBe(44);
+		expect(hubHitRadius(34)).toBe(44);
+		// A desktop hub (scaled up) is already larger than that and keeps its own size.
+		expect(hubHitRadius(48.4)).toBe(48.4);
 	});
 });

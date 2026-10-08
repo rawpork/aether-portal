@@ -1235,7 +1235,10 @@ export default {
     #topbar .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
     #topbar .user-greeting { color: #8a93a6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
     #topbar .user-greeting[hidden] { display: none; }
-    #topbar #search-input { flex: 1; min-width: 0; max-width: 640px; margin-right: auto; }
+    /* The 30px field sits in a label that fills the bar's height (44px with the bar's border): a tap above or below the field still
+       focuses it, and the bar keeps its layout. */
+    #topbar .search-wrap { flex: 1; min-width: 0; max-width: 640px; margin: -1px auto -1px 0; align-self: stretch; display: flex; align-items: center; cursor: text; }
+    #topbar .search-wrap #search-input { flex: 1 1 auto; width: 100%; }
     #menu-toggle { flex: none; width: 36px; padding: 0; justify-content: center; }
     /* Time range chip (top bar): the span on screen, one tap to change it. */
     .scope-chip-wrap { position: relative; flex: none; }
@@ -3070,7 +3073,7 @@ ${SHELL_SWITCH_CSS}
     <button type="button" class="bar-btn" id="menu-toggle" aria-controls="portal-tray" aria-expanded="false" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     ${renderSurfaceSwitch('space')}
     <span class="brand">Aether</span>
-    <input type="text" id="search-input" placeholder="🔍 Search nodes...">
+    <label class="search-wrap" for="search-input"><input type="text" id="search-input" placeholder="🔍 Search nodes..." aria-label="Search nodes"></label>
     <div class="scope-chip-wrap">
       <button type="button" class="bar-btn" id="scope-chip" aria-haspopup="menu" aria-expanded="false" aria-controls="scope-menu" title="Time range"><span id="scope-chip-label">All</span><span class="scope-chip-caret" aria-hidden="true">▾</span></button>
       <div id="scope-menu" role="menu" aria-label="Time range" hidden></div>
@@ -3454,6 +3457,9 @@ ${SHELL_SWITCH_CSS}
 
     const VIEW_PREFS_KEY = 'aetherViewPrefs';
     const VIEW_MODES = ['graph', 'list', 'timeline', 'board', 'carousel'];
+    // Said aloud (a polite live region) whenever the mode of the space changes, since the change itself is only visual.
+    const VIEW_NAMES = { graph: '3D Space', list: 'List', timeline: 'Timeline', board: 'Board', carousel: 'Carousel' };
+    const announceMode = text => { if (window.AetherA11y) window.AetherA11y.announce(text); };
     const LIST_LAYOUTS = ['list', 'grid'];
     const LIST_SORTS = ['newest', 'oldest', 'title', 'category'];
     const GROUP_BY_KEYS = ['group', 'category', 'platform', 'tag'];
@@ -5362,6 +5368,7 @@ ${SHELL_SWITCH_CSS}
       if (next === zoomStop) return;
       zoomStop = next;
       renderZoomStop();
+      announceMode('Zoom: ' + ZOOM_STOP_NAMES[next]);
     };
 
     // goal: { target, distance, theta?, phi?, state, detail?, instant? }; theta/phi default to the current direction.
@@ -6067,8 +6074,11 @@ ${SHELL_SWITCH_CSS}
         if (next) next.focus();
       }
     });
+    let announcedScope = null;
     const renderScope = () => {
       syncThumbWheel();
+      if (announcedScope !== null && announcedScope !== filterState.horizon) announceMode('Time range: ' + (SCOPE_LABELS[filterState.horizon] || 'All time') + ', ' + currentVisibleNodes.length + ' cards');
+      announcedScope = filterState.horizon;
       scopeChipLabel.textContent = SCOPE_CHIP_LABELS[filterState.horizon] || 'All';
       scopeChip.title = 'Time range: ' + (SCOPE_LABELS[filterState.horizon] || 'All time') + ' (' + currentVisibleNodes.length + ' cards)';
       const index = SCOPES.indexOf(filterState.horizon);
@@ -6501,6 +6511,7 @@ ${SHELL_SWITCH_CSS}
     const setDepth = level => {
       if (!DEPTH_LEVELS.includes(level) || level === filterState.depth) return;
       filterState.depth = level;
+      announceMode('Connection depth: ' + level);
       renderDepth();
       applyGraphFilters();
       saveDepth();
@@ -7964,6 +7975,7 @@ ${SHELL_SWITCH_CSS}
       if (gallery) closeClusterDrawer();
       if (focus.node) hideNodeCard();
       filterState.flat = !filterState.flat;
+      announceMode(filterState.flat ? 'Flat 2D board' : '3D Space');
       viewToggle.querySelector('.bar-label').textContent = filterState.flat ? '3D Space' : '2D Board';
       viewToggle.dataset.short = filterState.flat ? '3D' : '2D';
       viewToggle.classList.toggle('active', filterState.flat);
@@ -8044,6 +8056,7 @@ ${SHELL_SWITCH_CSS}
     const trayScrim = document.getElementById('tray-scrim');
     const menuToggle = document.getElementById('menu-toggle');
     const trayIsOpen = () => document.body.classList.contains('tray-open');
+    let trayTrap = null;
     const openTray = () => {
       document.body.classList.add('tray-open');
       portalTray.removeAttribute('inert');
@@ -8052,6 +8065,8 @@ ${SHELL_SWITCH_CSS}
       menuToggle.setAttribute('aria-expanded', 'true');
       const first = portalTray.querySelector('.tray-row, button');
       if (first) first.focus();
+      // The tray covers the graph behind a scrim: Tab stays inside it until it closes.
+      if (window.AetherA11y) trayTrap = window.AetherA11y.trapFocus(portalTray, { returnTo: menuToggle });
     };
     const closeTray = (focusToggle = true) => {
       if (!trayIsOpen()) return;
@@ -8060,6 +8075,7 @@ ${SHELL_SWITCH_CSS}
       portalTray.setAttribute('aria-hidden', 'true');
       trayScrim.hidden = true;
       menuToggle.setAttribute('aria-expanded', 'false');
+      if (trayTrap) { trayTrap.release({ restore: false }); trayTrap = null; }
       if (focusToggle) menuToggle.focus();
     };
     menuToggle.addEventListener('click', () => (trayIsOpen() ? closeTray() : openTray()));
@@ -8266,6 +8282,7 @@ ${SHELL_SWITCH_CSS}
     };
 
     // media (optional): a parsed video (readerMediaFor) to play above the text.
+    let readerTrap = null;
     const showReader = (title, meta, body, media = null) => {
       readerTitle.textContent = title;
       readerMeta.textContent = meta;
@@ -8283,7 +8300,9 @@ ${SHELL_SWITCH_CSS}
         readerLink.removeAttribute('href');
         readerLink.style.display = 'none';
       }
+      const readerOpener = document.activeElement;
       readerModal.hidden = false;
+      if (window.AetherA11y && !readerTrap) readerTrap = window.AetherA11y.trapFocus(readerModal, { returnTo: readerOpener });
       readerBody.scrollTop = 0;
       readerClose.focus();
     };
@@ -8305,6 +8324,7 @@ ${SHELL_SWITCH_CSS}
     const closeReader = () => {
       readerModal.hidden = true;
       readerBody.replaceChildren();
+      if (readerTrap) { readerTrap.release(); readerTrap = null; }
     };
     cardReaderButton.addEventListener('click', openReader);
 
@@ -8480,8 +8500,10 @@ ${SHELL_SWITCH_CSS}
 
     const telegramHelpModal = document.getElementById('telegram-help-modal');
     const telegramHelpButton = document.getElementById('telegram-help-button');
+    let helpTrap = null;
     const closeTelegramHelp = () => {
       telegramHelpModal.hidden = true;
+      if (helpTrap) { helpTrap.release({ restore: false }); helpTrap = null; }
       telegramHelpButton.focus();
     };
     const openTelegramHelp = () => {
@@ -8489,6 +8511,7 @@ ${SHELL_SWITCH_CSS}
       settingsMenu.classList.remove('open');
       telegramHelpModal.hidden = false;
       document.getElementById('telegram-help-close').focus();
+      if (window.AetherA11y) helpTrap = window.AetherA11y.trapFocus(telegramHelpModal, { returnTo: telegramHelpButton });
     };
     telegramHelpButton.addEventListener('click', openTelegramHelp);
     document.getElementById('telegram-help-close').addEventListener('click', closeTelegramHelp);
@@ -8572,10 +8595,16 @@ ${SHELL_SWITCH_CSS}
       else if (focus.node) addNodeLink.value = focus.node.id;
       filterMenu.open = false;
       settingsMenu.classList.remove('open');
+      const opener = document.activeElement;
       addNodeModal.hidden = false;
       addNodeTitle.focus();
+      if (window.AetherA11y) addNodeTrap = window.AetherA11y.trapFocus(addNodeModal, { returnTo: opener });
     };
-    const closeAddNodeModal = () => { addNodeModal.hidden = true; };
+    let addNodeTrap = null;
+    const closeAddNodeModal = () => {
+      addNodeModal.hidden = true;
+      if (addNodeTrap) { addNodeTrap.release(); addNodeTrap = null; }
+    };
 
     document.getElementById('add-node-button').addEventListener('click', () => openAddNodeModal());
     document.getElementById('add-node-cancel').addEventListener('click', closeAddNodeModal);
@@ -9895,6 +9924,7 @@ ${SHELL_SWITCH_CSS}
     const setView = view => {
       if (!VIEW_MODES.includes(view) || view === filterState.view) return;
       filterState.view = view;
+      announceMode(VIEW_NAMES[view] + ' view');
       // Entering the carousel with a node selected (in the graph or any other view) opens the deck on it.
       if (view === 'carousel' && focus.node) deck.id = focus.node.id;
       saveViewPrefs();

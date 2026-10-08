@@ -22,6 +22,9 @@ const WIDTH = { view: 26, primary: 32, inner: 30 };
 const GAP = 3;
 const HUB = 34;
 const HUB_COLLAPSED = 30;
+// The least touch area the + hub is given, in px. The hub looks the same; a transparent quarter-disc of this radius sits under it.
+export const MIN_TARGET = 44;
+export const hubHitRadius = hubRadius => Math.max(hubRadius, MIN_TARGET);
 // The wheel folds after this long without a touch.
 const IDLE_MS = 2500;
 // Radius and band tweens (per second) and how far a press may move and still be a tap.
@@ -114,7 +117,10 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
   const hubShape = el('path', { fill: ACCENT });
   const hubLabel = el('text', { fill: HUB_TEXT, 'font-size': '24', 'font-weight': '600', 'text-anchor': 'middle', 'dominant-baseline': 'central' });
   hubLabel.textContent = '+';
-  hub.append(hubShape, hubLabel);
+  // Transparent and larger than the hub on a phone, where the hub is only 30 to 34px: a tap just outside the + still adds. It
+  // costs the first few pixels of the ring beside the hub, which a thumb aimed at the + would have hit anyway.
+  const hubPad = el('path', { fill: 'transparent', class: 'thumb-wheel-hub-pad' });
+  hub.append(hubPad, hubShape, hubLabel);
   // One index mark for every ring, like a camera dial's: a small teal wedge just outside the rim, on the diagonal.
   const mark = el('path', { fill: ACCENT, class: 'thumb-wheel-mark' });
   // The labels' arcs (never drawn themselves).
@@ -288,6 +294,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
     const spread = (4.5 * k) / Math.max(base, 1);
     const point = (r, a) => (cx + r * Math.cos(a)).toFixed(1) + ' ' + (cy + r * Math.sin(a)).toFixed(1);
     mark.setAttribute('d', 'M' + point(tip, MARK) + ' L' + point(base, MARK - spread) + ' L' + point(base, MARK + spread) + ' Z');
+    hubPad.setAttribute('d', bandPath(cx, cy, 0.01, hubHitRadius(hubRadius), Math.PI * 0.98, Math.PI * 1.52));
     hubShape.setAttribute('d', bandPath(cx, cy, 0.01, hubRadius, Math.PI * 0.98, Math.PI * 1.52));
     hubLabel.setAttribute('x', (cx - hubRadius * 0.52).toFixed(1));
     hubLabel.setAttribute('y', (cy - hubRadius * 0.52).toFixed(1));

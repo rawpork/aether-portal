@@ -5,6 +5,7 @@
 // options.onAuthNeeded.
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
+import { trapFocus } from '../a11y.js';
 
 export const BREAKER_AGENT_ID = 'master-brain';
 export const MANUAL_TRIP_REASON = 'Operator manual trip from Portal UI';
@@ -62,6 +63,7 @@ export function mountBreakerBar(container, options = {}) {
   const view = { state: 'CONNECTING', reason: null, detail: null, busy: false, syncedAt: null };
   let timer = null;
   let polling = false;
+  let confirmTrap = null;
   let destroyed = false;
 
   // --- controls
@@ -164,8 +166,16 @@ export function mountBreakerBar(container, options = {}) {
   doc.addEventListener('visibilitychange', onVisibility);
 
   // --- dialog
+  // The stop dialog is modal: Tab stays between Cancel and the confirm button until it closes.
+  function releaseTrap() {
+    if (confirmTrap) {
+      confirmTrap.release({ restore: false });
+      confirmTrap = null;
+    }
+  }
   function closeConfirm() {
     confirmModal.hidden = true;
+    releaseTrap();
     if (!tripButton.disabled) tripButton.focus();
   }
 
@@ -189,6 +199,7 @@ export function mountBreakerBar(container, options = {}) {
         return;
       }
       confirmModal.hidden = true;
+      releaseTrap();
       resetButton.focus();
     } catch (error) {
       confirmError.textContent = 'Trip failed: ' + ((error && error.message) || 'unknown error');
@@ -222,6 +233,8 @@ export function mountBreakerBar(container, options = {}) {
     confirmModal.hidden = false;
     // Cancel takes focus so an accidental Enter does not trip the breaker.
     confirmCancel.focus();
+    releaseTrap();
+    confirmTrap = trapFocus(confirmModal, { returnTo: tripButton });
   });
   confirmCancel.addEventListener('click', closeConfirm);
   confirmTrip.addEventListener('click', trip);
@@ -249,6 +262,7 @@ export function mountBreakerBar(container, options = {}) {
       clearTimeout(timer);
       unsubscribe();
       doc.removeEventListener('visibilitychange', onVisibility);
+      releaseTrap();
       confirmModal.remove();
       container.replaceChildren();
     },

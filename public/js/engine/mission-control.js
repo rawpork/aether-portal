@@ -2,6 +2,7 @@
 // so the breaker, workforce overview, task monitor, blueprint dashboard and Elarion dock all start out authenticated,
 // then mounts them. The dark sidebar rail switches between the views.
 import '../shell-keys.js';
+import { trapFocus } from '../a11y.js';
 import { getEngineApi, getStoredEngineToken } from '../engine-api.bundle.js';
 import { mountBlueprintWorkspace } from './blueprints.js';
 import { mountBreakerBar } from './breaker-bar.js';
@@ -71,10 +72,17 @@ export function setupMenuTray(doc, { win = doc.defaultView, storage = win.localS
     preference = storage.getItem(RAIL_KEY);
   } catch { /* storage blocked */ }
   const isOpen = () => body.classList.contains('rail-open');
+  let railTrap = null;
+  // On a phone the closed drawer is off-screen: it must not be reachable by Tab (or a screen reader) while it is.
+  function syncInert() {
+    if (phone.matches && !isOpen()) rail.setAttribute('inert', '');
+    else rail.removeAttribute('inert');
+  }
   function apply() {
     if (phone.matches) {
       body.dataset.rail = 'full';
       toggle.setAttribute('aria-expanded', String(isOpen()));
+      syncInert();
       return;
     }
     body.classList.remove('rail-open');
@@ -82,19 +90,28 @@ export function setupMenuTray(doc, { win = doc.defaultView, storage = win.localS
     const mode = preference === 'icons' || preference === 'full' ? preference : medium.matches ? 'icons' : 'full';
     body.dataset.rail = mode;
     toggle.setAttribute('aria-expanded', String(mode === 'full'));
+    syncInert();
   }
   function open() {
     body.classList.add('rail-open');
+    syncInert();
     if (scrim) scrim.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
     const first = rail.querySelector('.rail-item');
     if (first) first.focus();
+    // The drawer covers the page behind a scrim: Tab stays inside it until it closes.
+    railTrap = trapFocus(rail, { returnTo: toggle });
   }
   function close(focusToggle = true) {
     if (!isOpen()) return;
     body.classList.remove('rail-open');
     if (scrim) scrim.hidden = true;
     toggle.setAttribute('aria-expanded', 'false');
+    if (railTrap) {
+      railTrap.release({ restore: false });
+      railTrap = null;
+    }
+    syncInert();
     if (focusToggle) toggle.focus();
   }
   toggle.addEventListener('click', () => {

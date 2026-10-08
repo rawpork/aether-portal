@@ -115,3 +115,38 @@ describe('focus and touch targets in Space', () => {
 		expect(space).toMatch(/#command-mic \{[^}]*width: 44px;\s*height: 44px;/);
 	});
 });
+
+describe('Space search field, announcements and focus traps', () => {
+	const space = read('src/index.js');
+	const wheel = read('public/js/spatial/thumb-wheel.js');
+
+	it('wraps the 30px search field in a label that fills the bar, so the whole 44px height focuses it', () => {
+		expect(space).toContain('<label class="search-wrap" for="search-input"><input type="text" id="search-input" placeholder="🔍 Search nodes..." aria-label="Search nodes"></label>');
+		expect(space).toMatch(/#topbar \.search-wrap \{[^}]*margin: -1px auto -1px 0; align-self: stretch;/);
+	});
+
+	it('gives the + hub a transparent quarter-disc pad of at least 44px under its unchanged shape', () => {
+		expect(wheel).toContain("const hubPad = el('path', { fill: 'transparent',");
+		expect(wheel).toContain('hub.append(hubPad, hubShape, hubLabel);');
+		expect(wheel).toContain("hubPad.setAttribute('d', bandPath(cx, cy, 0.01, hubHitRadius(hubRadius),");
+		expect(wheel).toContain("hubShape.setAttribute('d', bandPath(cx, cy, 0.01, hubRadius,");
+	});
+
+	it('announces every change of mode: view, time range, zoom stop, flat board and connection depth', () => {
+		expect(space).toContain("announceMode(VIEW_NAMES[view] + ' view');");
+		expect(space).toContain("announceMode('Time range: ' + (SCOPE_LABELS[filterState.horizon] || 'All time') + ', ' + currentVisibleNodes.length + ' cards');");
+		expect(space).toContain("announceMode('Zoom: ' + ZOOM_STOP_NAMES[next]);");
+		expect(space).toContain("announceMode(filterState.flat ? 'Flat 2D board' : '3D Space');");
+		expect(space).toContain("announceMode('Connection depth: ' + level);");
+		expect(read('public/js/spatial/index.js')).toContain("import '../a11y.js';");
+	});
+
+	it('traps Tab in the menu tray and in the add, help and reader dialogs, and releases each when it closes', () => {
+		for (const name of ['trayTrap', 'helpTrap', 'readerTrap', 'addNodeTrap']) {
+			expect(space.includes(name + ' = window.AetherA11y.trapFocus('), name + ' taken').toBe(true);
+			expect(space.includes(name + '.release('), name + ' released').toBe(true);
+		}
+		// The add dialog hands focus back to whatever opened it (it used to leave it on the page).
+		expect(space).toContain('trapFocus(addNodeModal, { returnTo: opener })');
+	});
+});
