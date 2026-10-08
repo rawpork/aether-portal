@@ -21,10 +21,17 @@
     "binding": "CF_VERSION_METADATA"
   },
   // Live sync (src/graph-events.js): one GraphEvents object per user holds its open /api/events streams.
+  // Realtime (src/realtime/user-hub.js, PHASE2_PLAN.md): one hibernating WebSocket UserHub per user, behind /api/realtime and /api/engine/connect.
   "durable_objects": {
-    "bindings": [{ "name": "GRAPH_EVENTS", "class_name": "GraphEvents" }]
+    "bindings": [
+      { "name": "GRAPH_EVENTS", "class_name": "GraphEvents" },
+      { "name": "USER_HUB", "class_name": "UserHub" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GraphEvents"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GraphEvents"] },
+    { "tag": "v2", "new_sqlite_classes": ["UserHub"] }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

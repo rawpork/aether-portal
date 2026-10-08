@@ -1,6 +1,6 @@
 # Phase 2 Plan: Real-Time WebSockets and Durable Object State Sync
 
-Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 to R6 are not started.
+Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 is built (section 2.6); R2 to R6 are not started.
 
 ## 0. Naming
 
@@ -113,12 +113,23 @@ Still needed for sign-off: owner decisions in section 6, and the Aether_Engine s
 and A or B. Recommendation: **A** (outbound WebSocket), because the hub learns of a dropped engine from the socket closing instead of waiting
 out the 60 s silence, and a trip reaches the browser without batching delay.
 
+### 2.6 R1 as built (`src/realtime/user-hub.js`)
+
+- **Class and bindings:** `UserHub`, binding `USER_HUB`, migration `v2` (SQLite-backed), exported from `src/index.js`. Plain hibernation API; the runtime answers the exact `{"v":1,"type":"ping"}` frame with pong without waking the hub.
+- **Routes (`connectRealtime` in `src/index.js`):** `GET /api/realtime` needs the session cookie and our own `Origin`; `GET /api/engine/connect` needs an `engine:push` bearer token (`verifyEnginePushToken` in `src/engine-token.js`). `REALTIME=off` returns 404 on both. The Worker tells the hub the role in an internal `X-Hub-Role` header; the hub is reachable only through its stub.
+- **Limits:** 8 tabs per user (429), one engine per user (a new one closes the old, code 1012), 4 KB frames (1009), non-text frames (1003), tabs 10 messages/s and the engine 50/s (1008), 5 invalid frames close the connection (1008).
+- **Storage:** counter under `head`, one key per event (`e:<12-digit seq>`), engine presence under `engine`; each event, the counter and the trim are one transaction. The ring reloads and re-trims when the hub wakes.
+- **Handshake:** nothing is sent before `hello`. A resume replays the missed events for the topics asked, then `ready {seq}`; a gap sends only `gap {seq}` (the tab refetches, then says hello again with that seq).
+- **Presence:** engine socket closes -> `engine.bye` ("disconnected") at once, unless a new engine socket took over; engine silent for 60 s (events or auto-answered pings) -> `engine.bye` from the alarm.
+- **Publishing:** `POST /publish {event, origin}` on the hub stamps and fans out a graph event. Nothing in the Worker calls it yet; that is R2.
+- **Not done in R1:** per-hub counters for the owner (section 4), and the browser client (R3).
+
 ## 3. Milestones
 
 | # | Milestone | Done when |
 |---|---|---|
 | **R0 (signed off)** | Message format and engine contract written and agreed (this file's sections 2.2 and 2.4 become the spec); `public/js/realtime-protocol.js` with validators and tests | The owner and the engine side sign off on topics, event types, auth scope and A or B |
-| R1 | `UserHub` Durable Object (migration `v2`), `/api/realtime` upgrade with auth and Origin check, hibernation, storage ring, resume and gap | Upgrade, auth, resume, gap and cap tests pass in the existing Worker test setup |
+| R1 (built) | `UserHub` Durable Object (migration `v2`), `/api/realtime` upgrade with auth and Origin check, hibernation, storage ring, resume and gap | Upgrade, auth, resume, gap and cap tests pass in the existing Worker test setup |
 | R2 | Dual publish: the Worker publishes each graph write to the hub and to `GraphEvents` | Parity tests show both deliver the same events |
 | R3 | `realtime.js` in Space behind the flag | Two tabs stay in sync; a mid-stream disconnect resumes with no missed event; a long gap refetches cleanly |
 | R4 | Engine push (A or B) into the hub, with the engine-side change in the Aether_Engine repo | A run's progress and a breaker trip reach Mission Control with polling disabled |

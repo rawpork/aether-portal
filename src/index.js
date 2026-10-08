@@ -7,7 +7,7 @@ import { WebFetchError, fetchWebContent } from "./webfetch.js";
 import { SHARE_PRESET_LABELS, SHARE_TIER_LABELS, buildPresetPrompt, callClaude, parseSharePayload } from "./share.js";
 import { renderSharePage } from "./share-page.js";
 import { renderMissionControlPage } from "./mission-control-page.js";
-import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken } from "./engine-token.js";
+import { ENGINE_TOKEN_TTL_SECONDS, mintEngineToken, verifyEnginePushToken } from "./engine-token.js";
 import { displayNameFor, loadAccount, loadPreferredName, normalizePreferredName } from "./user-profile.js";
 import { seedOnboardingGraph } from "./onboarding.js";
 import { handleSitesApi, serveSite } from "./sites.js";
@@ -16,6 +16,7 @@ import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from "../public/js/shell-surfac
 
 // The live sync Durable Object (wrangler.jsonc durable_objects).
 export { GraphEvents } from "./graph-events.js";
+export { UserHub } from "./realtime/user-hub.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
@@ -126,6 +127,11 @@ export default {
 
     // Endpoint 0a: The deployed version id (public). Long-lived pages (iOS keeps home-screen apps alive) compare it
     // with the version they were built from and offer a reload (public/js/update-check.js).
+    // Realtime (src/realtime/user-hub.js): a signed-in tab's WebSocket, and the engine's outbound push connection.
+    if (url.pathname === "/api/realtime" || url.pathname === "/api/engine/connect") {
+      return connectRealtime(request, env, url);
+    }
+
     // Live sync: the signed-in user's graph events as Server-Sent Events (src/graph-events.js).
     if (url.pathname === "/api/events") {
       if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
@@ -10363,6 +10369,33 @@ async function announceWrite(request, env, event) {
   } catch (err) {
     console.warn("Live sync publish failed:", err.message);
   }
+}
+
+// Both realtime entry points: check who is asking, then hand the upgrade to that user's hub with the role it earned.
+// A tab needs the session cookie and our own Origin (a page on another site cannot ride the cookie into a socket).
+// The engine needs an engine:push token, which is accepted here and nowhere else. REALTIME=off turns it all off.
+async function connectRealtime(request, env, url) {
+  const isEngine = url.pathname === "/api/engine/connect";
+  if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET" });
+  if (!env.USER_HUB || String(env.REALTIME || "").toLowerCase() === "off") {
+    return jsonResponse({ error: "Realtime is off.", configured: false }, 404, { "Cache-Control": "no-store" });
+  }
+  if (request.headers.get("Upgrade") !== "websocket") return jsonResponse({ error: "Expected a WebSocket upgrade." }, 426);
+  let userId;
+  if (isEngine) {
+    const bearer = /^Bearer (.+)$/.exec(request.headers.get("Authorization") || "");
+    const pushed = bearer && await verifyEnginePushToken(bearer[1], env.ENGINE_JWT_SECRET);
+    if (!pushed) return jsonResponse({ error: "Unauthorized" }, 401);
+    userId = pushed.userId;
+  } else {
+    const auth = await authenticateUser(request, env, url);
+    if (auth.error) return auth.error;
+    if (!isSameOrigin(request, url)) return jsonResponse({ error: "Forbidden" }, 403);
+    userId = auth.user.id;
+  }
+  const hub = env.USER_HUB.get(env.USER_HUB.idFromName(String(userId)));
+  const forwarded = new Request("https://user-hub/connect", { headers: { Upgrade: "websocket", "X-Hub-Role": isEngine ? "engine" : "client" } });
+  return hub.fetch(forwarded);
 }
 
 async function authenticateUser(request, env, url) {

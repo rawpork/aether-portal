@@ -10,9 +10,9 @@ The Worker cannot reach `localhost:3333`, so the engine connects **outward** (Op
 - Auth: `Authorization: Bearer <engine:push token>` on the upgrade request.
 - Send text frames only, each a single JSON object, **at most 4096 bytes (UTF-8)**.
 - On connect, send `engine.hello` first. Reconnect with backoff: 1 s doubling to 30 s, jittered between half and the whole step.
-- Send at least one event or a WebSocket ping every **30 s**. If the hub hears nothing for **60 s** it emits `engine.bye` and Mission Control shows "Engine offline".
+- Send at least one event, or the exact text frame `{"v":1,"type":"ping"}` (answered `{"v":1,"type":"pong"}`), every **30 s**. Protocol-level WebSocket ping frames are not seen by the hub. If the hub hears nothing for **60 s** it emits `engine.bye` and Mission Control shows "Engine offline".
 - Rate: keep bursts small; coalesce `task.step` events to at most a few per second per task.
-- The hub sends nothing the engine needs to act on; invalid frames are dropped and counted, and repeated invalid frames close the socket.
+- The hub sends nothing the engine needs to act on; invalid frames are dropped and counted, and 5 invalid frames close the socket (code 1008). The engine may send up to 50 frames per second; over that the socket is closed. A new engine connection for the same user closes the old one (code 1012). If the engine's socket closes, the hub announces `engine.bye` (`reason: "disconnected"`) at once.
 
 ## `engine:push` token
 Minted like the existing engine tokens (`src/engine-token.js`: HS256, signed with the shared secret that equals the engine's `SUPABASE_JWT_SECRET`), with these differences:
