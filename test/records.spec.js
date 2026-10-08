@@ -1,7 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import migration from "../migrations/0019_records.sql?raw";
-import { clampLimit, getRecord, searchRecords, toMatchQuery, upsertRecord } from "../src/records.js";
+import { clampLimit, getRecord, searchRecords, toMatchQuery, toOrQuery, upsertRecord } from "../src/records.js";
 
 // Splits the migration into statements; a trigger runs to its END; line.
 function statements(sql) {
@@ -34,6 +34,11 @@ describe("query building", () => {
 		expect(toMatchQuery('sour* AND "dough" NOT')).toBe('"sour" "and" "dough" "not"*');
 		expect(toMatchQuery("   ")).toBe(null);
 		expect(toMatchQuery(null)).toBe(null);
+	});
+	it("builds the any-word form only for multi-word queries", () => {
+		expect(toOrQuery("mission control")).toBe('"mission"* OR "control"*');
+		expect(toOrQuery("mission")).toBe(null);
+		expect(toOrQuery("   ")).toBe(null);
 	});
 	it("keeps the limit between 1 and 50, defaulting to 10", () => {
 		expect([clampLimit(undefined), clampLimit(0), clampLimit(7), clampLimit(500)]).toEqual([10, 10, 7, 50]);
@@ -79,6 +84,24 @@ describe("records index", () => {
 		const record = await getRecord(env, "u1", "old1");
 		expect(record.body).toContain("Backfilled before the migration");
 		expect(record.body).toContain("https://old.test");
+	});
+});
+
+describe("AND then OR search", () => {
+	it("requires every word first, and falls back to any word when that finds nothing", async () => {
+		await env.DB.prepare("INSERT INTO saved_nodes (id, url, title, description, category, user_id) VALUES ('m1', 'https://m.test', 'Mission planning guide', 'Steps', 'general', 'u1'), ('m2', 'https://c.test', 'Control panel notes', 'Dials', 'general', 'u1')").run();
+		const both = await searchRecords(env, "u1", { query: "mission control" });
+		expect(both.mode).toBe("or");
+		expect(both.records.map(r => r.id).sort()).toEqual(["m1", "m2"]);
+		await env.DB.prepare("INSERT INTO saved_nodes (id, url, title, description, category, user_id) VALUES ('m3', 'https://mc.test', 'Mission Control rollout', 'Plan', 'general', 'u1')").run();
+		const strict = await searchRecords(env, "u1", { query: "mission control" });
+		expect(strict.mode).toBe("and");
+		expect(strict.records.map(r => r.id)).toEqual(["m3"]);
+		expect((await searchRecords(env, "u1", { query: "mission" })).mode).toBe("and");
+		expect((await searchRecords(env, "u1", { query: "zzzz yyyy" })).count).toBe(0);
+		expect((await searchRecords(env, "u1", { query: "zzzz" })).mode).toBe("and");
+		expect((await searchRecords(env, "u1", { query: "" })).mode).toBe("recent");
+		expect((await searchRecords(env, "u2", { query: "mission control" })).count).toBe(0);
 	});
 });
 

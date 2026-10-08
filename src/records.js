@@ -15,28 +15,48 @@ export function clampLimit(value) {
 	return Math.min(n, RECORDS_LIMIT_MAX);
 }
 
+const words = text => (String(text == null ? "" : text).toLowerCase().match(/[\p{L}\p{N}_]+/gu) || []).slice(0, 12);
+
 // Free text to a safe FTS5 query: each word quoted (so operators and punctuation are plain text), the last one a prefix, all
-// required. Returns null when there is nothing to search for.
+// required (AND). Returns null when there is nothing to search for.
 export function toMatchQuery(text) {
-	const words = String(text == null ? "" : text).toLowerCase().match(/[\p{L}\p{N}_]+/gu) || [];
-	if (!words.length) return null;
-	return words.slice(0, 12).map((w, i, all) => '"' + w + '"' + (i === all.length - 1 ? "*" : "")).join(" ");
+	const list = words(text);
+	if (!list.length) return null;
+	return list.map((w, i, all) => '"' + w + '"' + (i === all.length - 1 ? "*" : "")).join(" ");
+}
+
+// The looser form for a multi-word query that found nothing: any word may match, each as a prefix. Null for fewer than two words.
+export function toOrQuery(text) {
+	const list = words(text);
+	return list.length > 1 ? list.map(w => '"' + w + '"*').join(" OR ") : null;
 }
 
 // search_records(query, project_id?, type?, limit): best matches first (bm25), or the most recent records when the query is empty.
+// A multi-word query must match every word first; when that finds nothing it is tried again matching any word (mode "or").
 export async function searchRecords(env, userId, { query, project_id, type, limit } = {}) {
-	const match = toMatchQuery(query);
 	const filters = [];
 	const args = [];
 	if (project_id) { filters.push("r.project_id = ?"); args.push(String(project_id)); }
 	if (type) { filters.push("r.type = ?"); args.push(String(type)); }
 	const extra = filters.length ? " AND " + filters.join(" AND ") : "";
 	const max = clampLimit(limit);
-	const statement = match
-		? env.DB.prepare("SELECT " + COLUMNS + " FROM records_fts JOIN records r ON r.rowid = records_fts.rowid WHERE records_fts MATCH ? AND r.user_id = ?" + extra + " ORDER BY bm25(records_fts) LIMIT ?").bind(match, userId, ...args, max)
-		: env.DB.prepare("SELECT " + COLUMNS + " FROM records r WHERE r.user_id = ?" + extra + " ORDER BY r.updated_at DESC LIMIT ?").bind(userId, ...args, max);
-	const { results } = await statement.all();
-	return { records: results || [], count: (results || []).length };
+	const match = toMatchQuery(query);
+	if (!match) {
+		const { results } = await env.DB.prepare("SELECT " + COLUMNS + " FROM records r WHERE r.user_id = ?" + extra + " ORDER BY r.updated_at DESC LIMIT ?").bind(userId, ...args, max).all();
+		return { records: results || [], count: (results || []).length, mode: "recent" };
+	}
+	const run = async expression => {
+		const { results } = await env.DB.prepare("SELECT " + COLUMNS + " FROM records_fts JOIN records r ON r.rowid = records_fts.rowid WHERE records_fts MATCH ? AND r.user_id = ?" + extra + " ORDER BY bm25(records_fts) LIMIT ?").bind(expression, userId, ...args, max).all();
+		return results || [];
+	};
+	let records = await run(match);
+	let mode = "and";
+	const loose = toOrQuery(query);
+	if (!records.length && loose) {
+		records = await run(loose);
+		mode = "or";
+	}
+	return { records, count: records.length, mode };
 }
 
 // get_record(id): the record, plus the body it points at when that is a saved card (its description, note and link).
