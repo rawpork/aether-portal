@@ -18,8 +18,8 @@ import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from "../public/js/shell-surfac
 export { GraphEvents } from "./graph-events.js";
 export { UserHub } from "./realtime/user-hub.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
-import { getRecord, searchRecords, upsertRecord } from "./records.js";
-import { appendMessages, deleteThread, getThread, listThreads } from "./conversations.js";
+import { getRecord, recordStats, reindexAccount, searchRecords, upsertRecord } from "./records.js";
+import { appendMessages, deleteThread, getThread, listThreads, refileThreads } from "./conversations.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
 import { DEFAULT_DEPTH, DEPTHS, normalizeDepth } from "../public/js/spatial/depth.js";
@@ -239,7 +239,10 @@ export default {
           const saved = await upsertRecord(env, userId, await request.json().catch(() => null));
           return saved.error ? jsonResponse({ error: saved.error }, saved.status || 400) : jsonResponse(saved, 201);
         }
+        // The account sweep: re-files every card, group, site and conversation, drops orphans, rebuilds the full-text index.
+        if (url.pathname === "/api/records/reindex" && request.method === "POST") return jsonResponse(await reindexAccount(env, userId, refileThreads));
         if (request.method !== "GET") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "GET, POST" });
+        if (url.pathname === "/api/records/stats") return jsonResponse(await recordStats(env, userId), 200, { "Cache-Control": "no-store" });
         if (url.pathname === "/api/records/search") {
           return jsonResponse(await searchRecords(env, userId, {
             query: url.searchParams.get("q"), project_id: url.searchParams.get("project_id"), type: url.searchParams.get("type"), limit: url.searchParams.get("limit"),

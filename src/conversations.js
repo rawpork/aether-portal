@@ -75,6 +75,19 @@ export async function listThreads(env, userId, { project_id } = {}) {
 	return { threads: results || [] };
 }
 
+// Re-files every thread of this user in records from its stored messages (the account sweep). Returns how many.
+export async function refileThreads(env, userId) {
+	const { results } = await env.DB.prepare("SELECT id, project_id, title FROM conversations WHERE user_id = ?").bind(userId).all();
+	for (const thread of results || []) {
+		const recent = await env.DB.prepare("SELECT role, content FROM conversation_messages WHERE user_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?").bind(userId, thread.id, SUMMARY_MESSAGES).all();
+		await upsertRecord(env, userId, {
+			id: "thread:" + thread.id, type: "conversation", title: thread.title || "Elarion conversation", summary: summarizeMessages((recent.results || []).reverse()),
+			project_id: thread.project_id, body_ref: "conversation:" + thread.id, tags: ["conversation", ...(thread.project_id ? ["project"] : [])],
+		});
+	}
+	return (results || []).length;
+}
+
 export async function deleteThread(env, userId, threadId) {
 	await env.DB.batch([
 		env.DB.prepare("DELETE FROM conversation_messages WHERE user_id = ? AND thread_id = ?").bind(userId, threadId),

@@ -95,3 +95,53 @@ export async function upsertRecord(env, userId, input) {
 	).bind(id, userId, text(input.project_id, ID_MAX) || null, text(input.run_id, ID_MAX) || null, type, title, text(input.summary), text(input.body_ref, 500) || null, tags, now, now).run();
 	return { id, type };
 }
+
+// ---- Account sweep ------------------------------------------------------------------------------------------------------------
+// Rebuilds this user's side of the index from what the portal itself holds: every card (raw links, text, outcomes), group and website,
+// and every conversation thread; removes records whose card, group or site is gone; then rebuilds the full-text index so nothing is
+// left out of it. Engine output (blueprints, phase outputs, runs, documents) is filed by the engine (its own sweep).
+const NOW = "CAST(strftime('%s', 'now') AS INTEGER) * 1000";
+
+export async function reindexAccount(env, userId, refileThreads) {
+	// First make the index agree with the table: the updates below fire triggers that remove old entries from it, which fails on an index that has drifted.
+	await env.DB.prepare("INSERT INTO records_fts (records_fts) VALUES ('rebuild')").run();
+	await env.DB.batch([
+		env.DB.prepare(
+			"INSERT INTO records (id, user_id, type, title, summary, body_ref, tags, created_at, updated_at) " +
+			"SELECT n.id, n.user_id, CASE WHEN n.category = 'outcome' THEN 'deliverable' ELSE 'card' END, COALESCE(n.title, ''), " +
+			"substr(trim(COALESCE(NULLIF(n.description, ''), NULLIF(n.synopsis, ''), '') || ' ' || COALESCE(n.user_note, '')), 1, 600), 'saved_nodes:' || n.id, " +
+			"trim(COALESCE(n.category, '') || ' ' || COALESCE(n.site_name, '') || ' ' || COALESCE((SELECT group_concat(tag, ' ') FROM node_tags WHERE node_id = n.id), '')), " +
+			"COALESCE(CAST(strftime('%s', n.created_at) AS INTEGER) * 1000, 0), " + NOW + " FROM saved_nodes n WHERE n.user_id = ? " +
+			"ON CONFLICT (id) DO UPDATE SET type = excluded.type, title = excluded.title, summary = excluded.summary, tags = excluded.tags",
+		).bind(userId),
+		env.DB.prepare(
+			"INSERT INTO records (id, user_id, type, title, summary, body_ref, tags, created_at, updated_at) " +
+			"SELECT 'group:' || g.id, g.user_id, 'note', g.name, 'A group of cards named ' || g.name || '.', 'node_groups:' || g.id, 'group ' || COALESCE(g.source, ''), " +
+			"COALESCE(CAST(strftime('%s', g.created_at) AS INTEGER) * 1000, 0), " + NOW + " FROM node_groups g WHERE g.user_id = ? " +
+			"ON CONFLICT (id) DO UPDATE SET title = excluded.title, summary = excluded.summary",
+		).bind(userId),
+		env.DB.prepare(
+			"INSERT INTO records (id, user_id, project_id, type, title, summary, body_ref, tags, created_at, updated_at) " +
+			"SELECT 'site:' || s.slug, s.user_id, s.outcome_id, 'deliverable', s.title, 'Website, ' || s.status, '/s/' || s.slug, 'website', " +
+			"COALESCE(CAST(strftime('%s', s.created_at) AS INTEGER) * 1000, 0), " + NOW + " FROM sites s WHERE s.user_id = ? " +
+			"ON CONFLICT (id) DO UPDATE SET title = excluded.title, summary = excluded.summary, project_id = excluded.project_id",
+		).bind(userId),
+		env.DB.prepare("DELETE FROM records WHERE user_id = ? AND body_ref LIKE 'saved_nodes:%' AND NOT EXISTS (SELECT 1 FROM saved_nodes n WHERE n.id = substr(records.body_ref, 13))").bind(userId),
+		env.DB.prepare("DELETE FROM records WHERE user_id = ? AND body_ref LIKE 'node_groups:%' AND NOT EXISTS (SELECT 1 FROM node_groups g WHERE g.id = substr(records.body_ref, 13))").bind(userId),
+		env.DB.prepare("DELETE FROM records WHERE user_id = ? AND body_ref LIKE '/s/%' AND NOT EXISTS (SELECT 1 FROM sites s WHERE '/s/' || s.slug = records.body_ref)").bind(userId),
+	]);
+	const threads = refileThreads ? await refileThreads(env, userId) : 0;
+	// External-content FTS5: 'rebuild' re-reads every row of records, so the index cannot hold anything stale or miss anything.
+	await env.DB.prepare("INSERT INTO records_fts (records_fts) VALUES ('rebuild')").run();
+	return { ...(await recordStats(env, userId)), conversations_refiled: threads };
+}
+
+// What the index holds for this user: records by type, the total, and and whether the full-text index agrees with them.
+export async function recordStats(env, userId) {
+	const { results } = await env.DB.prepare("SELECT type, COUNT(*) AS n FROM records WHERE user_id = ? GROUP BY type ORDER BY type").bind(userId).all();
+	const by_type = Object.fromEntries((results || []).map(r => [r.type, r.n]));
+	const total = Object.values(by_type).reduce((sum, n) => sum + n, 0);
+	// FTS5's own check that the index and the table agree (it throws when a row is missing from the index or stale in it).
+	const indexConsistent = await env.DB.prepare("INSERT INTO records_fts (records_fts, rank) VALUES ('integrity-check', 1)").run().then(() => true, () => false);
+	return { total, by_type, index_consistent: indexConsistent };
+}
