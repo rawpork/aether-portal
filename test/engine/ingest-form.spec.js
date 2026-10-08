@@ -164,6 +164,19 @@ describe('the form', () => {
     expect(ui.elements.titleInput.type).toBe('text');
   });
 
+  it('puts each dropdown in a .dc-select box, which draws its chevron; text fields are not boxed', () => {
+    mount();
+    const selects = [...document.querySelectorAll('.dc-ingest select')];
+    expect(selects).toHaveLength(3);
+    for (const select of selects) {
+      expect(select.parentElement.className, select.id).toBe('dc-select');
+      expect(select.parentElement.children).toHaveLength(1);
+    }
+    for (const control of document.querySelectorAll('.dc-ingest input, .dc-ingest textarea')) expect(control.parentElement.className).not.toBe('dc-select');
+    // The label still points at the select itself.
+    for (const select of selects) expect(document.querySelector('label[for="' + select.id + '"]')).not.toBeNull();
+  });
+
   it('starts on Plain Text / Document with its defaults', () => {
     mount();
     expect(ui.elements.select.value).toBe('doc');

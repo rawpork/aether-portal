@@ -193,6 +193,30 @@ describe('the + Skill ingest form styles', () => {
 		expect(rule('.dc-ingest')).toContain('max-width: 100%');
 	});
 
+	it('draw dropdowns in the page theme: no native arrow or white option list, a themed chevron, a border, rounded corners', () => {
+		const select = rule('.dc-ingest select');
+		expect(select).toContain('appearance: none');
+		expect(select).toContain('-webkit-appearance: none');
+		expect(select).toContain('background-color: var(--surface-soft)');
+		expect(select).toContain('border: 1px solid var(--line-strong)');
+		expect(select).toContain('border-radius: var(--radius-m)');
+		expect(select).toContain('color: var(--text)');
+		// The options carry explicit colours, or mobile browsers show them white.
+		const option = rule('.dc-ingest select option');
+		expect(option).toContain('background-color: var(--surface)');
+		expect(option).toContain('color: var(--text)');
+		// The chevron is drawn by the box around the select, in a theme colour, and never takes the tap.
+		const chevron = rule('.dc-select::after');
+		expect(chevron).toContain('border-right: 2px solid var(--muted)');
+		expect(chevron).toContain('pointer-events: none');
+		// Room for the chevron, and a touch target of at least 44px.
+		expect(select).toMatch(/padding: 10px 44px 10px 14px/);
+		expect(Number(/min-height: (\d+)px/.exec(select)[1])).toBeGreaterThanOrEqual(44);
+		// The page's colour scheme follows its theme, so the popup list does too.
+		expect(html).toMatch(/color-scheme: dark/);
+		expect(html).toMatch(/color-scheme: light/);
+	});
+
 	it('stack the two small fields on a narrow screen, and keep the inputs at 16px on touch screens', () => {
 		expect(html).toMatch(/@media \(max-width: 480px\) \{ \.dc-row \{ grid-template-columns: minmax\(0, 1fr\); \} \}/);
 		expect(html).toMatch(/@media \(max-width: 900px\), \(pointer: coarse\) \{ \.dc-ingest input, \.dc-ingest select, \.dc-ingest textarea \{ font-size: 16px !important; \} \}/);

@@ -347,6 +347,16 @@ ${SHELL_SWITCH_CSS}
     .dc-ingest input, .dc-ingest select, .dc-ingest textarea { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; margin: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface-soft); color: var(--text); font: inherit; font-size: 14px; }
     .dc-ingest input, .dc-ingest select { min-height: 44px; }
     .dc-ingest textarea { min-height: 150px; resize: vertical; font-family: var(--mono); line-height: 1.5; }
+    /* Dropdowns: the browser's own look (a light box with a native arrow) is replaced by the page's dark surface, a themed border and a
+       chevron drawn by the .dc-select box, so they match the inputs beside them. Options get explicit colours because the popup
+       list is drawn by the browser (white on some mobile browsers) unless told otherwise; color-scheme follows the page theme. */
+    .dc-select { position: relative; min-width: 0; max-width: 100%; }
+    .dc-select::after { content: ""; position: absolute; right: 18px; top: 50%; width: 8px; height: 8px; margin-top: -6px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); pointer-events: none; transition: border-color 0.15s; }
+    .dc-select:focus-within::after, .dc-select:hover::after { border-color: var(--accent); }
+    .dc-ingest select { appearance: none; -webkit-appearance: none; -moz-appearance: none; min-height: 48px; padding: 10px 44px 10px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background-color: var(--surface-soft); background-image: none; color: var(--text); cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+    .dc-ingest select:hover { border-color: var(--accent-line); }
+    .dc-ingest select::-ms-expand { display: none; }
+    .dc-ingest select option { background-color: var(--surface); color: var(--text); }
     .dc-ingest input:focus-visible, .dc-ingest select:focus-visible, .dc-ingest textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .dc-ingest [aria-invalid="true"] { border-color: var(--off); }
     .dc-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }

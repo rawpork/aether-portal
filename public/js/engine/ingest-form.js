@@ -189,7 +189,9 @@ export function mountIngestForm(doc, { template = DEFAULT_TEMPLATE } = {}) {
   const prioritySelect = el(doc, 'select', { id: id + '-priority', 'data-field': 'priority' }, PRIORITIES.map((p) => el(doc, 'option', { value: p.value, text: p.label })));
   const errorBox = el(doc, 'p', { class: 'dc-warn dc-ingest-error', role: 'alert', hidden: true });
 
-  const field = (labelText, control, extra = []) => el(doc, 'div', { class: 'dc-field' }, [typeof labelText === 'string' ? el(doc, 'label', { for: control.id, text: labelText }) : labelText, control, ...extra]);
+  // A select is drawn without the browser's own arrow (appearance: none); its .dc-select box draws a themed chevron instead.
+  const box = (control) => (control.tagName === 'SELECT' ? el(doc, 'div', { class: 'dc-select' }, [control]) : control);
+  const field = (labelText, control, extra = []) => el(doc, 'div', { class: 'dc-field' }, [typeof labelText === 'string' ? el(doc, 'label', { for: control.id, text: labelText }) : labelText, box(control), ...extra]);
   const element = el(doc, 'div', { class: 'dc-ingest' }, [
     field('Template', select, [hint]),
     field('Title / Subject', titleInput),
