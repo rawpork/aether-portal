@@ -84,3 +84,6 @@ Examples:
 3. Validate outgoing frames with the same rules (copy `validateEngineInput` from `public/js/realtime-protocol.js`, or import it).
 4. Keep the REST relay as is; realtime never carries commands.
 5. Mark open questions back to the portal in this file or in `ROADMAP.md`.
+
+## Status (2026-10-08)
+Implemented in Aether_Engine (`src/realtimePush.ts`, `realtimeEvents.ts`, `realtimeProtocol.ts`). Decisions the engine made: the engine mints its own token (no portal mint route); the token goes in the `Authorization: Bearer` header only (no query parameter); the engine is opt-in with `PORTAL_REALTIME_USER` and uses the same `PORTAL_URL` as its status page; task statuses map `RUNNING` to `running`, `COMPLETED` to `done`, `HALTED` to `cancelled`, `FAILED` to `failed`; `task.choice.option` is the 1-based option number as a string; the master brain's state is always included in the snapshot.

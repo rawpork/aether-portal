@@ -1,6 +1,6 @@
 # Phase 2 Plan: Real-Time WebSockets and Durable Object State Sync
 
-Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 to R3 are built (section 2.6); R4 to R6 are not started.
+Status: **R0 signed off by the owner 2026-10-07** (plan drafted the same day on `main` at `636cf91`). `public/js/realtime-protocol.js` and `test/realtime-protocol.spec.js` exist (section 2.5); the engine-side contract is in [ENGINE_REALTIME_CONTRACT.md](ENGINE_REALTIME_CONTRACT.md) and still needs Aether_Engine's acceptance before R4. R1 to R3 are built and R4 is built on the engine side, uncommitted in Aether_Engine (section 2.6); R5 and R6 are not started.
 
 ## 0. Naming
 
@@ -130,6 +130,8 @@ out the 60 s silence, and a trip reaches the browser without batching delay.
   - **Self events:** the page's `LIVE_CLIENT_ID` (also sent as `X-Aether-Client` with its writes) is the client's `origin`; events carrying it are not dispatched but their seq is still counted and acked.
   - **Gap:** the client emits `gap {seq}`, resumes from that seq with a new `hello`, and the page refetches through its existing REST load. A fresh page load starts at seq 0, so on a hub with history it may see one redundant refetch.
   - **Mission Control:** subscribes to the `engine` topic, which stays quiet until R4 (the engine push). Not yet done there: spoken announcements for `task.awaiting` and lowering the poll rates (R5).
+- **R4 engine push (Aether_Engine, built 2026-10-08):** the engine connects out with an `engine:push` bearer token and pushes `engine.hello` + a snapshot, then `agent.state`, `task.*` and `engine.bye`; opt-in with `PORTAL_REALTIME_USER` (engine repo `ARCHITECTURE.md`, Realtime push). Checked live against `wrangler dev` (`REALTIME=on`): a tab that joined after the engine got `engine.hello` and the master-brain snapshot by replay; a breaker trip and reset, and a task with a choice (`task.started`, `step`, `awaiting`, `choice`, `step`, `finished`), arrived in order with contiguous seq numbers; killing the engine process gave the tab `engine.bye` (`disconnected`) at once. The 60 s silence rule and the graceful bye are covered by unit tests, not the live run.
+  - **Local dev gotchas (found in R4):** `wrangler dev --persist-to <long path>` makes every Durable Object fail with "internal error" (Windows path length of the DO database files); use a short path. A `SUPABASE_JWT_SECRET` in the shell overrides the engine's `.env`, so an engine started there signs with the wrong secret and gets HTTP 401.
 - **Not done in R1:** per-hub counters for the owner (section 4), and the browser client (R3).
 
 ## 3. Milestones
@@ -140,7 +142,7 @@ out the 60 s silence, and a trip reaches the browser without batching delay.
 | R1 (built) | `UserHub` Durable Object (migration `v2`), `/api/realtime` upgrade with auth and Origin check, hibernation, storage ring, resume and gap | Upgrade, auth, resume, gap and cap tests pass in the existing Worker test setup |
 | R2 (built) | Dual publish: the Worker publishes each graph write to the hub and to `GraphEvents` | Parity tests show both deliver the same events |
 | R3 (built) | `realtime-client.js` in Space behind the flag | Two tabs stay in sync; a mid-stream disconnect resumes with no missed event; a long gap refetches cleanly |
-| R4 | Engine push (A or B) into the hub, with the engine-side change in the Aether_Engine repo | A run's progress and a breaker trip reach Mission Control with polling disabled |
+| R4 (built, engine repo uncommitted) | Engine push (A or B) into the hub, with the engine-side change in the Aether_Engine repo | A run's progress and a breaker trip reach Mission Control with polling disabled |
 | R5 | Mission Control switches from polling to realtime, polling kept as fallback | Breaker, tasks, choices and the engine row update live; unplugging realtime falls back with no visible error |
 | R6 | Remove SSE and `GraphEvents`; docs (`ARCHITECTURE.md`, `ROADMAP.md`); flag defaults on | A full week of stable use; no open realtime bugs |
 
