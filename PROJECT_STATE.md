@@ -4,6 +4,33 @@
 
 ## Next session (start here)
 
+## Handoff 2026-10-07 (read this first): accessibility redesign shipped, Phase 2 (Realtime) planned
+
+**Goal:** start Phase 2 (Realtime): WebSockets and Durable Object state sync. The plan is in [PHASE2_PLAN.md](PHASE2_PLAN.md); nothing in it is built.
+
+**What's done**
+- The accessibility and UX redesign (the 2026-10-07 design brief, milestones M1 to M9 and the S1 to S11 should-fix list) is merged to `main` and pushed. `main` and `origin/main` are at `636cf91`; the pre-redesign baseline is tag `v1.0.0` at `901f0d6`.
+- Verified at `636cf91`: `npm test` 65 files / 695 tests pass, `npx tsc --noEmit` clean.
+- Highlights: shared Space / Mission Control header switch with Alt+S / Alt+M and arrival announcements (`public/js/shell-surfaces.js`, `shell-keys.js`); one status pill with Stop all agents (`public/js/engine/status-pill.js`); readable names (`labels.js`); page-name H1 and one input per page; phone header budget; "Right now" strip and idle-state safeguards; banner follows the engine key state; 12px type floor, 44px targets, AA contrast and full-accent focus rings (guarded by `test/spatial/a11y-floor.spec.js`); focus traps and spoken mode changes (`public/js/a11y.js`); Projects list first, repeats folded; Roadmap links; 320px reflow checked for all nine Mission Control views.
+- The current live sync is one-way Server-Sent Events (`src/graph-events.js`, one `GraphEvents` Durable Object per user); Mission Control polls everything.
+
+**What's left**
+- **Phase 2 (Realtime), R0 to R6** in [PHASE2_PLAN.md](PHASE2_PLAN.md), and the owner decisions in its section 6 (phase number, engine push A or B, resume window, ids or patches, shared rooms).
+- Open accessibility items: Create page tag chips ("Cloudflare D1", "API keys") still lack a plain explanation; Space was not checked at 320px in a browser (CSS scan only); the wheel's + hub pad, the Space focus ring and the focus traps have not been looked at in a browser; the Operator console's live log is not de-duplicated; test with a real phone and a screen reader.
+- Earlier open items still stand: hand `screenshots-designer-export.zip` to the designer and head developer; `DESIGN_BRIEF.md` (v2) records the design reasoning and the status of each recommendation.
+
+**File paths**
+- Plan: `PHASE2_PLAN.md`. Roadmap and phase numbering: `ROADMAP.md` (note: "Phase 2" is already used for the finished engine IPC gateway; `ROADMAP_MASTER.md` has another).
+- Realtime today: `src/graph-events.js`, `src/engine-relay.js`, `src/engine-token.js`, `wrangler.jsonc` (Durable Object migration `v1`), `test/graph-events.spec.js`; the Space consumer is `EventSource('/api/events')` in `src/index.js`.
+- Design: `DESIGN_BRIEF.md`, `DESIGN.md`, `DESIGN_SYSTEM.md`.
+
+**Next action: R0, Message Format and Engine Contract.** Fix the topics, event types and envelope (PHASE2_PLAN.md sections 2.2 and 2.4), write `public/js/realtime-protocol.js` with validators and tests, and agree with the Aether_Engine side whether it pushes by outbound WebSocket or signed POST. No other realtime work should start before R0 is signed off.
+
+**Working notes**
+- The local D1 holds an import of the production data (134 cards, all under the dev operator `user_dev_operator`); the backup of the earlier local database is in `.wrangler/backups/`. Both are git-ignored.
+- `npx wrangler dev --port 8787` does not pick up page-template changes (`src/*.js` templates): restart it. JavaScript under `public/` loads live.
+- Local scratch files such as `find_missing_tool.py` and `fix_part4*.py` are untracked and not part of the project.
+
 **Latest (2026-10-07):** the Mission Control / Aether_Engine work since 2026-10-01 is recorded phase by phase in [ROADMAP.md](ROADMAP.md), which is the source of truth; this file only points to it.
 - **Where things stand:** Phase 3 (engine integration) and Phase 5 (autonomous delivery, dual-agent console, skill ingestion) are done; Phase 6 (sandboxed build, Pages staging, viability gate, Create / Templates tab) is built with the WSL sandbox installed; Phase 4 (Agent Workflow Studio) has 4.1a and 4.1b built and the rest as specs in `specs/ui/`; Phases 8 and 9 (Miserly governance and revenue engine, growth and media pipelines) are planned.
 - **Today:** Phase 7 shipped. `AGENT_CORE.md` (owner profile and the 10-persona roster), `registry/connectors.json` (path index: look here before searching the disk) and `CLAUDE.md` (read AGENT_CORE on startup, registry first, zero-context-loss handoffs). Portal `520852f`. The `design-audit` skill (Prism, Playwright, desktop 1440x900 and mobile 375x812) is in `Aether_Engine/skills/design-audit`, engine `077c9d8`.
