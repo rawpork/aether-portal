@@ -18,7 +18,7 @@ const MARK = (5 * Math.PI) / 4;
 const BASE_PX = 164;
 // Band widths (px) by role, the gap between bands, and the hub. Inner rings are nearly as wide as the primary ring, so
 // with three or four rings out the bands stay as roomy as the two-ring wheel instead of pinching together.
-const WIDTH = { view: 22, primary: 32, inner: 30 };
+const WIDTH = { view: 26, primary: 32, inner: 30 };
 const GAP = 3;
 const HUB = 34;
 const HUB_COLLAPSED = 30;
@@ -27,8 +27,8 @@ const IDLE_MS = 2500;
 // Radius and band tweens (per second) and how far a press may move and still be a tap.
 const FOLD_RATE = 14;
 const TAP_PX = 8;
-// Label sizes by role (px) and the space a label needs along the arc.
-const FONT = { view: 9, primary: 11.5, inner: 10.5 };
+// Label sizes by role (px, never under the 12px type floor) and the space a label needs along the arc.
+const FONT = { view: 12, primary: 12, inner: 12 };
 const LABEL_PAD = 12;
 // Room kept outside the rim for the index mark, at the base size.
 const RIM_ROOM = 10;
@@ -38,6 +38,8 @@ const EDGE = 'rgba(255,255,255,0.07)';
 const TEXT = '#8a93a6';
 const ACCENT = '#00ffcc';
 const HUB_TEXT = '#041016';
+// Exported so the contrast of the wheel's text on its bands is checked by a test, not by eye.
+export const WHEEL_COLORS = { TEXT, ACCENT, HUB_TEXT, FILL, EDGE };
 
 const el = (name, attrs = {}) => {
   const node = document.createElementNS(SVG, name);
@@ -80,6 +82,15 @@ const tickSound = strong => {
     source.start();
   } catch (err) {}
 };
+
+// A label whose letters would run past the quarter's edge (the screen edge, where the ring continues off-screen) fades out
+// instead of showing half a word: fully drawn while it fits, gone once the overhang is most of its half-width.
+// `a` is the label's centre angle and `half` its half-width in radians.
+export function labelOpacity(a, half) {
+  const room = Math.min(a - half - Math.PI, Math.PI * 1.5 - (a + half));
+  if (room >= 0) return 1;
+  return Math.max(0, Math.min(1, 1 + room / Math.max(half * 0.8, 1e-6)));
+}
 
 // How much larger than its base size the mount must be to hold rings of these roles (outer to inner, as wheelRings
 // lists them) at full width, at the base scale: 1 while they fit, more for a wheel with many rings out. The rings keep
@@ -265,6 +276,7 @@ export function createThumbWheel({ mount, rings, state, onChange, onAdd, sound =
         text.setAttribute('font-size', String(size));
         text.setAttribute('font-weight', index === selected ? '700' : role === 'view' ? '600' : '500');
         text.setAttribute('fill', index === selected ? ACCENT : TEXT);
+        text.setAttribute('opacity', String(labelOpacity(a, rings[id].stops[index].label.length * size * 0.6 / 2 / Math.max(mid, 1))));
         text.setAttribute('letter-spacing', role === 'view' ? '0.06em' : '0');
         run.textContent = role === 'view' ? rings[id].stops[index].label.toUpperCase() : rings[id].stops[index].label;
       });

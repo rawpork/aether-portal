@@ -23,7 +23,7 @@ function addStyles() {
     .gp-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--gp-color, #8a93a6); }
     .gp-chip.empty .gp-dot { background: transparent; border: 1px dashed currentColor; box-sizing: border-box; }
     .gp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .gp-spark { flex: none; color: var(--text-muted, #8a93a6); font-size: 10px; }
+    .gp-spark { flex: none; color: var(--text-muted, #8a93a6); font-size: 12px; }
     .gp-chevron { width: 10px; height: 10px; flex: none; opacity: 0.6; }
     .gp-pop { position: fixed; z-index: 50; display: flex; flex-direction: column; gap: 6px; width: min(260px, calc(100vw - 16px)); max-height: min(340px, calc(100vh - 16px)); padding: 6px; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: var(--bg-panel, #0b1320); color: var(--text, #dffdf7); font-family: inherit; }
     .gp-pop[hidden] { display: none; }
@@ -31,7 +31,7 @@ function addStyles() {
     .gp-input:focus { border-color: var(--accent-line, rgba(0,255,204,0.55)); }
     .gp-input::placeholder { color: var(--text-muted, #8a93a6); }
     .gp-list { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-    .gp-section { margin: 6px 8px 2px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted, #8a93a6); }
+    .gp-section { margin: 6px 8px 2px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted, #8a93a6); }
     .gp-option { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 8px; border-left: 2px solid transparent; border-radius: 4px; font-size: 14px; cursor: pointer; }
     .gp-option .gp-name { flex: 1; }
     .gp-option .gp-count { color: var(--text-muted, #8a93a6); font-size: 12px; font-variant-numeric: tabular-nums; }

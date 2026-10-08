@@ -35,13 +35,14 @@ export function renderSurfaceSwitch(current) {
 export const SHELL_SWITCH_CSS = `
     .shell-switch { flex: none; display: inline-flex; align-items: center; gap: 6px; view-transition-name: shell-switch; }
     .shell-item { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-sizing: border-box; min-width: var(--shell-h, 44px); height: var(--shell-h, 44px); padding: 0 12px; border: 1px solid var(--shell-line); border-radius: var(--shell-radius); background: var(--shell-bg); color: var(--shell-fg); font: inherit; font-size: var(--shell-font, 14px); font-weight: 600; text-decoration: none; white-space: nowrap; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-    .shell-item::after { content: ""; position: absolute; inset: min(0px, calc((var(--shell-h, 44px) - 44px) / 2)) 0; }
+    .shell-item::after { content: ""; position: absolute; inset: min(0px, calc((var(--shell-h, 44px) - 44px) / 2 - 1px)) 0; }
     .shell-item svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .shell-item[aria-current="page"] { border-color: var(--shell-active-line); background: var(--shell-active-bg); color: var(--shell-active-fg); cursor: default; }
     .shell-item:not([aria-current]):hover { border-color: var(--shell-active-line); color: var(--shell-active-fg); }
     .shell-item:not([aria-current]):active { transform: scale(0.98); }
     @media (max-width: 767.98px) {
       .shell-item { padding: 0; width: var(--shell-h, 44px); }
+      .shell-item::after { inset: min(0px, calc((var(--shell-h, 44px) - 44px) / 2 - 1px)); }
       .shell-label { display: none; }
     }
     /* Moving between the two pages cross-fades instead of flashing, and the switch itself glides to its place on the other page. */

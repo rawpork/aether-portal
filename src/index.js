@@ -1226,6 +1226,12 @@ export default {
       background: var(--bg-panel);
       border: var(--hairline);
     }
+    /* One high-contrast focus ring on every control. Many rules below swap the outline for a faint border or tint on focus; the
+       accent on this dark ground is well over 3:1, and the ring stays visible whatever else changes. */
+    button:focus-visible, a[href]:focus-visible, [role="button"]:focus-visible, [role="switch"]:focus-visible, summary:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, .item-card:focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px !important; }
+    /* The top bar's 30px controls keep their look; an invisible pad makes each a 44px touch target. */
+    #topbar .bar-btn { position: relative; }
+    #topbar .bar-btn::after { content: ""; position: absolute; inset: -8px -5px; }
     #topbar .brand { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
     #topbar .user-greeting { color: #8a93a6; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
     #topbar .user-greeting[hidden] { display: none; }
@@ -1298,7 +1304,7 @@ export default {
     #portal-tray > *, .tray-section > * { flex: none; }
     #portal-tray { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.18) transparent; }
     #portal-tray .depth-control, #portal-tray .zoom-control { flex-wrap: wrap; height: auto; padding: 8px 10px; }
-    #portal-tray .depth-control::before, #portal-tray .zoom-control::before { flex-basis: 100%; margin-bottom: 4px; color: var(--text-muted); font-size: 11px; }
+    #portal-tray .depth-control::before, #portal-tray .zoom-control::before { flex-basis: 100%; margin-bottom: 4px; color: var(--text-muted); font-size: 12px; }
     #portal-tray .depth-control::before { content: 'Connection depth'; }
     #portal-tray .zoom-control::before { content: 'Zoom'; }
     /* Phones hide these from the screen (the wheel has them), but the tray is the full menu, so it shows them. */
@@ -1318,7 +1324,7 @@ export default {
     .tray-head .user-greeting[hidden] { display: none; }
     .tray-head .card-close { position: absolute; top: -4px; right: -6px; width: 44px; height: 44px; border: 0; background: none; color: var(--text-muted); font-size: 22px; cursor: pointer; }
     .tray-section { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--hairline); }
-    .tray-section h3 { margin: 0; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    .tray-section h3 { margin: 0; color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
     #portal-tray .tray-row { width: 100%; height: 44px; justify-content: flex-start; gap: 10px; }
     #portal-tray .tray-row .bar-label { display: inline !important; }
     #portal-tray #view-switch { display: flex; flex-direction: column; height: auto; overflow: visible; }
@@ -1424,7 +1430,7 @@ export default {
     #time-filter, #type-filter, #group-by { min-width: 140px; color: #dffdf7; }
     #time-filter option, #type-filter option, #group-by option { background: #0b1320; }
     .filter-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #8a93a6; }
-    .filter-badge { min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; box-sizing: border-box; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+    .filter-badge { min-width: 16px; height: 16px; margin-left: 6px; padding: 0 4px; box-sizing: border-box; border-radius: 4px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 700; line-height: 16px; text-align: center; }
     .filter-badge[hidden] { display: none; }
     .filters-reset { appearance: none; margin-top: 2px; padding: 6px; border: none; border-top: 1px solid rgba(255,255,255,0.08); background: none; color: var(--accent); font-size: 12px; cursor: pointer; }
     .filters-reset:hover, .filters-reset:focus-visible { text-decoration: underline; outline: none; }
@@ -1441,20 +1447,20 @@ export default {
     #node-card .card-outcome { margin: 0 0 12px; padding: 10px 12px; border-left: 2px solid #ffb627; border-radius: var(--radius-s); background: rgba(255, 182, 39, 0.07); }
     #node-card .card-outcome[hidden] { display: none; }
     .card-outcome-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    .card-outcome-badge { padding: 2px 6px; border: 1px solid rgba(255, 182, 39, 0.7); border-radius: 4px; color: #ffb627; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
-    .card-outcome-meta { color: #d9c7a0; font-size: 11px; }
+    .card-outcome-badge { padding: 2px 6px; border: 1px solid rgba(255, 182, 39, 0.7); border-radius: 4px; color: #ffb627; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+    .card-outcome-meta { color: #d9c7a0; font-size: 12px; }
     #node-card .card-outcome-goal { margin: 0 0 8px; color: #fff; font-size: 13px; }
     .card-outcome-steps { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; color: #e8dcc0; font-size: 12px; line-height: 1.45; }
     .card-outcome-steps strong { display: block; color: #fff; font-size: 13px; }
     .card-outcome-sources { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-    .card-outcome-sources button { appearance: none; max-width: 180px; padding: 2px 6px; overflow: hidden; border: 1px solid rgba(255, 182, 39, 0.35); border-radius: 4px; background: transparent; color: #d9c7a0; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .card-outcome-sources button { appearance: none; max-width: 180px; padding: 2px 6px; overflow: hidden; border: 1px solid rgba(255, 182, 39, 0.35); border-radius: 4px; background: transparent; color: #d9c7a0; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
     .card-outcome-sources button:hover, .card-outcome-sources button:focus-visible { border-color: #ffb627; color: #fff; outline: none; }
     .card-outcome-actions { display: flex; flex-wrap: wrap; gap: 6px; }
     .card-outcome-link { display: inline-flex; align-items: center; min-height: 32px; padding: 0 10px; box-sizing: border-box; border: 1px solid var(--accent-line); border-radius: var(--radius-s); color: var(--accent); font-size: 12px; text-decoration: none; }
     .card-outcome-actions button { appearance: none; min-height: 32px; padding: 0 10px; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-raised); color: var(--text); font-size: 12px; cursor: pointer; }
     .card-outcome-actions #outcome-accept { border-color: #ffb627; background: #ffb627; color: #1a1406; font-weight: 700; }
     .card-outcome-actions button:disabled { opacity: 0.45; cursor: progress; }
-    .card-outcome-message { display: block; min-height: 1em; margin-top: 6px; color: #d9c7a0; font-size: 11px; }
+    .card-outcome-message { display: block; min-height: 1em; margin-top: 6px; color: #d9c7a0; font-size: 12px; }
     /* Time scope stepper (semantic zoom): shorter or longer time span of cards. */
     #scope-stepper { display: inline-flex; flex: none; align-items: center; gap: 2px; height: 32px; padding: 2px; box-sizing: border-box; border: var(--hairline); border-radius: var(--radius-s); background: var(--bg-panel); }
     #scope-stepper button { position: relative; appearance: none; width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
@@ -1580,7 +1586,7 @@ export default {
       accent-color: var(--accent);
       cursor: pointer;
     }
-    .depth-stops { display: flex; justify-content: space-between; width: 150px; font-size: 9px; line-height: 1; color: #8a93a6; }
+    .depth-stops { display: flex; justify-content: space-between; width: 150px; font-size: 12px; line-height: 1; color: #8a93a6; }
     .depth-stops span.active { color: var(--accent); font-weight: 700; }
     /* Spatial zoom: a four-stop slider in the top bar (Space, Cluster, Horizon, Atomic), styled like the depth slider. */
     .zoom-control {
@@ -1602,7 +1608,7 @@ export default {
       accent-color: var(--accent);
       cursor: pointer;
     }
-    .zoom-stops { display: flex; justify-content: space-between; width: 168px; font-size: 9px; line-height: 1; color: #8a93a6; }
+    .zoom-stops { display: flex; justify-content: space-between; width: 168px; font-size: 12px; line-height: 1; color: #8a93a6; }
     .zoom-stops span { cursor: pointer; }
     .zoom-stops span.active { color: var(--accent); font-weight: 700; }
     body.collection-mode .zoom-control,
@@ -1668,7 +1674,7 @@ export default {
     #command-input {
       flex: 1;
       min-width: 0;
-      height: 40px;
+      height: 44px;
       padding: 0 12px;
       border: 1px solid transparent;
       border-radius: var(--radius-s);
@@ -1685,7 +1691,7 @@ export default {
       align-items: center;
       justify-content: center;
       width: 44px;
-      height: 40px;
+      height: 44px;
       border: var(--hairline);
       border-radius: var(--radius-s);
       background: var(--bg-raised);
@@ -1724,6 +1730,8 @@ export default {
       color: var(--text);
       font-size: 13px;
     }
+    /* The 3D graph library's own navigation hint defaults to 10px slate grey (2.9:1 on this ground): the type floor and the muted text colour (6.3:1). */
+    body .scene-nav-info { font-size: 12px; color: var(--text-muted); opacity: 1; }
     .visually-hidden-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     body.card-open #command-bar, body.xr-presenting #command-bar, body:has(#cluster-drawer.expanded) #command-bar { display: none; }
     @media (max-width: 767px) {
@@ -1742,7 +1750,8 @@ export default {
     .thumb-wheel-svg .thumb-wheel-hub path, .thumb-wheel-svg .thumb-wheel-hub text { cursor: pointer; }
     .thumb-wheel-svg .thumb-wheel-mark { pointer-events: none; }
     .thumb-wheel-svg g:focus { outline: none; }
-    .thumb-wheel-svg g:focus-visible path:first-child { stroke: var(--accent-line); }
+    /* Keyboard focus on a ring: the full accent, 2px (the faint 55% line was easy to miss against the dark bands). */
+    .thumb-wheel-svg g:focus-visible path:first-child { stroke: var(--accent); stroke-width: 2; }
     /* The visual click (the only one where the phone cannot vibrate): the index marks flick wider for a moment. */
     .thumb-wheel-svg .thumb-wheel-mark { transform-box: fill-box; transform-origin: center; }
     .thumb-wheel-svg.clicked .thumb-wheel-mark { animation: wheel-click 120ms ease-out; }
@@ -1752,7 +1761,7 @@ export default {
        so they are easy to hit with a thumb. */
     /* Home (recentre) and the wheel's Simple / Advanced switch live in the ☰ tray, under View. */
     .tray-wheel-actions { display: flex; gap: 8px; }
-    .tray-wheel-actions #wheel-home, .tray-wheel-actions #wheel-mode { flex: 1; height: 40px; justify-content: center; border-radius: var(--radius-s); font-size: 11px; }
+    .tray-wheel-actions #wheel-home, .tray-wheel-actions #wheel-mode { flex: 1; height: 40px; justify-content: center; border-radius: var(--radius-s); font-size: 12px; }
     #wheel-home, #wheel-mode { position: relative; }
     #wheel-home::after, #wheel-mode::after { content: ''; position: absolute; inset: -7px -5px; }
     #wheel-home {
@@ -1766,7 +1775,7 @@ export default {
       background: #0a111c;
       color: #8a93a6;
       font-family: inherit;
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 700;
       line-height: 1;
       letter-spacing: 0.06em;
@@ -1786,7 +1795,7 @@ export default {
       background: #0a111c;
       color: #8a93a6;
       font-family: inherit;
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 700;
       line-height: 1;
       letter-spacing: 0.06em;
@@ -1797,7 +1806,7 @@ export default {
     #wheel-mode .wheel-mode-knob { position: absolute; top: 2px; left: 2px; width: 8px; height: 8px; border-radius: 50%; background: #8a93a6; transition: left 160ms ease-out, background 160ms ease-out; }
     #wheel-mode[aria-checked="true"] { color: var(--accent); }
     #wheel-mode[aria-checked="true"] .wheel-mode-knob { left: 10px; background: var(--accent); }
-    #wheel-mode:focus-visible { outline: 1px solid var(--accent-line); outline-offset: 1px; }
+    #wheel-mode:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     /* Desktop: the card sidebar comes down the right edge, so the wheel moves to its left while a card is open. Over the
        List, Timeline, Board and Carousel it stands in from the corner by the list's scrollbar (--scrollbar-w, measured
        from script) and a small gap, so the scrollbar and its arrows stay reachable. */
@@ -1891,7 +1900,7 @@ export default {
       transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
     }
     .board-column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 8px; font-size: 13px; font-weight: 600; color: #fff; }
-    .board-count { min-width: 22px; padding: 1px 7px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.08); color: #aab3c5; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+    .board-count { min-width: 22px; padding: 1px 7px; box-sizing: border-box; border-radius: 4px; background: rgba(255,255,255,0.08); color: #aab3c5; font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
     .board-column-body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; min-height: 90px; }
     .board-empty { display: flex; align-items: center; justify-content: center; min-height: 72px; border: 1px dashed rgba(255,255,255,0.12); border-radius: var(--radius-s); color: #6b7385; font-size: 12px; }
     .board-column.drop-target { border-color: var(--column); background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px var(--column); }
@@ -1941,12 +1950,12 @@ export default {
     .deck-btn:hover, .deck-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
     .deck-btn:disabled { opacity: 0.3; cursor: default; }
     .deck-counter { min-width: 72px; text-align: center; font-size: 13px; color: #aab3c5; font-variant-numeric: tabular-nums; }
-    .deck-hint { max-width: calc(100% - 32px); font-size: 11px; color: #6b7385; text-align: center; }
+    .deck-hint { max-width: calc(100% - 32px); font-size: 12px; color: #6b7385; text-align: center; }
     @media (prefers-reduced-motion: reduce) {
       .item-card.carousel { transition: none; }
     }
     .card-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
-    .card-status-label { font-size: 11px; color: #8a93a6; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+    .card-status-label { font-size: 12px; color: #8a93a6; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
     .card-status button {
       appearance: none;
       padding: 3px 9px;
@@ -1954,7 +1963,7 @@ export default {
       border: 1px solid rgba(255,255,255,0.12);
       background: rgba(255,255,255,0.04);
       color: #aab3c5;
-      font-size: 11px;
+      font-size: 12px;
       cursor: pointer;
     }
     .card-status button:hover, .card-status button:focus-visible { border-color: var(--column); color: #fff; outline: none; }
@@ -1970,7 +1979,7 @@ export default {
       background: radial-gradient(circle at 30% 25%, var(--chip-soft, rgba(0,255,204,0.2)), rgba(8,12,20,0.95) 75%);
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .item-cover.placeholder .item-cover-host { position: absolute; left: 12px; bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #dffdf7; opacity: 0.85; }
+    .item-cover.placeholder .item-cover-host { position: absolute; left: 12px; bottom: 8px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #dffdf7; opacity: 0.85; }
     .item-play {
       position: absolute;
       top: 50%;
@@ -1994,7 +2003,7 @@ export default {
     .item-card.list.has-thumb > :not(.item-thumb) { grid-column: 1; }
     .item-thumb { grid-column: 2; grid-row: 1 / span 5; width: 112px; aspect-ratio: 16 / 9; height: auto; border-radius: 8px; object-fit: contain; object-position: center; background: rgba(0,0,0,0.45); }
     .item-note { font-size: 12px; color: #fff3d1; line-height: 1.4; overflow-wrap: anywhere; padding-left: 8px; border-left: 2px solid rgba(255,209,102,0.6); }
-    .item-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; }
+    .item-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8a93a6; }
     .item-chip {
       display: inline-flex;
       align-items: center;
@@ -2003,7 +2012,7 @@ export default {
       border-radius: 4px;
       border: 1px solid var(--chip, #8a93a6);
       color: var(--chip, #8a93a6);
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -2016,7 +2025,7 @@ export default {
     .card-group:empty { display: none; }
     .item-title { font-size: 14px; font-weight: 600; color: #fff; line-height: 1.3; overflow-wrap: anywhere; }
     .item-preview { font-size: 12px; color: #aab3c5; line-height: 1.45; overflow-wrap: anywhere; }
-    .item-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8a93a6; min-width: 0; }
+    .item-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8a93a6; min-width: 0; }
     .item-foot .item-site { min-width: 0; overflow-wrap: anywhere; }
     .item-foot a { margin-left: auto; flex: none; color: var(--accent); font-weight: 700; text-decoration: none; }
     .collection-empty { text-align: center; color: #8a93a6; padding: 48px 16px; font-size: 13px; }
@@ -2028,7 +2037,7 @@ export default {
       z-index: 1;
       margin: 0;
       padding: 10px 0 8px;
-      font-size: 11px;
+      font-size: 12px;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--accent);
@@ -2207,6 +2216,8 @@ export default {
       padding: 2px 6px;
     }
     #node-card .card-close:hover { color: var(--accent); }
+    /* Close buttons: the glyph stays where it was, the touch area is 44px. */
+    #node-card .card-close, #cluster-drawer .card-close, .reader-panel .card-close { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: -10px -12px 0 0; }
     #node-card .card-delete {
       position: absolute;
       top: 12px;
@@ -2294,7 +2305,7 @@ export default {
     .card-research-list { max-height: 26vh; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
     .research-entry { padding: 6px 8px; border-radius: var(--radius-s); background: rgba(255,255,255,0.04); }
     .research-entry summary { color: #fff; font-weight: 600; font-size: 12px; }
-    .research-entry .research-date { color: #8a93a6; font-size: 10px; margin-left: 6px; font-weight: 400; }
+    .research-entry .research-date { color: #8a93a6; font-size: 12px; margin-left: 6px; font-weight: 400; }
     .research-entry .research-body { margin-top: 6px; color: #dffdf7; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
     .research-entry .spawn-button { display: inline-block; margin-top: 8px; }
     #node-card .card-preview {
@@ -2326,13 +2337,13 @@ export default {
       border-left: 2px solid #ffd166;
       background: rgba(255, 209, 102, 0.08);
     }
-    #node-card .card-note-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd166; }
+    #node-card .card-note-label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ffd166; }
     #node-card .card-note-text { font-size: 13px; color: #fff3d1; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
     #node-card .card-preview-bar a { flex: none; }
     /* YouTube nodes: synopsis and transcript actions from /api/transcript. */
     #node-card .card-transcript { margin: 0 0 12px; padding: 8px 10px; border-radius: var(--radius-s); border-left: 2px solid #ff5a5a; background: rgba(255, 90, 90, 0.07); }
     #node-card .card-transcript[hidden] { display: none; }
-    #node-card .card-transcript-label { display: block; margin-bottom: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ff8a8a; }
+    #node-card .card-transcript-label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ff8a8a; }
     #node-card .card-synopsis { margin-bottom: 8px; font-size: 13px; color: #ffe4e4; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 30vh; overflow-y: auto; }
     #node-card .card-synopsis:empty { display: none; }
     #node-card .card-transcript-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -2340,7 +2351,7 @@ export default {
     #node-card .card-transcript-actions button:hover:not(:disabled), #node-card .card-transcript-actions button:focus-visible { background: rgba(255,90,90,0.22); outline: none; }
     #node-card .card-transcript-actions button:disabled { opacity: 0.55; cursor: progress; }
     #node-card .card-transcript-actions button[hidden] { display: none; }
-    #node-card .card-transcript-status { font-size: 11px; color: #aab3c5; }
+    #node-card .card-transcript-status { font-size: 12px; color: #aab3c5; }
     #node-card .card-transcript-status.error { color: #ff8a8a; }
     /* Web links: the same action row in the app's teal. */
     #node-card .card-web { margin: 0 0 12px; }
@@ -2375,7 +2386,7 @@ export default {
     #link-pick-hint[hidden] { display: none; }
     .card-links { margin: 0 0 10px; }
     .card-links[hidden] { display: none; }
-    .card-links-label { display: block; margin-bottom: 6px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(223,253,247,0.6); }
+    .card-links-label { display: block; margin-bottom: 6px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(223,253,247,0.6); }
     .card-links-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 30vh; overflow-y: auto; }
     .card-link-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
     .card-link-row .card-link-target {
@@ -2414,7 +2425,7 @@ export default {
     }
     .card-link-row button.card-link-save:disabled { opacity: 0.35; cursor: default; }
     .card-link-row button.card-link-delete { border-color: rgba(255,107,129,0.45); background: rgba(255,107,129,0.08); color: #ff8fa0; }
-    .card-links-status { display: block; min-height: 1em; margin-top: 4px; font-size: 11px; color: rgba(223,253,247,0.6); }
+    .card-links-status { display: block; min-height: 1em; margin-top: 4px; font-size: 12px; color: rgba(223,253,247,0.6); }
     .card-links-status.error { color: #ff6b81; }
     #link-pick-hint button { cursor: pointer; }
     .reader-panel {
@@ -2432,7 +2443,7 @@ export default {
       box-sizing: border-box;
     }
     .reader-panel h3 { margin: 0; padding-right: 32px; color: var(--accent); font-size: 17px; line-height: 1.3; }
-    .reader-panel .reader-meta { margin: 0; font-size: 11px; color: #8a93a6; letter-spacing: 0.04em; }
+    .reader-panel .reader-meta { margin: 0; font-size: 12px; color: #8a93a6; letter-spacing: 0.04em; }
     .reader-panel .card-close {
       position: absolute;
       top: 10px;
@@ -2532,7 +2543,7 @@ export default {
     }
     .xr-menu button:hover, .xr-menu button:focus-visible { border-color: var(--accent-line); background: var(--accent-soft); outline: none; }
     .xr-menu strong { font-size: 13px; }
-    .xr-menu span { font-size: 11px; color: #8a93a6; }
+    .xr-menu span { font-size: 12px; color: #8a93a6; }
     #board-headers { position: fixed; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; }
     #board-headers[hidden], body.collection-mode #board-headers { display: none; }
     /* The column headers name every column, so the legend would only cover the board. */
@@ -2662,7 +2673,7 @@ export default {
     #cluster-drawer .drawer-head { display: flex; align-items: center; gap: 8px; padding-right: 24px; }
     #cluster-drawer .drawer-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
     #cluster-drawer h3 { margin: 0; font-size: 15px; color: var(--accent); text-transform: capitalize; }
-    #cluster-drawer .drawer-count { color: #8a93a6; font-size: 11px; }
+    #cluster-drawer .drawer-count { color: #8a93a6; font-size: 12px; }
     #cluster-drawer .card-close {
       position: absolute;
       top: 12px;
@@ -2704,7 +2715,7 @@ export default {
     #node-card .card-head .card-tag { margin-bottom: 0; }
     .card-carousel { display: inline-flex; align-items: center; gap: 6px; }
     .card-carousel[hidden] { display: none; }
-    .card-to-deck { appearance: none; padding: 2px 9px; border-radius: var(--radius-s); border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 11px; cursor: pointer; }
+    .card-to-deck { appearance: none; padding: 2px 9px; border-radius: var(--radius-s); border: 1px solid rgba(0,255,204,0.35); background: rgba(0,255,204,0.08); color: #dffdf7; font-size: 12px; cursor: pointer; }
     .card-to-deck:hover, .card-to-deck:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
     body.carousel-mode .card-to-deck { display: none; }
     .carousel-btn {
@@ -2723,7 +2734,7 @@ export default {
       cursor: pointer;
     }
     .carousel-btn:hover, .carousel-btn:focus-visible { background: rgba(0,255,204,0.2); outline: none; }
-    .card-counter { font-size: 11px; color: #aab3c5; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .card-counter { font-size: 12px; color: #aab3c5; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .card-handle { display: none; }
     /* Desktop / laptop: the node card is the right sidebar, full height below the toolbars. */
     @media (min-width: 768px) {
@@ -2781,8 +2792,8 @@ export default {
       }
     }
     .mini-card strong { display: block; font-size: 12px; color: #fff; line-height: 1.3; margin-bottom: 4px; }
-    .mini-card span { display: block; font-size: 11px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
-    .mini-card a { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700; color: var(--accent); text-decoration: none; }
+    .mini-card span { display: block; font-size: 12px; color: #8a93a6; line-height: 1.35; word-break: break-word; }
+    .mini-card a { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 700; color: var(--accent); text-decoration: none; }
     #cluster-drawer .ask-box { margin-top: 0; }
     #node-card h3 { padding-right: 56px; margin: 0 0 6px 0; font-size: 15px; color: var(--accent); line-height: 1.3; }
     #node-card p { margin: 0 0 12px 0; font-size: 13px; color: #ccc; word-break: break-word; line-height: 1.4; }
@@ -2794,11 +2805,11 @@ export default {
       border: 1px solid rgba(0,255,204,0.45);
       background: rgba(0,255,204,0.1);
       color: var(--accent);
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.06em;
     }
-    #node-card .card-meta { font-size: 11px; color: #8a93a6; }
+    #node-card .card-meta { font-size: 12px; color: #8a93a6; }
     #node-card a {
       display: inline-block;
       background: var(--accent);
@@ -2827,7 +2838,7 @@ export default {
       text-decoration: none;
       cursor: pointer;
     }
-    .link-action::after { content: ''; position: absolute; inset: -4px; }
+    .link-action::after { content: ''; position: absolute; inset: -5px; }
     .link-action.play { border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); }
     .link-action.launch { border: 1px solid rgba(255,255,255,0.12); background: var(--bg-raised); color: #8a93a6; }
     .link-action.launch:hover, .link-action.launch:focus-visible { border-color: var(--accent-line); color: var(--accent); outline: none; }
@@ -2889,14 +2900,14 @@ export default {
       background: var(--bg-panel);
       border: var(--hairline);
       color: #dffdf7;
-      font-size: 11px;
+      font-size: 12px;
     }
     #legend .legend-title {
       display: flex;
       align-items: center;
       gap: 6px;
       margin: 0;
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: 0.08em;
       color: #8a93a6;
       text-transform: uppercase;
@@ -2905,7 +2916,7 @@ export default {
       user-select: none;
     }
     #legend .legend-title::-webkit-details-marker { display: none; }
-    #legend .legend-title::before { content: '▸'; font-size: 11px; transition: transform 0.15s; }
+    #legend .legend-title::before { content: '▸'; font-size: 12px; transition: transform 0.15s; }
     #legend[open] .legend-title::before { transform: rotate(90deg); }
     #legend[open] .legend-title { margin-bottom: 6px; }
     #legend:not([open]) { min-width: 0; }
@@ -2921,7 +2932,7 @@ export default {
       border-radius: 4px;
       background: transparent;
       color: inherit;
-      font-size: 11px;
+      font-size: 12px;
       cursor: pointer;
       text-align: left;
     }
@@ -2931,7 +2942,7 @@ export default {
     #legend .legend-badge { width: 10px; height: 10px; border-radius: 50%; flex: none; }
     #legend .legend-name { flex: 1; }
     #legend .legend-count { color: #8a93a6; font-variant-numeric: tabular-nums; }
-    #legend .legend-active { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; letter-spacing: 0; }
+    #legend .legend-active { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 700; letter-spacing: 0; }
     #legend .legend-active[hidden] { display: none; }
     /* Phones: the category list is a compact pill in the corner (a count badge shows how many are highlighted); open, it
        is one row of category chips just above the pill, scrolled sideways, clear of the control wheel. */
