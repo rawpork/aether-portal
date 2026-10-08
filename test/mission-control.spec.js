@@ -153,3 +153,22 @@ describe('one header switch across both surfaces', () => {
 		}
 	});
 });
+
+describe('text fields on touch screens', () => {
+	it('stay at 16px so iOS Safari does not zoom the page in (and leave it zoomed, with the header and right edge off-screen)', () => {
+		const html = renderMissionControlPage({ assetVersion: 'v1' });
+		const rule = /@media \(max-width: 900px\), \(pointer: coarse\) \{\s*(input:not[^{]*\{[^}]*\})/.exec(html);
+		expect(rule, 'the touch-screen font rule is in the page').not.toBeNull();
+		expect(rule[1]).toContain('font-size: 16px !important');
+		expect(rule[1]).toContain('textarea');
+		expect(rule[1]).toContain('select');
+		// Check boxes, radios, sliders and file pickers are not text fields and keep their own size.
+		for (const type of ['checkbox', 'radio', 'range', 'file']) expect(rule[1]).toContain(':not([type="' + type + '"])');
+	});
+
+	it('does not disable pinch-zoom, which people with low vision rely on', () => {
+		const html = renderMissionControlPage({ assetVersion: 'v1' });
+		const viewport = /<meta name="viewport" content="([^"]*)"/.exec(html)[1];
+		expect(viewport).not.toMatch(/user-scalable\s*=\s*(no|0)|maximum-scale/);
+	});
+});

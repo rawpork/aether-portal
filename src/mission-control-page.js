@@ -774,6 +774,12 @@ ${SHELL_SWITCH_CSS}
     .mc-command button[type="submit"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
     .mc-command button:active { transform: scale(0.98); }
     .mc-command .mic[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+    /* iOS Safari zooms the whole page in when a text field under 16px gets focus, and leaves it zoomed: the right edge, the header
+       and the bottom bar end up off-screen, with no way back short of pinching out. Keeping fields at 16px on touch screens stops
+       the zoom without disabling pinch-zoom (which people with low vision need). */
+    @media (max-width: 900px), (pointer: coarse) {
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]), textarea, select { font-size: 16px !important; }
+    }
     @media (max-width: 680px) {
       .mc-command { padding: 8px calc(12px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)); }
       .oc-tabs, .ad { padding-left: 14px; padding-right: 14px; }
