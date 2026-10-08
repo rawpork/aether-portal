@@ -3,8 +3,14 @@
 // is not a module). Voice uses the browser's Web Speech API (SpeechRecognition / webkitSpeechRecognition); where the
 // browser has none the mic is disabled with a note. Speech only fills the input; nothing is sent until Send or Enter.
 
-// A voice-input hook. onText(text, final) gets interim and final transcripts; onState(listening) follows the mic.
-export function createVoiceInput({ win = globalThis, lang, onText = () => {}, onState = () => {} } = {}) {
+import { announce } from '../a11y.js';
+import { NO_LISTEN_TEXT, describeRecognitionError } from './voice-support.js';
+
+const NOTE_MS = 8000;
+
+// A voice-input hook. onText(text, final) gets interim and final transcripts; onState(listening) follows the mic; onError(code)
+// gets the browser's reason when recognition fails or cannot start ('not-allowed', 'no-speech', 'start-failed', ...).
+export function createVoiceInput({ win = globalThis, lang, onText = () => {}, onState = () => {}, onError = () => {} } = {}) {
   const Recognition = win.SpeechRecognition || win.webkitSpeechRecognition;
   let recognition = null;
   let listening = false;
@@ -28,13 +34,17 @@ export function createVoiceInput({ win = globalThis, lang, onText = () => {}, on
       onText(text.trim(), final);
     };
     recognition.onend = () => set(false);
-    recognition.onerror = () => set(false);
+    recognition.onerror = (event) => {
+      set(false);
+      onError((event && event.error) || 'unknown');
+    };
     try {
       recognition.start();
       set(true);
       return true;
-    } catch {
+    } catch (error) {
       set(false);
+      onError(error && error.name === 'NotAllowedError' ? 'not-allowed' : 'start-failed');
       return false;
     }
   }
@@ -51,10 +61,29 @@ export function createVoiceInput({ win = globalThis, lang, onText = () => {}, on
 }
 
 // Wires a form (an input, a mic button and a submit button) as a command bar. onSubmit(text) runs on Send / Enter.
-export function mountCommandBar(form, { input, mic, onSubmit, win = globalThis } = {}) {
+export function mountCommandBar(form, { input, mic, onSubmit, win = globalThis, say = announce } = {}) {
   let before = '';
+  // A voice problem is shown where the person is looking, in the input's placeholder for a few seconds, and announced for screen
+  // readers. It used to vanish: the mic just un-pressed.
+  const placeholder = input.placeholder;
+  let noteTimer = null;
+  const note = (text) => {
+    input.placeholder = text;
+    mic.dataset.error = 'true';
+    say(text);
+    win.clearTimeout && win.clearTimeout(noteTimer);
+    noteTimer = win.setTimeout ? win.setTimeout(clearNote, NOTE_MS) : null;
+  };
+  function clearNote() {
+    input.placeholder = placeholder;
+    delete mic.dataset.error;
+  }
   const voice = createVoiceInput({
     win,
+    onError: (code) => {
+      const text = describeRecognitionError(code);
+      if (text) note(text);
+    },
     onText: (text) => {
       input.value = (before ? before + ' ' : '') + text;
     },
@@ -66,10 +95,11 @@ export function mountCommandBar(form, { input, mic, onSubmit, win = globalThis }
   });
   if (!voice.supported) {
     mic.disabled = true;
-    mic.title = 'Voice input is not available in this browser';
+    mic.title = NO_LISTEN_TEXT;
   }
   mic.addEventListener('click', () => {
     before = input.value.trim();
+    clearNote();
     voice.toggle();
   });
   form.addEventListener('submit', (event) => {

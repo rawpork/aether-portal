@@ -195,7 +195,9 @@ export function setupTabs(doc, onSelect = () => {}) {
       if (active && focus) t.tab.focus();
     }
     // The page name is the H1, the tab title follows it, and a screen reader hears the change (not on first load).
-    if (title) title.textContent = VIEW_TITLES[view];
+    // The title is the menu button, so only its text changes, never the button.
+    const titleText = doc.getElementById('mc-title-text') || title;
+    if (titleText) titleText.textContent = VIEW_TITLES[view];
     doc.title = view === 'overview' ? baseTitle : VIEW_TITLES[view] + ' - ' + baseTitle;
     if (announce && started) announce.textContent = VIEW_TITLES[view];
     started = true;
@@ -463,15 +465,6 @@ export async function mountMissionControl(doc = document, options = {}) {
     studioShown = view === 'studio';
     syncStudio();
   });
-  // "+ New agent": agents are started by deploying a blueprint, so open Projects at the editor.
-  const newAgent = byId('mc-new-agent');
-  if (newAgent) {
-    newAgent.addEventListener('click', () => {
-      tabs.select('blueprints');
-      const editor = doc.querySelector('#mc-blueprints .bp-editor');
-      if (editor) editor.focus();
-    });
-  }
   const tray = setupMenuTray(doc);
   // Command bar: whatever is typed (or spoken) goes to Elarion, and the view opens on the reply.
   const commandForm = byId('mc-command');
@@ -519,6 +512,10 @@ export async function mountMissionControl(doc = document, options = {}) {
   await importOutcome(doc, blueprints, tabs, options.portalFetch || ((url, init) => (doc.defaultView || globalThis).fetch(url, init)));
 
   if (skillButton && decisions) skillButton.addEventListener('click', () => decisions.askSource());
+  // Agent spec (the rail): define an agent's role and what it may do. It writes a spec and starts nothing: agents run when a
+  // project that uses them is deployed.
+  const agentSpecButton = byId('mc-agent-spec');
+  if (agentSpecButton && decisions) agentSpecButton.addEventListener('click', () => decisions.askAgentSpec());
   // Realtime (off unless the page asks for it): an engine event wakes the same refreshers the poll timers use, which stay as the fallback.
   const realtimeRefresh = mountRealtimeRefresh(doc.defaultView || globalThis, {
     connection: () => connection.refresh(),

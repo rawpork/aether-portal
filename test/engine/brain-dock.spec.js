@@ -49,6 +49,8 @@ class FakeSocket extends EventTarget {
   static instances = [];
   static readyFrame = { stt: false, tts: false };
   static autoReply = true;
+  // true: the socket stays connecting until the test calls open() (a slow link to the engine).
+  static hold = false;
 
   constructor(url, protocols) {
     super();
@@ -58,10 +60,13 @@ class FakeSocket extends EventTarget {
     this.sent = [];
     FakeSocket.instances.push(this);
     queueMicrotask(() => {
-      this.readyState = 1;
-      this.dispatchEvent(new Event('open'));
-      this.serverSend({ type: 'ready', session_id: 's', agent_id: AGENT, format: 'webm-opus', sample_rate: null, ...FakeSocket.readyFrame });
+      if (!FakeSocket.hold) this.open();
     });
+  }
+  open() {
+    this.readyState = 1;
+    this.dispatchEvent(new Event('open'));
+    this.serverSend({ type: 'ready', session_id: 's', agent_id: AGENT, format: 'webm-opus', sample_rate: null, ...FakeSocket.readyFrame });
   }
   send(data) {
     this.sent.push(data);
@@ -92,11 +97,14 @@ class FakeSocket extends EventTarget {
 
 class FakeRecognition {
   static last = null;
+  // An error name: start() throws it, like a browser that refuses to start.
+  static throwOnStart = null;
   constructor() {
     this.started = false;
     FakeRecognition.last = this;
   }
   start() {
+    if (FakeRecognition.throwOnStart) throw Object.assign(new Error('refused'), { name: FakeRecognition.throwOnStart });
     this.started = true;
   }
   stop() {
@@ -132,6 +140,9 @@ class FakeRecorder {
     this.onstop();
   }
 }
+
+// What the dock really said aloud: the silent utterance that unlocks speech on iPhone is not a reply.
+const spokenReplies = () => synth.spoken.filter((u) => !u.isPrime);
 
 const flush = async () => {
   for (let i = 0; i < 6; i++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -181,6 +192,9 @@ beforeEach(() => {
   FakeSocket.instances = [];
   FakeSocket.readyFrame = { stt: false, tts: false };
   FakeSocket.autoReply = true;
+  FakeSocket.hold = false;
+  FakeRecognition.throwOnStart = null;
+  FakeRecorder.isTypeSupported = undefined;
   events = [];
   stopEvents = onEngineState((d) => events.push(d.state + ':' + d.source));
 });
@@ -269,6 +283,222 @@ describe('typed chat', () => {
   });
 });
 
+describe('Elarion voice dock: starting, permissions and failures', () => {
+  it('starts recognition inside the tap, before the engine connection is up, and sends the words once it is', async () => {
+    FakeSocket.hold = true;
+    mount();
+    dock.elements.micButton.click();
+    // No await: the browser only lets recognition start while the tap is fresh.
+    expect(FakeRecognition.last.started).toBe(true);
+    expect(dock.getMode()).toBe('listening');
+    await flush();
+    const socket = FakeSocket.instances[0];
+    expect(socket.readyState).toBe(0);
+    expect(dock.getMode()).toBe('listening');
+
+    FakeRecognition.last.say('hello there');
+    expect(dock.getMode()).toBe('thinking');
+    expect(socket.sent).toEqual([]);
+    socket.open();
+    await flush();
+    expect(socket.sent).toEqual(['{"type":"text","text":"hello there"}']);
+    expect(messages()).toEqual(['user: hello there', 'assistant: Voice reply to: hello there']);
+  });
+
+  it('reports a connection failure while listening, stops listening, and leaves the mic usable', async () => {
+    engine.offline = true;
+    mount();
+    dock.elements.micButton.click();
+    expect(FakeRecognition.last.started).toBe(true);
+    await flush();
+    expect(messages().at(-1)).toMatch(/^error: Can’t reach the Aether Engine/);
+    expect(FakeRecognition.last.aborted).toBe(true);
+    expect(dock.getMode()).toBe('offline');
+    expect(dock.elements.micButton.disabled).toBe(false);
+    expect(dock.elements.micButton.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('does not stay busy if the connection fails after the words were spoken', async () => {
+    FakeSocket.hold = true;
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    FakeRecognition.last.say('anyone there');
+    expect(dock.getMode()).toBe('thinking');
+    FakeSocket.instances[0].serverClose(1006, 'gone');
+    await flush();
+    expect(dock.elements.micButton.disabled).toBe(false);
+    expect(dock.elements.input.disabled).toBe(false);
+    expect(dock.getMode()).not.toBe('thinking');
+  });
+
+  it('says so when the browser refuses to start recognition, and when it is blocked', async () => {
+    FakeRecognition.throwOnStart = 'NotAllowedError';
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    expect(messages().at(-1)).toMatch(/^error: The microphone or speech recognition is blocked\. Allow the microphone for this site/);
+    expect(dock.getMode()).toBe('idle');
+    expect(dock.elements.micButton.disabled).toBe(false);
+    FakeRecognition.throwOnStart = 'InvalidStateError';
+    dock.elements.micButton.click();
+    await flush();
+    expect(messages().at(-1)).toMatch(/^error: Speech recognition failed \(start-failed\)\. Type instead\./);
+  });
+
+  it.each([
+    ['not-allowed', 'error', /blocked\. Allow the microphone/],
+    ['service-not-allowed', 'error', /blocked\. Allow the microphone/],
+    ['audio-capture', 'error', /No microphone was found/],
+    ['network', 'error', /could not reach its service/],
+    ['language-not-supported', 'error', /does not support your language/],
+    ['no-speech', 'system', /I did not hear anything/],
+    ['surprise', 'error', /Speech recognition failed \(surprise\)/],
+  ])('explains a recognition error: %s', async (code, kind, text) => {
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    FakeRecognition.last.onerror({ error: code });
+    FakeRecognition.last.onend();
+    expect(messages().at(-1)).toMatch(new RegExp('^' + kind + ': '));
+    expect(messages().at(-1)).toMatch(text);
+    expect(dock.getMode()).toBe('idle');
+    expect(dock.elements.micButton.disabled).toBe(false);
+  });
+
+  it('stays quiet when recognition was stopped on purpose (aborted)', async () => {
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    const before = messages().length;
+    FakeRecognition.last.onerror({ error: 'aborted' });
+    FakeRecognition.last.onend();
+    expect(messages()).toHaveLength(before);
+  });
+
+  it.each([
+    ['NotAllowedError', /^error: Microphone access was blocked\. Allow it for this site/],
+    ['NotFoundError', /^error: No microphone was found\./],
+    ['NotReadableError', /^error: The microphone is being used by another app\./],
+    ['SomethingElse', /^error: Could not start the microphone: refused/],
+  ])('explains why the microphone could not open for the engine\'s transcription: %s', async (name, text) => {
+    FakeSocket.readyFrame = { stt: true, tts: false };
+    mount({ Recognition: null, getUserMedia: async () => { throw Object.assign(new Error('refused'), { name }); } });
+    dock.elements.micButton.click();
+    await flush();
+    expect(messages().at(-1)).toMatch(text);
+    expect(dock.getMode()).toBe('idle');
+    expect(FakeRecorder.last).toBeNull();
+  });
+
+  it('releases the microphone and says so when the browser cannot record the format the engine needs', async () => {
+    FakeSocket.readyFrame = { stt: true, tts: false };
+    FakeRecorder.isTypeSupported = () => false;
+    const stop = vi.fn();
+    mount({ Recognition: null, getUserMedia: async () => ({ getTracks: () => [{ stop }] }) });
+    dock.elements.micButton.click();
+    await flush();
+    expect(messages().at(-1)).toMatch(/^error: This browser cannot record audio in the format the engine needs/);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(dock.getMode()).toBe('idle');
+  });
+
+  it('uses engine transcription on the next tap once the engine is known to offer it', async () => {
+    FakeSocket.readyFrame = { stt: true, tts: false };
+    mount();
+    // First tap: the engine is not known yet, so browser recognition starts straight away.
+    dock.elements.micButton.click();
+    await flush();
+    expect(FakeRecognition.last.started).toBe(true);
+    FakeRecognition.last.say('first');
+    await flush();
+    // Second tap: it is known to transcribe, so the microphone is streamed instead.
+    dock.elements.micButton.click();
+    await flush();
+    expect(FakeRecorder.last.state).toBe('recording');
+  });
+});
+
+describe('Elarion voice dock: browser support and the speaker toggle', () => {
+  it('disables the mic, with the reason in plain sight, where nothing can listen', () => {
+    mount({ Recognition: null, MediaRecorder: null });
+    expect(dock.elements.micButton.disabled).toBe(true);
+    expect(dock.elements.micButton.title).toMatch(/needs a browser with speech recognition/);
+    expect(dock.elements.hint.textContent).toMatch(/needs a browser with speech recognition/);
+    dock.elements.micButton.click();
+    expect(FakeSocket.instances).toHaveLength(0);
+  });
+
+  it('disables the speaker button, with the reason, where nothing can speak', () => {
+    mount({ synth: null });
+    expect(dock.elements.speakButton.disabled).toBe(true);
+    expect(dock.elements.speakButton.title).toBe('This browser cannot speak replies.');
+    expect(dock.elements.speakButton.getAttribute('aria-pressed')).toBe('false');
+    expect(dock.elements.speakButton.textContent).toBe('🔈');
+    // A voice reply is not lost: it is still shown as text.
+    expect(dock.elements.micButton.disabled).toBe(false);
+  });
+
+  it('toggles cleanly: the preference, the icon, the title and aria-pressed always agree', () => {
+    mount();
+    const b = dock.elements.speakButton;
+    const state = () => [store.get(SPEAK_STORAGE_KEY) ?? null, b.getAttribute('aria-pressed'), b.textContent, /muted/.test(b.title) ? 'muted' : 'spoken'];
+    expect(state()).toEqual([null, 'true', '🔊', 'spoken']);
+    b.click();
+    expect(state()).toEqual(['false', 'false', '🔈', 'muted']);
+    b.click();
+    expect(state()).toEqual(['true', 'true', '🔊', 'spoken']);
+  });
+
+  it('unlocks speech once from the tap: a silent utterance on the mic, and none while muted', async () => {
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    expect(synth.spoken).toHaveLength(1);
+    expect(synth.spoken[0]).toMatchObject({ isPrime: true, volume: 0, text: ' ' });
+    FakeRecognition.last.say('hi');
+    await flush();
+    dock.elements.micButton.click();
+    await flush();
+    // Primed once, then one real reply: no second silent utterance.
+    expect(synth.spoken.filter((u) => u.isPrime)).toHaveLength(1);
+    expect(spokenReplies()).toHaveLength(1);
+  });
+
+  it('turning replies on again primes from that tap, when the mic had not done so', () => {
+    store.set(SPEAK_STORAGE_KEY, 'false');
+    mount();
+    expect(synth.speak).not.toHaveBeenCalled();
+    dock.elements.speakButton.click();
+    expect(synth.spoken.filter((u) => u.isPrime)).toHaveLength(1);
+    dock.elements.speakButton.click();
+    dock.elements.speakButton.click();
+    expect(synth.spoken.filter((u) => u.isPrime)).toHaveLength(1);
+  });
+
+  it('says what to do when the browser refuses to speak a reply', async () => {
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    FakeRecognition.last.say('speak to me');
+    await flush();
+    spokenReplies()[0].onerror({ error: 'not-allowed' });
+    expect(messages().at(-1)).toBe('system: Your browser would not speak that reply. Tap the speaker button once, then try again.');
+    expect(dock.getMode()).toBe('idle');
+  });
+
+  it('survives a synthesizer that throws', async () => {
+    synth.speak = vi.fn(() => { throw new Error('no voices'); });
+    mount();
+    dock.elements.micButton.click();
+    await flush();
+    FakeRecognition.last.say('anything');
+    await flush();
+    expect(messages().at(-1)).toBe('system: Could not speak that reply.');
+    expect(dock.getMode()).toBe('idle');
+  });
+});
+
 describe('Elarion voice dock', () => {
   it('uses browser speech recognition when the engine has no STT, then speaks the reply', async () => {
     mount();
@@ -291,10 +521,10 @@ describe('Elarion voice dock', () => {
 
     expect(messages()).toEqual(['user: give me a status report', 'assistant: Voice reply to: give me a status report']);
     expect([...dock.elements.log.querySelectorAll('.brain-meta')].map((m) => m.textContent)).toEqual(['voice', 'voice · 120 in / 40 out']);
-    expect(synth.speak).toHaveBeenCalledTimes(1);
-    expect(synth.spoken[0].text).toBe('Voice reply to: give me a status report');
+    expect(spokenReplies()).toHaveLength(1);
+    expect(spokenReplies()[0].text).toBe('Voice reply to: give me a status report');
     expect(dock.getMode()).toBe('speaking');
-    synth.spoken[0].onend();
+    spokenReplies()[0].onend();
     expect(dock.getMode()).toBe('idle');
 
     // The stream stays open for the next utterance.
@@ -305,7 +535,8 @@ describe('Elarion voice dock', () => {
 
   it('streams microphone audio when the engine reports STT, ending the utterance on stop', async () => {
     FakeSocket.readyFrame = { stt: true, tts: false };
-    mount();
+    // No browser speech recognition, so the engine's transcription is the way to talk.
+    mount({ Recognition: null });
     dock.elements.micButton.click();
     await flush();
     const recorder = FakeRecorder.last;
@@ -331,7 +562,7 @@ describe('Elarion voice dock', () => {
     await flush();
     expect(played).toHaveLength(1);
     expect(atob(played[0].data)).toBe('fake-audio');
-    expect(synth.speak).not.toHaveBeenCalled();
+    expect(spokenReplies()).toHaveLength(0);
     expect(dock.getMode()).toBe('idle');
   });
 
@@ -343,6 +574,7 @@ describe('Elarion voice dock', () => {
     await flush();
     FakeRecognition.last.say('quiet please');
     await flush();
+    // Muted: nothing is spoken, and nothing is primed either.
     expect(synth.speak).not.toHaveBeenCalled();
     expect(dock.getMode()).toBe('idle');
   });

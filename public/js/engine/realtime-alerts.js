@@ -9,6 +9,7 @@
 
 import { announce as pageAnnounce } from '../a11y.js';
 import { agentName } from './labels.js';
+import { primeSpeech } from './voice-support.js';
 
 export const SPEAK_PREFERENCE_KEY = 'aether.brain.speakReplies';
 export const MAX_EVENT_AGE_MS = 60000;
@@ -83,10 +84,26 @@ export function mountRealtimeAlerts(win, options = {}) {
 		speak(text);
 	}
 
+	// iPhone Safari speaks only after something has spoken from a tap, and an alert arrives with no tap. The first tap or key press
+	// anywhere on the page speaks one silent utterance, once, so a later alert can be heard.
+	let unlocked = false;
+	const unlock = () => {
+		if (unlocked || !readPreference(storage)) return;
+		unlocked = primeSpeech(synth, Utterance);
+		if (unlocked) {
+			win.removeEventListener('pointerdown', unlock, true);
+			win.removeEventListener('keydown', unlock, true);
+		}
+	};
+	win.addEventListener('pointerdown', unlock, true);
+	win.addEventListener('keydown', unlock, true);
+
 	win.addEventListener('aether-realtime-event', onEvent);
 	return {
 		stop() {
 			win.removeEventListener('aether-realtime-event', onEvent);
+			win.removeEventListener('pointerdown', unlock, true);
+			win.removeEventListener('keydown', unlock, true);
 		},
 	};
 }

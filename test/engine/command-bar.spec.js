@@ -73,7 +73,7 @@ describe('mountCommandBar', () => {
 		const { form, input, mic } = build();
 		mountCommandBar(form, { input, mic, win: {}, onSubmit: () => {} });
 		expect(mic.disabled).toBe(true);
-		expect(mic.title).toMatch(/not available/);
+		expect(mic.title).toMatch(/needs a browser with speech recognition/);
 	});
 });
 

@@ -59,7 +59,8 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toContain('<script type="module" src="/js/engine/mission-control.js?v=test"></script>');
   expect(html).not.toMatch(/<script>/);
   // Phones shrink only the header's New agent to an icon, never the Command Bar's Generate button.
-  expect(html).toContain('.mc-actions .btn-primary { width: 44px;');
+  // The header's New agent button is gone, so the rules that shrank it to an icon are too.
+  expect(html).not.toContain('.mc-actions .btn-primary');
   // Phone header budget (measured in a 375px browser: 69px calm, 90px with the greeting, 117px with an attention strip):
   // one row of direct flex items, the eyebrow dropped, the greeting on its own line, attention states as a full-width strip.
   expect(html).toContain('.mc-heading, .mc-actions { display: contents; }');
@@ -69,12 +70,18 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).not.toMatch(/\n\s*\.btn-primary \{ width: 42px;/);
   expect(html).toMatch(/\.wfc-prompt \{[^}]*width: 100%;[^}]*min-width: 0;/);
   expect(html).toMatch(/\.wfc-prompt \{ flex: none; font-size: 16px;/);
-  // The header opens with the ☰ menu tray, then the link to Space at every width (same slot as Space's link back here,
-  // WCAG 3.2.3). The rail has no separate Portal item: its star logo is the way back on desktop, and says so.
-  expect(html).toMatch(/<header class="mc-top">\s*<button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail"[^>]*>[\s\S]*?<\/button>\s*<nav class="shell-switch" aria-label="Aether"><a class="shell-item" data-surface="space" href="\/" aria-label="Space" aria-keyshortcuts="Alt\+S"/);
-  // Mission Control is the current surface in the shared switch; the other item leads back to Space.
-  expect(html).toContain('<a class="shell-item" data-surface="mission-control" href="/mission-control" aria-current="page"');
-  expect(html).toContain('.shell-item[aria-current="page"] { display: none; }');
+  // The header is lean: the page title is the menu button (the ☰ square, the Space switch and New agent are gone from it).
+  // Space is one tap away through the rail's brand (Alt+S), and Agent spec lives in the rail.
+  expect(html).toMatch(/<header class="mc-top">\s*<div class="mc-heading">[\s\S]*?<h1 class="mc-title" id="mc-title"><button type="button" class="mc-menu-button" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" aria-describedby="mc-menu-hint" title="Menu"><span class="mc-menu-text" id="mc-title-text">Mission Control<\/span>/);
+  const topBar = /<header class="mc-top">[\s\S]*?<\/header>/.exec(html)[0];
+  expect(topBar).not.toContain('shell-switch');
+  expect(topBar).not.toContain('mc-new-agent');
+  expect(topBar).not.toContain('class="btn-primary"');
+  // What is left up there: the title (the menu button) and the status pill (whose panel holds its own controls).
+  expect(topBar).toContain('id="mc-menu-toggle"');
+  expect(topBar).toContain('data-status="pill"');
+  expect(html).toMatch(/<a class="rail-brand" href="\/" data-surface="space"[^>]*aria-keyshortcuts="Alt\+S"/);
+  expect(html).toMatch(/id="mc-agent-spec" aria-haspopup="dialog" title="Agent spec: define an agent's role and what it may do/);
   expect(html).toContain('@view-transition { navigation: auto; }');
   // Create: template cards share the whole row (auto-fit), so a row of two or three is balanced edge to edge, and one card can
   // shrink to a 320px screen (min()); their tag lines are pinned to the bottom so every card's chips line up.
@@ -84,7 +91,7 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toMatch(/@media \(max-width: 480px\) \{\s*\.mc-task-head \{ grid-template-columns: auto minmax\(0, 1fr\); \}\s*\.mc-task-name \{ overflow: visible; white-space: normal;/);
   expect(html).not.toContain('rail-portal');
   expect(html).not.toContain('mobile-return-btn');
-  expect(html).toMatch(/<a class="rail-brand" href="\/" title="Space: the 3D graph \(Alt\+S\)" aria-label="Aether Space \(Alt\+S\)" aria-keyshortcuts="Alt\+S">/);
+  expect(html).toMatch(/<a class="rail-brand" href="\/" data-surface="space" title="Space: the 3D graph \(Alt\+S\)" aria-label="Aether Space \(Alt\+S\)" aria-keyshortcuts="Alt\+S">/);
   expect(html).toContain('data-shell-surface="mission-control"');
   document.body.innerHTML = /<body[^>]*>([\s\S]*)<\/body>/.exec(html)[1].replace(/<script[\s\S]*?<\/script>/g, '');
   document.head.innerHTML = (html.match(/<meta name="aether-[^>]*>/g) || []).join('') + '<title>Mission Control - Aether Portal</title>';
@@ -190,12 +197,22 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(document.querySelector('#mc-blueprints .bp-ingest')).not.toBe(null);
   expect(document.querySelector('#mc-blueprints .bp-tier').textContent).toBe('Pro Engine');
 
-  // Elarion has its own view; New agent opens Projects.
+  // Elarion has its own view; Agent spec opens a popup over whatever view is showing and starts nothing.
   document.getElementById('mc-nav-elaron').click();
   expect(document.getElementById('mc-view-elaron').hidden).toBe(false);
   expect(window.location.hash).toBe('#elaron');
-  document.getElementById('mc-new-agent').click();
-  expect(mc.tabs.getView()).toBe('blueprints');
+  document.getElementById('mc-agent-spec').click();
+  expect(document.querySelector('.dc-modal .dc-title').textContent).toBe('Agent spec');
+  expect(mc.tabs.getView()).toBe('elaron');
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  expect(document.querySelector('.dc-modal')).toBeNull();
+  // The page title is the menu button, and a view change rewrites its text without replacing the button.
+  const menu = document.getElementById('mc-menu-toggle');
+  document.getElementById('mc-nav-connect').click();
+  expect(document.getElementById('mc-title-text').textContent).toBe('Settings');
+  expect(document.getElementById('mc-title').textContent).toBe('Settings');
+  expect(document.getElementById('mc-menu-toggle')).toBe(menu);
+  expect(menu.closest('h1')).toBe(document.getElementById('mc-title'));
   overviewNav.click();
   expect(window.location.hash).toBe('');
 });

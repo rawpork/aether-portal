@@ -126,31 +126,41 @@ describe('missing static files', () => {
 	});
 });
 
-describe('one header switch across both surfaces', () => {
+describe('moving between the two surfaces', () => {
 	const switchOf = (html) => /<nav class="shell-switch"[\s\S]*?<\/nav>/.exec(html)[0];
 
-	it('renders the same switch in the same slot on Space and Mission Control, flipping only the current marker', async () => {
+	it('keeps the two-item switch in Space\'s header; Mission Control reaches Space through the rail\'s brand', async () => {
 		const space = await (await SELF.fetch('http://example.com/')).text();
 		const mission = renderMissionControlPage({ assetVersion: 'v1' });
-		const strip = (nav) => nav.replace(' aria-current="page"', '');
-		expect(strip(switchOf(space))).toBe(strip(switchOf(mission)));
+		// Space's header still has the switch, with its own page marked current.
 		expect(switchOf(space)).toMatch(/data-surface="space"[^>]*aria-current="page"/);
-		expect(switchOf(mission)).toMatch(/data-surface="mission-control"[^>]*aria-current="page"/);
 		expect(switchOf(space).match(/aria-current="page"/g)).toHaveLength(1);
-		expect(switchOf(mission).match(/aria-current="page"/g)).toHaveLength(1);
-		// Right after the menu button in both headers, so the slot never moves (WCAG 3.2.3).
-		expect(space).toMatch(/id="menu-toggle"[^>]*>[\s\S]*?<\/button>\s*<nav class="shell-switch"/);
-		expect(mission).toMatch(/id="mc-menu-toggle"[^>]*>[\s\S]*?<\/button>\s*<nav class="shell-switch"/);
-		// Each page marks its own surface for the shortcuts, loads the shared keys through its entry module, and has no leftover single link.
+		// Mission Control's header does not: one row, the title (the menu button) and the status pill.
+		const header = /<header class="mc-top">[\s\S]*?<\/header>/.exec(mission)[0];
+		expect(header).not.toContain('shell-switch');
+		expect(header).not.toContain('shell-item');
+		expect(header).not.toContain('mc-new-agent');
+		expect(header).toContain('id="mc-menu-toggle"');
+		expect(header).toContain('data-status="pill"');
+		// The way to Space is the rail's brand, with the same shortcut and the same destination as the old switch item.
+		expect(mission).toMatch(/<a class="rail-brand" href="\/" data-surface="space" title="Space: the 3D graph \(Alt\+S\)" aria-label="Aether Space \(Alt\+S\)" aria-keyshortcuts="Alt\+S">/);
+		// Each page marks its own surface for the shortcuts, and both keep the page cross-fade.
 		expect(space).toContain('data-shell-surface="space"');
 		expect(mission).toContain('data-shell-surface="mission-control"');
 		for (const html of [space, mission]) {
 			expect(html).not.toContain('surface-link');
 			expect(html).not.toContain('topbar-mission-control');
 			expect(html).toContain('@view-transition { navigation: auto; }');
-			expect(html).toContain('view-transition-name: shell-switch');
 			expect(html).toMatch(/prefers-reduced-motion: reduce\) \{\s*::view-transition-group/);
 		}
+	});
+
+	it('styles the title as the menu button, with a 44px touch target, and no bordered square', () => {
+		const html = renderMissionControlPage({ assetVersion: 'v1' });
+		expect(html).toMatch(/\.mc-menu-button \{[^}]*min-height: 44px;/);
+		expect(html).not.toContain('.menu-toggle {');
+		// On a phone the title wraps to two lines inside the button instead of clipping.
+		expect(html).toMatch(/\.mc-menu-text \{ white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2;/);
 	});
 });
 

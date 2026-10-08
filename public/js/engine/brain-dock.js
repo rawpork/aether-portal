@@ -8,6 +8,7 @@
 import { choiceReply, parseNumberedOptions, renderChoiceChips } from './choice-chips.js';
 import { getEngineApi, onEngineState } from '../engine-api.bundle.js';
 import { describeAuthError } from './connection.js';
+import { NO_LISTEN_TEXT, NO_SPEAK_TEXT, describeMicError, describeRecognitionError, primeSpeech } from './voice-support.js';
 
 export const BRAIN_AGENT_ID = 'master-brain';
 export const SESSION_STORAGE_KEY = 'aether.engine.sessionId';
@@ -122,6 +123,15 @@ export function mountBrainDock(container, options = {}) {
   let sessionId = storage.get(SESSION_STORAGE_KEY) || createSessionId();
   storage.set(SESSION_STORAGE_KEY, sessionId);
   let speakReplies = storage.get(SPEAK_STORAGE_KEY) !== 'false';
+  // What this browser can do. A button for something it cannot do is disabled and says why, instead of failing when tapped.
+  const canListen = Boolean(Recognition) || Boolean(MediaRecorderImpl && getUserMedia);
+  const canSpeak = Boolean(synth && Utterance);
+  // iPhone Safari speaks only after something has spoken from a tap: do it once, from the tap that asked for voice.
+  let primed = false;
+  const prime = () => {
+    if (primed || !speakReplies || !canSpeak) return;
+    primed = primeSpeech(synth, Utterance);
+  };
 
   const view = { mode: 'idle', busy: false, halted: false };
   // Voice session: the open stream, its ready frame, and whichever capture is running.
@@ -168,21 +178,23 @@ export function mountBrainDock(container, options = {}) {
     status.textContent = MODE_TEXT[view.mode];
     const listening = Boolean(voice.recognition || voice.recorder);
     micButton.setAttribute('aria-pressed', String(listening));
-    micButton.disabled = view.halted || (view.busy && !listening);
-    micButton.title = listening ? 'Stop and send' : 'Talk to Elarion';
+    micButton.disabled = !canListen || view.halted || (view.busy && !listening);
+    micButton.title = !canListen ? NO_LISTEN_TEXT : listening ? 'Stop and send' : 'Talk to Elarion';
     sendButton.disabled = view.busy || view.halted;
     input.disabled = view.halted;
     newButton.disabled = view.busy;
-    speakButton.setAttribute('aria-pressed', String(speakReplies));
-    speakButton.textContent = speakReplies ? '🔊' : '🔈';
-    speakButton.title = speakReplies ? 'Voice replies are spoken (click to mute)' : 'Voice replies are muted (click to speak them)';
+    const speaking = speakReplies && canSpeak;
+    speakButton.disabled = !canSpeak;
+    speakButton.setAttribute('aria-pressed', String(speaking));
+    speakButton.textContent = speaking ? '🔊' : '🔈';
+    speakButton.title = !canSpeak ? NO_SPEAK_TEXT : speakReplies ? 'Voice replies are spoken (click to mute)' : 'Voice replies are muted (click to speak them)';
     hint.textContent = hintText();
   }
 
   function hintText() {
     if (view.halted) return 'The agent is halted. Reset it from the top bar to continue.';
     if (voice.ready) return voice.ready.stt ? 'Voice: the engine transcribes your audio.' : Recognition ? 'Voice: your browser transcribes speech, then the text goes to the engine.' : '';
-    if (!Recognition && !(MediaRecorderImpl && getUserMedia)) return 'Voice needs a browser with speech recognition (Chrome or Edge).';
+    if (!canListen) return NO_LISTEN_TEXT;
     return 'Enter sends · Shift+Enter for a new line';
   }
 
@@ -324,9 +336,10 @@ export function mountBrainDock(container, options = {}) {
     if (view.mode !== 'speaking') setMode('idle');
   }
 
-  async function ensureVoice() {
+  // quiet: the mic is already listening, so the connection is made without changing what the dock shows.
+  async function ensureVoice(quiet = false) {
     if (voice.stream && voice.stream.isOpen && voice.ready) return voice.stream;
-    setMode('connecting');
+    if (!quiet) setMode('connecting');
     // HTTP pre-check: a browser WebSocket can't report why a handshake failed, but this call can (401, offline, HALTED).
     const state = await api.getAgentState(agentId);
     if (state.state === 'HALTED') {
@@ -336,6 +349,8 @@ export function mountBrainDock(container, options = {}) {
     const stream = api.openVoiceStream({ sessionId, agentId, format: 'webm-opus' }, { onFrame: onVoiceFrame, onClose: onVoiceClose });
     voice.stream = stream;
     voice.ready = await stream.ready;
+    // The hint depends on what the engine says it can do, so it is redrawn now that it has said.
+    render();
     return stream;
   }
 
@@ -347,7 +362,16 @@ export function mountBrainDock(container, options = {}) {
   }
 
   // --- speech capture
+  // The browser lets a page start speech recognition (and ask for the microphone) only while the tap that wanted it is fresh, and
+  // iPhone Safari is strict about it. So when the browser has speech recognition and the engine is not known to transcribe,
+  // recognition starts right here, in the tap, and the connection to the engine is made alongside it and used when the words
+  // are ready. (The engine has no speech-to-text provider yet, so this is the usual case.)
   async function startListening() {
+    stopSpeaking();
+    prime();
+    const engineTranscribes = voice.ready && voice.ready.stt && MediaRecorderImpl && getUserMedia;
+    if (Recognition && !engineTranscribes) return startRecognition();
+
     let stream;
     try {
       stream = await ensureVoice();
@@ -355,7 +379,6 @@ export function mountBrainDock(container, options = {}) {
       return handleError(error);
     }
     if (!stream) return;
-    stopSpeaking();
 
     if (voice.ready.stt && MediaRecorderImpl && getUserMedia) return startRecording(stream);
     if (Recognition) return startRecognition(stream);
@@ -367,11 +390,23 @@ export function mountBrainDock(container, options = {}) {
     let media;
     try {
       media = await getUserMedia({ audio: true });
-    } catch {
-      addMessage('error', 'Microphone access was blocked.');
+    } catch (error) {
+      addMessage('error', describeMicError(error));
       return setMode('idle');
     }
-    const recorder = new MediaRecorderImpl(media, { mimeType: 'audio/webm;codecs=opus' });
+    let recorder;
+    try {
+      // The engine decodes webm/opus. Safari records another format, so say so rather than send audio the engine cannot read.
+      const mimeType = 'audio/webm;codecs=opus';
+      if (typeof MediaRecorderImpl.isTypeSupported === 'function' && !MediaRecorderImpl.isTypeSupported(mimeType)) {
+        throw Object.assign(new Error('unsupported type'), { name: 'NotSupportedError' });
+      }
+      recorder = new MediaRecorderImpl(media, { mimeType });
+    } catch (error) {
+      media.getTracks().forEach((track) => track.stop());
+      addMessage('error', describeMicError(error.name === 'NotSupportedError' ? error : { name: 'NotSupportedError' }));
+      return setMode('idle');
+    }
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0 && stream.isOpen) stream.sendAudio(event.data);
     };
@@ -390,12 +425,28 @@ export function mountBrainDock(container, options = {}) {
     };
     voice.recorder = recorder;
     voice.media = media;
-    recorder.start(250);
+    try {
+      recorder.start(250);
+    } catch (error) {
+      voice.recorder = null;
+      voice.media = null;
+      media.getTracks().forEach((track) => track.stop());
+      addMessage('error', describeMicError(error));
+      return setMode('idle');
+    }
     setMode('listening');
   }
 
-  function startRecognition(stream) {
-    const recognition = new Recognition();
+  // openStream: a stream that is already open (the engine said it transcribes but this path is the fallback). Without one the
+  // connection is made alongside the recognition.
+  function startRecognition(openStream = null) {
+    let recognition;
+    try {
+      recognition = new Recognition();
+    } catch (error) {
+      addMessage('error', describeRecognitionError('start-failed'));
+      return setMode('idle');
+    }
     recognition.lang = (win.navigator && win.navigator.language) || 'en-US';
     recognition.interimResults = true;
     recognition.continuous = false;
@@ -412,25 +463,58 @@ export function mountBrainDock(container, options = {}) {
       interim.hidden = !interim.textContent;
     };
     recognition.onerror = (event) => {
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') addMessage('error', 'Microphone or speech recognition access was blocked.');
-      else if (event.error !== 'no-speech' && event.error !== 'aborted') addMessage('error', 'Speech recognition failed: ' + event.error + '.');
+      const text = describeRecognitionError(event && event.error);
+      // Hearing nothing is not a failure, so it is a quiet note in the log rather than a red error.
+      if (text) addMessage(event && event.error === 'no-speech' ? 'system' : 'error', text);
     };
+
+    voice.recognition = recognition;
+    try {
+      recognition.start();
+    } catch (error) {
+      voice.recognition = null;
+      addMessage('error', describeRecognitionError(error && error.name === 'NotAllowedError' ? 'not-allowed' : 'start-failed'));
+      return setMode('idle');
+    }
+    setMode('listening');
+
+    // The connection, made while the person speaks. A failure is reported once, here.
+    const connecting = openStream
+      ? Promise.resolve(openStream)
+      : ensureVoice(true).catch((error) => {
+          stopCapture(false);
+          handleError(error);
+          return null;
+        });
+
+    const deliver = (text, stream) => {
+      if (stream && stream.isOpen && !view.halted) {
+        stream.sendText(text);
+        return;
+      }
+      // No usable connection: either it failed (already reported) or it closed under us.
+      view.busy = false;
+      if (stream && !view.halted) addMessage('error', 'The voice stream closed before your words were sent. Try again.');
+      if (view.halted) setMode('halted');
+      else if (view.mode !== 'offline') setMode('idle');
+      else render();
+    };
+
     recognition.onend = () => {
       if (voice.recognition !== recognition) return;
       voice.recognition = null;
       const text = finalText.trim();
-      if (text && stream.isOpen && !view.halted) {
-        view.busy = true;
-        stream.sendText(text);
-        setMode('thinking');
-      } else {
+      if (!text || view.halted) {
         interim.hidden = true;
         setMode(view.halted ? 'halted' : 'idle');
+        return;
       }
+      view.busy = true;
+      setMode('thinking');
+      // Already connected (the next utterance): send now. Otherwise as soon as the connection is up.
+      if (voice.stream && voice.stream.isOpen && voice.ready) deliver(text, voice.stream);
+      else connecting.then((stream) => deliver(text, stream));
     };
-    voice.recognition = recognition;
-    recognition.start();
-    setMode('listening');
   }
 
   // send=true lets the capture finish normally (recording -> end_utterance, recognition -> final text);
@@ -458,14 +542,27 @@ export function mountBrainDock(container, options = {}) {
   }
 
   function speakText(text) {
-    if (!synth || !Utterance || !text.trim()) return setMode('idle');
+    if (!canSpeak || !text.trim()) return setMode('idle');
     const utterance = new Utterance(text);
-    utterance.onend = utterance.onerror = () => {
+    utterance.onend = () => {
       if (view.mode === 'speaking') setMode('idle');
     };
-    synth.cancel();
-    setMode('speaking');
-    synth.speak(utterance);
+    utterance.onerror = (event) => {
+      if (view.mode === 'speaking') setMode('idle');
+      // The browser refused to speak (iPhone Safari until something has spoken from a tap): say how to allow it.
+      if (event && event.error === 'not-allowed') {
+        primed = false;
+        addMessage('system', 'Your browser would not speak that reply. Tap the speaker button once, then try again.');
+      }
+    };
+    try {
+      synth.cancel();
+      setMode('speaking');
+      synth.speak(utterance);
+    } catch {
+      setMode('idle');
+      addMessage('system', 'Could not speak that reply.');
+    }
   }
 
   function stopSpeaking() {
@@ -476,15 +573,25 @@ export function mountBrainDock(container, options = {}) {
     if (voice.recognition || voice.recorder) {
       stopCapture(true);
       render();
+    } else if (!canListen) {
+      addMessage('error', NO_LISTEN_TEXT);
     } else if (!view.busy && !view.halted) {
-      startListening();
+      // An error that escapes (a connection or browser failure) is shown, never swallowed.
+      startListening().catch(handleError);
     }
   });
 
   speakButton.addEventListener('click', () => {
+    if (!canSpeak) {
+      addMessage('system', NO_SPEAK_TEXT);
+      return;
+    }
     speakReplies = !speakReplies;
     storage.set(SPEAK_STORAGE_KEY, String(speakReplies));
-    if (!speakReplies) {
+    if (speakReplies) {
+      // From this tap, so replies that arrive later can be heard on iPhone.
+      prime();
+    } else {
       stopSpeaking();
       if (view.mode === 'speaking') setMode('idle');
     }

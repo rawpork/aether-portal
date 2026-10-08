@@ -68,9 +68,9 @@ document.addEventListener('keydown', (event) => {
   window.location.assign(dest.href);
 });
 
-// A click on the header's switch counts the same as the shortcut.
+// A click on a surface link counts the same as the shortcut: the header's switch on Space, the rail's brand on Mission Control.
 document.addEventListener('click', (event) => {
-  const link = event.target && event.target.closest ? event.target.closest('.shell-item[data-surface]') : null;
+  const link = event.target && event.target.closest ? event.target.closest('a[data-surface]') : null;
   if (link && link.getAttribute('aria-current') !== 'page') remember(link.dataset.surface);
 });
 

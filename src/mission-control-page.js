@@ -6,7 +6,7 @@
 // this template is markup and styles only, so it carries no inline script (and, being a template literal, avoids
 // backslashes). The user's name, tier and the optional upgrade URL reach the script as meta tags.
 
-import { SHELL_SWITCH_CSS, renderSurfaceSwitch } from '../public/js/shell-surfaces.js';
+import { SHELL_SWITCH_CSS } from '../public/js/shell-surfaces.js';
 const escapeAttr = (value) => String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const icon = (paths, extra = '') =>
@@ -17,6 +17,7 @@ const icon = (paths, extra = '') =>
 	'</svg>';
 
 const ICONS = {
+	spec: icon('<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10.5 14h5M13 11.5v5"/>'),
 	grid: icon('<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>'),
 	pulse: icon('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
 	layers: icon('<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'),
@@ -251,9 +252,12 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
     .mc-greeting:empty, body:not([data-view="overview"]) .mc-greeting { display: none; }
     .mc-actions { flex: 0 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; margin-left: auto; }
     /* Phones and small tablets: the rail's Portal link is hidden there, so the header carries the way back. */
-    .menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-    .menu-toggle:hover { background: var(--surface-soft); }
-    .menu-toggle:active { transform: scale(0.98); }
+    /* The page title is the menu button (one control where there were three): a phone opens the drawer, a wide screen folds the rail. */
+    .mc-menu-button { appearance: none; display: inline-flex; align-items: center; gap: 10px; max-width: 100%; min-height: 44px; margin: -6px 0 -6px -10px; padding: 6px 12px 6px 10px; border: 1px solid transparent; border-radius: var(--radius-m); background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: left; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    .mc-menu-button:hover { background: var(--surface-soft); border-color: var(--line); }
+    .mc-menu-button:active { transform: scale(0.99); }
+    .mc-menu-button svg { flex: none; color: var(--muted); }
+    .mc-menu-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     /* The shared Space / Mission Control switch (public/js/shell-surfaces.js), in this page's colours. */
     .shell-switch { --shell-h: 44px; --shell-line: var(--line); --shell-bg: var(--surface); --shell-fg: var(--text); --shell-radius: var(--radius-m); --shell-active-bg: var(--accent-soft); --shell-active-line: var(--accent-line); --shell-active-fg: var(--accent-strong, var(--accent)); }
 ${SHELL_SWITCH_CSS}
@@ -1283,24 +1287,22 @@ ${SHELL_SWITCH_CSS}
       body.rail-open .mc-rail { transform: none; }
       .mc-scrim { position: fixed; inset: 0; z-index: 290; border: 0; padding: 0; background: rgba(0,0,0,0.5); }
         .mc-canvas { min-height: 0; }
-      /* Phone header budget: one row of 44px controls (menu, Space, page title, status pill, New agent), 68px tall, plus a
-         greeting line on Mission Control only. The heading and actions wrappers dissolve so each piece is a direct flex item;
-         the title takes the space left and wraps to two lines rather than clipping; the "Operations" eyebrow just repeats
-         the title here, so it is dropped on phones. */
+      /* Phone header budget: one row, the page title (which is the menu button) and the status pill, plus a greeting line on
+         Mission Control only. Space is the rail's brand and Agent spec is in the rail, so neither takes room up here. The heading
+         and actions wrappers dissolve so each piece is a direct flex item; the title takes the space left and wraps to two lines
+         rather than clipping; the "Operations" eyebrow just repeats the title here, so it is dropped on phones. */
       .mc-top { gap: 4px 8px; padding: calc(12px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 12px calc(14px + env(safe-area-inset-left, 0px)); }
       .mc-heading, .mc-actions { display: contents; }
-      .shell-item[aria-current="page"] { display: none; }
       .mc-crumbs { display: none; }
-      .mc-title { flex: 1 1 0; min-width: 0; margin: 0; font-size: 18px; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .mc-title { flex: 1 1 0; min-width: 0; margin: 0; font-size: 18px; line-height: 1.2; white-space: normal; overflow: visible; }
+      .mc-menu-button { display: flex; width: 100%; margin: 0; padding: 4px 10px; justify-content: space-between; }
+      .mc-menu-text { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
       .mc-greeting { order: 10; flex: 0 0 100%; font-size: 13px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .status-pill { padding: 0 12px; font-size: 13px; }
       /* Calm states stay a compact pill in the row. States that want attention (needs you, offline, halted) become a
          full-width strip under the title, so their longer words never squeeze the page name. */
       .mc-status:has(.status-pill[data-kind="alert"]), .mc-status:has(.status-pill[data-kind="halted"]) { order: 8; flex: 1 0 100%; }
       .mc-status:has(.status-pill[data-kind="alert"]) .status-pill, .mc-status:has(.status-pill[data-kind="halted"]) .status-pill { width: 100%; justify-content: center; }
-      /* Only the header's New agent shrinks to an icon; other primary buttons (the Command Bar's Generate) keep their label. */
-      .mc-actions .btn-primary .btn-label { display: none; }
-      .mc-actions .btn-primary { width: 44px; height: 44px; padding: 0; justify-content: center; }
       .mc-main { padding: 14px 12px 20px; }
       .wf-now { padding: 14px 16px 6px; }
       .wf-focus { font-size: 16px; }
@@ -1344,12 +1346,13 @@ ${SHELL_SWITCH_CSS}
 </head>
 <body data-view="overview" data-shell-surface="mission-control">
   <aside class="mc-rail" id="mc-rail" aria-label="Aether">
-    <a class="rail-brand" href="/" title="Space: the 3D graph (Alt+S)" aria-label="Aether Space (Alt+S)" aria-keyshortcuts="Alt+S"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
+    <a class="rail-brand" href="/" data-surface="space" title="Space: the 3D graph (Alt+S)" aria-label="Aether Space (Alt+S)" aria-keyshortcuts="Alt+S"><span class="rail-logo">${ICONS.star}</span><span class="rail-brand-word">AETHER</span></a>
     <nav class="rail-nav" aria-label="Mission Control views">
       <button type="button" class="rail-item" id="mc-nav-overview" aria-controls="mc-view-overview" title="Mission Control">${ICONS.grid}<span class="rail-label" data-short="Control">Mission Control</span><span class="rail-count" id="mc-agent-count" aria-label="agents">1</span></button>
       <button type="button" class="rail-item" id="mc-nav-studio" aria-controls="mc-view-studio" title="Studio: task trees, MCP servers and bridges">${ICONS.nodes}<span class="rail-label">Studio</span></button>
       <button type="button" class="rail-item" id="mc-nav-elaron" aria-controls="mc-view-elaron" title="Elarion">${ICONS.pulse}<span class="rail-label">Elarion</span></button>
       <button type="button" class="rail-item" id="mc-nav-create" aria-controls="mc-view-create" title="Create / Templates: start a project from a template">${ICONS.plus}<span class="rail-label">Create</span></button>
+      <button type="button" class="rail-item" id="mc-agent-spec" aria-haspopup="dialog" title="Agent spec: define an agent's role and what it may do. Writes a spec; nothing starts.">${ICONS.spec}<span class="rail-label" data-short="Agent">Agent spec</span></button>
       <button type="button" class="rail-item" id="mc-nav-blueprints" aria-controls="mc-view-blueprints" title="Projects">${ICONS.layers}<span class="rail-label">Projects</span></button>
       <button type="button" class="rail-item" id="mc-nav-roadmap" aria-controls="mc-view-roadmap" title="Roadmap: goals from ROADMAP.md and recent sessions">${ICONS.flag}<span class="rail-label">Roadmap</span></button>
       <button type="button" class="rail-item" id="mc-nav-operator" aria-controls="mc-view-operator" title="Operator Console: live agent activity, and the choices agents are waiting on">${ICONS.console}<span class="rail-label" data-short="Operator">Operator</span><span class="rail-count" id="mc-operator-count" aria-label="choices waiting" hidden>0</span></button>
@@ -1372,11 +1375,10 @@ ${SHELL_SWITCH_CSS}
   <button type="button" class="mc-scrim" id="mc-scrim" aria-label="Close menu" hidden></button>
   <div class="mc-canvas">
     <header class="mc-top">
-      <button type="button" class="menu-toggle" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" title="Menu" aria-label="Menu">${ICONS.menu}</button>
-      ${renderSurfaceSwitch('mission-control')}
       <div class="mc-heading">
         <p class="mc-crumbs">Operations</p>
-        <h1 class="mc-title" id="mc-title">Mission Control</h1>
+        <h1 class="mc-title" id="mc-title"><button type="button" class="mc-menu-button" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" aria-describedby="mc-menu-hint" title="Menu"><span class="mc-menu-text" id="mc-title-text">Mission Control</span>${ICONS.menu}</button></h1>
+        <span class="mc-visually-hidden" id="mc-menu-hint">Opens the menu to switch views.</span>
         <p class="mc-greeting" id="mc-greeting"></p>
         <span class="mc-visually-hidden" id="mc-route" role="status" aria-live="polite"></span>
       </div>
@@ -1398,7 +1400,6 @@ ${SHELL_SWITCH_CSS}
             <p class="status-help">The safety cutoff stops agents at their next step. Stop all agents turns it on for Elarion and every agent below. Resume Elarion turns it off for Elarion; resume other agents from their cards.</p>
           </div>
         </div>
-        <button type="button" class="btn-primary" id="mc-new-agent" aria-label="New agent: deploy a blueprint">${ICONS.plus}<span class="btn-label">New agent</span></button>
       </div>
     </header>
     <main class="mc-main">

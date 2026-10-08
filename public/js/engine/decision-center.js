@@ -14,6 +14,7 @@ import { nextAction } from './workforce.js';
 import { taskTitle } from './labels.js';
 import { pollDelay } from './poll-rate.js';
 import { mountIngestForm } from './ingest-form.js';
+import { buildAgentSpec, mountAgentSpecForm, specFileName, specToJson, specToMarkdown } from './agent-spec.js';
 
 export const POLL_MS = 4000;
 export const SKILL_COMMAND = /^\s*(?:add\s+(?:repo|skill)|learn)\s+([\s\S]+)$/i;
@@ -209,6 +210,110 @@ export function mountDecisionCenter(doc, options = {}) {
     });
     if (pick !== 0 || !payload) return null;
     return learn(payload.source, payload.name ? { name: payload.name } : {});
+  }
+
+  // ---- agent spec
+
+  // Copies text: the clipboard API where the page may use it, else the old select-and-copy. Returns whether it worked.
+  async function copyText(text) {
+    if (options.copyText) return options.copyText(text);
+    try {
+      if (win.navigator && win.navigator.clipboard && win.navigator.clipboard.writeText) {
+        await win.navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      /* fall through to the older way */
+    }
+    try {
+      const scratch = el(doc, 'textarea', { 'aria-hidden': 'true', tabindex: '-1', style: 'position:fixed;left:-9999px;top:0;opacity:0' });
+      scratch.value = text;
+      doc.body.append(scratch);
+      scratch.select();
+      const done = doc.execCommand && doc.execCommand('copy');
+      scratch.remove();
+      return Boolean(done);
+    } catch {
+      return false;
+    }
+  }
+
+  // Saves text as a file download. Returns whether it could start one.
+  function saveFile(name, text, type) {
+    if (options.saveFile) return options.saveFile(name, text, type);
+    try {
+      const url = win.URL.createObjectURL(new win.Blob([text], { type }));
+      const link = el(doc, 'a', { href: url, download: name, hidden: true });
+      doc.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => win.URL.revokeObjectURL(url), 1000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // The Agent spec button: a form for the agent's role, what it may do and its guardrails, then the spec to copy or download.
+  // Nothing is created or started; the popup says so, and the result says how a spec gets used.
+  async function askAgentSpec() {
+    let values = null;
+    for (;;) {
+      const form = mountAgentSpecForm(doc, { values });
+      let checked = null;
+      const intro = el(doc, 'p', { class: 'dc-body', text: 'Describe an agent: its role, how it should work and what it may do. This writes a spec you can copy or download. Nothing starts: an agent runs when a project that uses it is deployed, or as an agent in a Studio workflow.' });
+      const pick = await choose({
+        title: 'Agent spec',
+        body: el(doc, 'div', { class: 'dc-ingest-wrap' }, [intro, form.element]),
+        options: [{ label: 'Generate spec', hint: 'Starts nothing' }, { label: 'Cancel' }],
+        beforeClose: (index) => {
+          if (index !== 0) return true;
+          const result = form.validate();
+          if (!result.ok) return false;
+          checked = result.form;
+          return true;
+        },
+      });
+      if (pick !== 0 || !checked) return null;
+      values = checked;
+
+      const spec = buildAgentSpec(checked);
+      const json = specToJson(spec);
+      const brief = specToMarkdown(spec);
+      const status = el(doc, 'p', { class: 'dc-hint dc-spec-status', role: 'status', 'aria-live': 'polite' });
+      const preview = el(doc, 'pre', { class: 'dc-preview', text: brief });
+      const result = await choose({
+        title: 'Agent spec: ' + spec.name,
+        body: el(doc, 'div', {}, [
+          el(doc, 'p', { class: 'dc-body', text: 'Here is the spec. Paste the brief into a project, or hand the JSON to Claude Code to build. Nothing has been started.' }),
+          preview,
+          status,
+        ]),
+        options: [
+          { label: 'Copy as brief', hint: 'Plain text for a project or a prompt' },
+          { label: 'Copy as JSON', hint: spec.schema },
+          { label: 'Download JSON', hint: specFileName(spec) },
+          { label: 'Edit', hint: 'Change the answers' },
+          { label: 'Done' },
+        ],
+        beforeClose: (index) => {
+          // Copy and download keep the popup open and say what happened; Edit and Done close it.
+          if (index === 0 || index === 1) {
+            copyText(index === 0 ? brief : json).then((ok) => {
+              status.textContent = ok ? 'Copied the ' + (index === 0 ? 'brief' : 'JSON') + '.' : 'Could not copy automatically. Select the text above and copy it.';
+            });
+            return false;
+          }
+          if (index === 2) {
+            status.textContent = saveFile(specFileName(spec), json, 'application/json') ? 'Downloaded ' + specFileName(spec) + '.' : 'Could not start the download.';
+            return false;
+          }
+          return true;
+        },
+      });
+      if (result === 3) continue;
+      return spec;
+    }
   }
 
   async function reviewDraft(draft, exists) {
@@ -440,6 +545,7 @@ export function mountDecisionCenter(doc, options = {}) {
     choose,
     learn,
     askSource,
+    askAgentSpec,
     poll,
     isOpen: () => Boolean(open),
     destroy() {
