@@ -56,6 +56,11 @@ function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
       return json(body.send ? { ok: true, simulated: false, summary: 'Sent to your Telegram chat.', detail: 'hello' } : { ok: true, simulated: true, summary: 'Would send you this Telegram message.', detail: body.params.text });
     }
     state.calls.push({ method: init.method, pathname, body });
+    const answered = /^\/api\/agents\/([^/]+)\/tasks\/([^/]+)\/choice$/.exec(pathname);
+    if (answered) {
+      state.answers = (state.answers || []).concat({ agent: decodeURIComponent(answered[1]), task: answered[2], option: body.option });
+      return json({ ok: true, task_id: answered[2], agent_id: answered[1], option: body.option });
+    }
     const m = /^\/api\/workflows(?:\/([^/]+))?(?:\/(mutate|graph|run|events|versions|restore))?$/.exec(pathname);
     if (!m) return json({ error: 'Not found' }, 404);
     const [, id, action] = m;
@@ -102,7 +107,7 @@ function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
     if (action === 'events') {
       const after = Number(searchParams.get('after'));
       const out = state.events.filter((e) => e.seq > after);
-      return json({ run: { run_id: 'r1', task_id: 't', agent_id: 'workflow:' + id, status: state.runStatus, started_at: '2026-10-03T20:01:00.000Z', finished_at: null, node_status: {} }, events: out });
+      return json({ run: { run_id: 'r1', task_id: 't', agent_id: 'workflow:' + id, status: state.runStatus, started_at: '2026-10-03T20:01:00.000Z', finished_at: null, node_status: Object.fromEntries(state.events.filter((e) => e.type === 'node_status').map((e) => [e.node_id, e.status])) }, events: out });
     }
     return json({ error: 'Not found' }, 404);
   };
@@ -660,6 +665,29 @@ describe('workflow console', () => {
     expect(text).toContain('Builder continues.');
     expect(text).toContain('Deploy (only proposed, not connected)');
     expect(text).toContain('Where approvals are answered');
+  });
+
+  it('a run waiting on an approval card can be approved or stopped from that card', async () => {
+    const wf = sampleWorkflow();
+    wf.nodes.push(node('gate_1', 'human', 'Approve before publishing'));
+    wf.cables = wf.cables.filter((c) => c.id !== 'c_2').concat(cable('c_5', 'agent_r', 'act', 'gate_1', 'act', 'action'), cable('c_6', 'gate_1', 'start', 'agent_b', 'start', 'start'));
+    const events = [{ seq: 1, ts: 1, type: 'node_status', node_id: 'gate_1', status: 'running', summary: 'Waiting for your approval (Operator Console)' }];
+    const { api, state } = engine({ workflows: [wf], events });
+    const { root } = mount(api);
+    await ui.setActive(true);
+    await ui.run();
+    await flush();
+    const card = root.querySelector('.wfc-node[data-node="gate_1"]');
+    expect(card.querySelector('.wfc-run-pill').textContent).toBe('Waiting for you');
+    card.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5, button: 0 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 5 }));
+    await flush();
+    const panel = root.querySelector('.wfc-inspector');
+    expect(panel.textContent).toContain('Waiting for you now.');
+    [...panel.querySelectorAll('button')].find((b) => b.textContent === 'Approve and continue').click();
+    await flush();
+    expect(state.answers).toEqual([{ agent: 'workflow:wf_0000beef', task: 't', option: 1 }]);
+    expect(root.querySelector('.wfc-inspector').textContent).toContain('Approved. The run is continuing.');
   });
 
   it('view-only mode: tapping a node opens its details', async () => {

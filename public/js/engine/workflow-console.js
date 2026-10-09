@@ -533,7 +533,8 @@ export function mountWorkflowConsole(container, options = {}) {
     const sub = needs.length ? 'Needs setup: ' + needs[0].problem : node.kind === 'mcp' ? (node.role || 'MCP server') : node.role || (node.kind === 'action' ? 'Not executed automatically' : '');
     if (needs.length) card.setAttribute('data-needs', 'true');
     card.append(el(doc, 'p', { class: 'wfc-node-sub', text: sub, title: needs.length ? needs.map((i) => i.problem).join(' ') : node.instructions || sub }));
-    if (runStatus) card.append(el(doc, 'span', { class: 'pill wfc-run-pill', 'data-kind': RUN_KIND[runStatus] || 'queued' }, [el(doc, 'span', { class: 'pill-dot' }), RUN_TEXT[runStatus] || runStatus]));
+    const pillText = node.kind === 'human' && runStatus === 'running' ? 'Waiting for you' : RUN_TEXT[runStatus] || runStatus;
+    if (runStatus) card.append(el(doc, 'span', { class: 'pill wfc-run-pill', 'data-kind': RUN_KIND[runStatus] || 'queued' }, [el(doc, 'span', { class: 'pill-dot' }), pillText]));
     for (const dir of ['in', 'out']) {
       for (const port of PORTS[node.kind][dir]) {
         const off = portOffset(node.kind, dir, port);
@@ -776,8 +777,28 @@ export function mountWorkflowConsole(container, options = {}) {
     );
     inspector.append(released.length ? el(doc, 'ul', { class: 'wfc-flow-list' }, released.map((id) => el(doc, 'li', { text: labelOf(id) + ' continues.' })).concat(effects.map((n) => el(doc, 'li', { text: effectText(n) })))) : el(doc, 'p', { class: 'mini-label', text: 'Nothing continues after it.' }));
     inspector.append(el(doc, 'h4', { text: 'How to approve' }));
-    if (status === 'running') inspector.append(el(doc, 'p', { class: 'wfc-connector-note', text: 'Waiting for you now.' }));
-    const open = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: status === 'running' ? 'Answer it now' : 'Where approvals are answered' });
+    const waiting = status === 'running' && run && run.status === 'RUNNING';
+    if (waiting) {
+      // The run is paused on this card: answer it here (the same answer the Runs page and Telegram give).
+      const note = el(doc, 'p', { class: 'wfc-connector-note', text: 'Waiting for you now.' });
+      const answer = async (option) => {
+        approve.disabled = stop.disabled = true;
+        try {
+          await api.answerTaskChoice(run.agent_id, run.task_id, option);
+          note.textContent = option === 1 ? 'Approved. The run is continuing.' : 'Stopped.';
+          startPolling(false);
+        } catch (err) {
+          approve.disabled = stop.disabled = false;
+          note.textContent = err && err.status === 409 ? 'Already answered somewhere else.' : 'Could not send the answer. Try the Runs page.';
+        }
+      };
+      const approve = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-approve', text: 'Approve and continue' });
+      const stop = el(doc, 'button', { type: 'button', class: 'btn btn-small btn-danger-lite', text: 'Stop the run here' });
+      approve.addEventListener('click', () => answer(1));
+      stop.addEventListener('click', () => answer(2));
+      inspector.append(note, approve, stop);
+    }
+    const open = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: waiting ? 'Open it in Runs' : 'Where approvals are answered' });
     open.addEventListener('click', () => { win.location.hash = 'operator'; });
     inspector.append(open);
   }

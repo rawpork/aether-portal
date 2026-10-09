@@ -1185,9 +1185,11 @@ export default {
         const query = new URLSearchParams(Object.entries(shared).filter(([, value]) => value)).toString();
         return Response.redirect(url.origin + "/?next=" + encodeURIComponent("/share" + (query ? "?" + query : "")), 303);
       }
-      // Signed in: the share goes into Mission Control's New project dialog, which opens on Paste Links with the link filled in (or
-      // on Describe Goal with the shared text), so a shared page can become a project, a template or a roadmap from the same place.
-      return new Response(null, { status: 303, headers: { Location: missionControlShareUrl(url.origin, shared), "Cache-Control": "no-store" } });
+      // Signed in: the Ingest page (save to the inbox with a preset). "Make it a project instead" on it opens Mission Control's New
+      // project dialog with the link (or the shared text) filled in.
+      return new Response(renderSharePage(shared, { claudeAvailable: Boolean(env.ANTHROPIC_API_KEY), projectUrl: missionControlShareUrl(url.origin, shared) }), {
+        headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
+      });
     }
 
     // Endpoint 5f: Deep link to one node (/node/<id>, e.g. the share sheet's View Node button). Signed-in visits get

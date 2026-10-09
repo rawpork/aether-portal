@@ -76,6 +76,13 @@ describe("renderSharePage", () => {
 });
 
 describe("/share into Mission Control", () => {
+	it("the Ingest page offers Make it a project instead, pointing at the New project dialog", () => {
+		const html = renderSharePage({ url: "https://a.test/x" }, { projectUrl: missionControlShareUrl("https://p.test", { url: "https://a.test/x" }) });
+		expect(html).toContain('id="ingest"');
+		expect(html).toContain('id="make-project" href="https://p.test/mission-control?share_url=https%3A%2F%2Fa.test%2Fx"');
+		expect(renderSharePage({ url: "https://a.test/x" })).not.toContain("make-project");
+	});
+
 	it("sends a shared link to the New project dialog, and shared text alone to the goal", () => {
 		expect(missionControlShareUrl("https://p.test", { url: "https://a.test/x?y=1", title: "A page" })).toBe("https://p.test/mission-control?share_url=https%3A%2F%2Fa.test%2Fx%3Fy%3D1&share_title=A+page");
 		const android = new URL(missionControlShareUrl("https://p.test", { text: "Look https://b.test/z great find" }));

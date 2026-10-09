@@ -39,7 +39,7 @@ export function missionControlShareUrl(origin, shared) {
 
 const escapeJson = value => JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 
-export function renderSharePage(shared, { claudeAvailable = false } = {}) {
+export function renderSharePage(shared, { claudeAvailable = false, projectUrl = "" } = {}) {
   const data = { ...normalizeSharedInput(shared), claudeAvailable };
   return `<!DOCTYPE html>
 <html lang="en">
@@ -131,6 +131,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
     .ribbon button:active:not(:disabled), .ribbon button[aria-pressed="true"] { color: #ffffff; }
     .ribbon button[aria-pressed="true"]::before { border-color: var(--accent-line); background: var(--active-fill); }
     .ribbon button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .secondary-link { display: block; margin: 12px 0 0; text-align: center; color: var(--text-2, #9aa4b2); font-size: 13px; text-decoration: underline; }
     .primary { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; padding: 0 16px; border: 0; border-radius: var(--radius-m); background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 600; text-decoration: none; }
     .primary:disabled { opacity: 0.4; cursor: progress; }
     .status { min-height: 16px; margin: -8px 0 0; font-size: 13px; text-align: center; color: var(--text-muted); }
@@ -176,6 +177,7 @@ export function renderSharePage(shared, { claudeAvailable = false } = {}) {
         <button type="button" data-insert="/claude">/claude</button>
       </div>
       <button type="button" class="primary" id="ingest">Ingest</button>
+      ${projectUrl ? `<a class="secondary-link" id="make-project" href="${projectUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}">Make it a project instead</a>` : ""}
       <p class="status" id="status" role="status"></p>
     </div>
     <div class="done" id="done" hidden>
