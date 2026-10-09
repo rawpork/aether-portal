@@ -20,6 +20,7 @@ export { UserHub } from "./realtime/user-hub.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { getRecord, recordStats, reindexAccount, searchRecords, upsertRecord } from "./records.js";
 import { sendTelegramToUser } from "./connectors.js";
+import { createApprovalRequest, handleApprovalCallback, markApprovalDelivered, pendingApprovalAnswers } from "./approvals.js";
 import { appendMessages, deleteThread, getThread, listThreads, refileThreads } from "./conversations.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
@@ -243,6 +244,30 @@ export default {
       } catch (err) {
         console.error("Telegram connector failed:", err);
         return jsonResponse({ error: "The message could not be sent." }, 500);
+      }
+    }
+
+    // Approvals over Telegram (src/approvals.js): the engine asks, collects the taps it has not seen, and acknowledges each.
+    if (url.pathname === "/api/approvals/telegram" || url.pathname === "/api/approvals/pending" || /^\/api\/approvals\/[A-Za-z0-9]+\/delivered$/.test(url.pathname)) {
+      const who = await recordsUser(request, env, url);
+      if (who.error) return who.error;
+      try {
+        if (url.pathname === "/api/approvals/telegram" && request.method === "POST") {
+          const body = await request.json().catch(() => null);
+          const result = await createApprovalRequest(env, who.userId, body, approvalTelegram);
+          return jsonResponse(result.body, result.status);
+        }
+        if (url.pathname === "/api/approvals/pending" && request.method === "GET") {
+          return jsonResponse({ answers: await pendingApprovalAnswers(env, who.userId) });
+        }
+        if (url.pathname.endsWith("/delivered") && request.method === "POST") {
+          const result = await markApprovalDelivered(env, who.userId, url.pathname.split("/")[3]);
+          return jsonResponse(result.body, result.status);
+        }
+        return jsonResponse({ error: "Method not allowed" }, 405);
+      } catch (err) {
+        console.error("Approvals request failed:", err);
+        return jsonResponse({ error: "The approval could not be handled." }, 500);
       }
     }
 
@@ -1198,6 +1223,11 @@ export default {
       let telegramUserId = null;
       try {
         const update = await request.json();
+        // A tap on an Approve / Stop button (src/approvals.js). Taps from a chat that is not the one linked are refused there.
+        if (update.callback_query) {
+          await handleApprovalCallback(env, update.callback_query, approvalTelegram).catch((err) => console.warn("Approval tap failed:", err.message));
+          return new Response("OK");
+        }
         const chatId = update.message?.chat?.id;
         const text = String(update.message?.text || "").trim();
 
@@ -11437,6 +11467,13 @@ async function telegramApi(env, method, payload) {
   if (!response.ok) console.warn(`Telegram ${method} failed with HTTP ${response.status}`);
   return response;
 }
+
+// The bot calls src/approvals.js needs: a message with one button per option, the tap's pop-up, and the message edit afterwards.
+const approvalTelegram = {
+  send: (env, chatId, text, buttons) => telegramApi(env, "sendMessage", { chat_id: chatId, text, reply_markup: { inline_keyboard: [buttons] } }),
+  answer: (env, queryId, text) => telegramApi(env, "answerCallbackQuery", { callback_query_id: queryId, text }).catch(() => null),
+  edit: (env, chatId, messageId, text) => telegramApi(env, "editMessageText", { chat_id: chatId, message_id: messageId, text }).catch(() => null)
+};
 
 async function sendTelegram(env, chatId, text) {
   return telegramApi(env, "sendMessage", { chat_id: chatId, text });
