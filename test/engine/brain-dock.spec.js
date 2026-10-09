@@ -702,3 +702,15 @@ describe('saved conversations', () => {
     expect(messages()).toEqual(['system: New session started.']);
   });
 });
+
+describe('scope context as a function', () => {
+  it('is read when the message is sent, so Elarion hears about the page as it is at that moment', async () => {
+    mount();
+    let nodes = 2;
+    dock.setScopes([{ id: 'studio', label: 'Studio: Research flow', context: () => ({ page: 'Studio', node_count: nodes }) }], 'studio');
+    nodes = 5;
+    await type('What does the second node do?');
+    const chat = engine.calls.find((c) => c.path === '/api/master-brain/chat');
+    expect(chat.body.context).toEqual({ asking_about: 'Studio: Research flow', page: 'Studio', node_count: 5 });
+  });
+});

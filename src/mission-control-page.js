@@ -1347,14 +1347,28 @@ ${SHELL_SWITCH_CSS}
     .mc-display-row .toggle-button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }
 
     /* ---------- Elarion drawer: the conversation slides in from the right over any page */
-    .mc-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 230; box-sizing: border-box; width: min(440px, 100%); max-width: 100%; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); border-left: 1px solid var(--line-strong); background: var(--surface); box-shadow: -12px 0 40px rgba(0, 0, 0, 0.28); transform: translateX(100%); visibility: hidden; transition: transform 0.25s ease, visibility 0s linear 0.25s; }
+    .mc-drawer {
+      position: fixed; z-index: 120; left: 248px; right: 0; bottom: var(--mc-composer-h, 68px); height: min(44vh, 400px); box-sizing: border-box;
+      display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-bottom: 0; border-radius: 12px 12px 0 0; background: var(--surface);
+      box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3); transform: translateY(calc(100% + var(--mc-composer-h, 68px))); visibility: hidden;
+      transition: transform 0.25s ease, visibility 0s linear 0.25s;
+    }
+    body[data-rail="icons"] .mc-drawer { left: 84px; }
+    .mc-drawer[data-size="tall"] { height: min(78vh, 760px); }
     body.drawer-open .mc-drawer { transform: none; visibility: visible; transition: transform 0.25s ease; }
-    .mc-drawer-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 22px; border-bottom: 1px solid var(--line); }
-    .mc-drawer-title { font-size: 16px; font-weight: 700; }
-    .mc-drawer-close { appearance: none; flex: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 24px; line-height: 1; cursor: pointer; }
+    .mc-drawer-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 4px 22px; border-bottom: 1px solid var(--line); }
+    .mc-drawer-title { font-size: 14px; font-weight: 600; }
+    .mc-drawer-actions { display: flex; gap: 4px; }
+    .mc-drawer-close, .mc-drawer-size { appearance: none; flex: none; width: 44px; height: 44px; border: 0; border-radius: var(--radius-m); background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+    .mc-drawer-close:hover, .mc-drawer-size:hover { background: var(--surface-soft); color: var(--text); }
     .mc-drawer #mc-elaron { flex: 1; min-height: 0; }
-    .mc-drawer-scrim { position: fixed; inset: 0; z-index: 225; background: rgba(4, 8, 14, 0.55); }
-    @media (max-width: 680px) { .mc-drawer .brain-log { padding: 14px; } .mc-drawer .brain-form { padding-left: 14px; padding-right: 14px; } }
+    /* The conversation only: the composer below is where you type, so the dock's own message box, avatar and hint are put away. */
+    .mc-drawer .brain-form, .mc-drawer .brain-hint, .mc-drawer .brain-head .elaron { display: none; }
+    .mc-drawer .brain-head { padding: 6px 22px; }
+    .mc-drawer .brain-title h2 { display: none; }
+    .mc-drawer .brain-log, .mc-drawer .brain-scope, .mc-drawer .brain-head { width: 100%; max-width: 880px; margin-left: auto; margin-right: auto; }
+    .mc-drawer-scrim { display: none; }
+    @media (max-width: 680px) { .mc-drawer { left: 0; height: min(52vh, 460px); } .mc-drawer .brain-log { padding: 12px 14px; } }
     @media (prefers-reduced-motion: reduce) { .mc-drawer { transition: none; } }
     .brain-scope { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 10px 22px; border-bottom: 1px solid var(--line); }
     .brain-scope-label { color: var(--muted); font-size: 12px; font-weight: 700; }
@@ -1537,7 +1551,7 @@ ${SHELL_SWITCH_CSS}
   </div>
   <div class="mc-drawer-scrim" id="mc-drawer-scrim" hidden></div>
   <aside class="mc-drawer" id="mc-drawer" role="dialog" aria-modal="false" aria-labelledby="mc-drawer-title" aria-hidden="true" inert>
-    <div class="mc-drawer-head"><h2 class="mc-drawer-title" id="mc-drawer-title">Elarion</h2><button type="button" class="mc-drawer-close" id="mc-drawer-close" aria-label="Close the conversation" title="Close (Esc)">×</button></div>
+    <div class="mc-drawer-head"><h2 class="mc-drawer-title" id="mc-drawer-title">Elarion</h2><div class="mc-drawer-actions"><button type="button" class="mc-drawer-size" id="mc-drawer-size" aria-label="Make the conversation taller" aria-pressed="false" title="Taller / shorter">⤢</button><button type="button" class="mc-drawer-close" id="mc-drawer-close" aria-label="Close the conversation" title="Close (Esc)">×</button></div></div>
     <section class="mc-elaron" id="mc-elaron" aria-label="Elarion chat and voice"></section>
   </aside>
   <noscript><p class="mc-section">Mission Control needs JavaScript.</p></noscript>

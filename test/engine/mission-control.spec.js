@@ -178,22 +178,21 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(document.title).toBe('Projects - Mission Control - Aether Portal');
   expect(document.getElementById('mc-route').textContent).toBe('Projects');
 
-  // Reaching for the composer opens the Elarion drawer and puts the cursor in its message box.
+  // Clicking into the composer only lets you type; the Elarion tray slides up when you send, and the cursor stays in the composer.
   const composerInput = document.getElementById('mc-command-input');
   mc.tabs.select('overview');
   composerInput.focus();
-  expect(mc.drawer.isOpen()).toBe(true);
-  expect(document.activeElement).toBe(mc.dock.elements.input);
-  mc.drawer.close();
+  expect(mc.drawer.isOpen()).toBe(false);
   mc.tabs.select('studio');
   expect(document.body.dataset.view).toBe('studio');
-  // Sending from the command bar opens Elarion and keeps the cursor in Elarion's own box.
   mc.tabs.select('overview');
   composerInput.value = 'status?';
   document.getElementById('mc-command').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   expect(mc.drawer.isOpen()).toBe(true);
   expect(document.getElementById('mc-drawer').hasAttribute('inert')).toBe(false);
-  expect(document.activeElement).toBe(mc.dock.elements.input);
+  expect(document.getElementById('mc-drawer').getAttribute('aria-modal')).toBe('false');
+  expect(document.activeElement).toBe(composerInput);
+  expect(document.querySelector('#mc-elaron .brain-user').textContent).toContain('status?');
   mc.drawer.close();
   expect(document.getElementById('mc-drawer').hasAttribute('inert')).toBe(true);
   mc.tabs.select('blueprints');

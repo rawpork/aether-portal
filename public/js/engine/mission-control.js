@@ -25,6 +25,7 @@ import { projectTitle } from './labels.js';
 import { mountStudioCanvas } from './studio-canvas.js';
 import { mountNewProject } from './new-project.js';
 import { createConversationStore } from './conversation-store.js';
+import { projectContext, studioContext } from './elarion-context.js';
 import { saveBlueprintRecord } from './records-write.js';
 import { setupElarionDrawer } from './elarion-drawer.js';
 import { mountWorkflowConsole } from './workflow-console.js';
@@ -448,22 +449,34 @@ export async function mountMissionControl(doc = document, options = {}) {
   const outcomes = byId('mc-outcomes') ? mountOutcomesList(byId('mc-outcomes'), { api, portalFetch: options.portalFetch, storage: options.storage }) : null;
   // The conversation is saved to the portal as it happens (conversation-store.js) so it survives a reload and can be searched.
   const dock = mountBrainDock(byId('mc-elaron'), { api, history: createConversationStore(recordsFetch), ...options.dock });
-  // The conversation lives in a drawer that slides in over any page. The composer opens it.
+  // The conversation is a tray that slides up from the composer over any page. Sending from the composer opens it; the composer stays the
+  // place you type, so Elarion's answer appears right there and you never leave the page.
   let drawerClosing = false;
   const drawer = setupElarionDrawer(doc, {
     onClosing: () => { drawerClosing = true; },
     onClose: () => { drawerClosing = false; },
-    focusTarget: () => (dock && dock.elements ? dock.elements.input : null),
-    onOpen: () => refreshScopes(),
+    focusTarget: () => byId('mc-command-input'),
+    onOpen: () => {
+      refreshScopes();
+      // The tray sits just above the composer, whatever height that is on this screen.
+      const composer = byId('mc-command');
+      const tray = byId('mc-drawer');
+      if (composer && tray) tray.style.setProperty('--mc-composer-h', composer.offsetHeight + 'px');
+    },
   });
   // "Asking about": the page being looked at and the project open in it, as chips in the conversation.
   function refreshScopes() {
     if (!dock || !dock.setScopes) return;
     const view = tabs ? tabs.getView() : 'overview';
     const list = [{ id: 'page', label: VIEW_TITLES[view] || 'This page', context: { page: VIEW_TITLES[view] || view } }];
+    // Studio: Elarion is told about the workflow on the canvas as it is when you send (its nodes, wiring, selection and last run).
+    if (view === 'studio' && workflowConsole) {
+      const workflow = workflowConsole.getState().workflow;
+      list.splice(0, list.length, { id: 'studio', label: workflow && workflow.title ? 'Studio: ' + workflow.title : 'Studio workflow', context: () => studioContext(workflowConsole.getState()) });
+    }
     const open = blueprints && blueprints.getSelected ? blueprints.getSelected() : null;
     if (open && open.project_name && (view === 'blueprints' || view === 'roadmap')) {
-      list.unshift({ id: 'project', label: projectTitle(open), thread: 'project:' + open.blueprint_id, project_id: open.blueprint_id, context: { project: open.project_name, blueprint_id: open.blueprint_id, page: VIEW_TITLES[view] } });
+      list.unshift({ id: 'project', label: projectTitle(open), thread: 'project:' + open.blueprint_id, project_id: open.blueprint_id, context: () => projectContext(blueprints.getSelected() || open, VIEW_TITLES[view]) });
     }
     dock.setScopes(list, list[0].id);
   }
@@ -585,20 +598,21 @@ export async function mountMissionControl(doc = document, options = {}) {
         return;
       }
       drawer.open();
-      // Busy or halted: leave the text in the dock's own box so it isn't lost. Either way, keep typing there.
-      if (!dock.send(text)) dock.elements.input.value = text;
-      dock.elements.input.focus();
+      // Busy or halted: put the text back in the composer so it isn't lost. Focus stays in the composer either way.
+      if (!dock.send(text)) composerInput.value = text;
+      composerInput.focus({ preventScroll: true });
     },
   }) : null;
-  // Reaching for the composer opens the conversation: whatever was typed there carries over into the drawer's message box.
   const composerInput = byId('mc-command-input');
-  if (composerInput) {
-    composerInput.addEventListener('focus', () => {
-      if (drawer.isOpen() || drawerClosing) return;
-      const typed = composerInput.value;
-      composerInput.value = '';
-      drawer.open();
-      if (typed && !dock.elements.input.value) dock.elements.input.value = typed;
+  // The tray's size button: taller for a long answer, shorter again to see the page.
+  const trayEl = byId('mc-drawer');
+  const sizeButton = byId('mc-drawer-size');
+  if (trayEl && sizeButton) {
+    sizeButton.addEventListener('click', () => {
+      const tall = trayEl.dataset.size !== 'tall';
+      if (tall) trayEl.dataset.size = 'tall';
+      else delete trayEl.dataset.size;
+      sizeButton.setAttribute('aria-pressed', String(tall));
     });
   }
   const skillButton = byId('mc-command-skill');

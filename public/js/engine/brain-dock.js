@@ -324,7 +324,9 @@ export function mountBrainDock(container, options = {}) {
     addMessage('user', text, { scope: chosen ? chosen.label : null });
     setMode('thinking');
     try {
-      const context = { ...(chosen && chosen.context ? { asking_about: chosen.label, ...chosen.context } : {}), ...(replay ? { earlier_conversation: replay } : {}) };
+      // A scope's context may be a function: it is read now, so Elarion hears about the page as it is at this moment.
+      const scopeContext = chosen && chosen.context ? (typeof chosen.context === 'function' ? chosen.context() : chosen.context) : null;
+      const context = { ...(scopeContext ? { asking_about: chosen.label, ...scopeContext } : {}), ...(replay ? { earlier_conversation: replay } : {}) };
       replay = null;
       const reply = await api.sendMasterBrainChat(text, activeSession(), { agentId, ...(Object.keys(context).length ? { context } : {}) });
       addMessage('assistant', reply.response, { tokens: reply.tokens });

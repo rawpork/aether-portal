@@ -1,10 +1,7 @@
-// The Elarion conversation drawer: a panel that slides in from the right over whatever page is open, instead of Elarion being a
-// page of its own. The bottom composer opens it (typing or sending there carries over into the conversation), Esc or the close
-// button shuts it, and the page underneath stays where it was, so asking about a project never loses the project.
-//
-// On a phone it covers the screen like a chat app and keeps Tab inside; on a wide screen it is a side panel the page can still be
-// used beside. The conversation itself is the brain dock (brain-dock.js), mounted into #mc-elaron inside the drawer by the caller.
-import { trapFocus } from '../a11y.js';
+// The Elarion tray: the conversation slides up from the bottom, just above the composer, over whatever page is open. Sending from the
+// composer opens it (the composer stays the place you type), Esc or the close button puts it away, and the page underneath stays
+// where it is, so asking about a node or a project never takes you anywhere. It is not a modal: the page and the composer stay usable.
+// The conversation itself is the brain dock (brain-dock.js), mounted into #mc-elaron inside the tray by the caller.
 
 export function setupElarionDrawer(doc, { onOpen = () => {}, onClose = () => {}, onClosing = () => {}, focusTarget = () => null } = {}) {
   const win = doc.defaultView || globalThis;
@@ -12,17 +9,14 @@ export function setupElarionDrawer(doc, { onOpen = () => {}, onClose = () => {},
   const scrim = doc.getElementById('mc-drawer-scrim');
   const closeButton = doc.getElementById('mc-drawer-close');
   if (!drawer) return null;
-  const phone = win.matchMedia ? win.matchMedia('(max-width: 680px)') : { matches: false, addEventListener() {} };
   let open = false;
-  let trap = null;
   let opener = null;
 
   // Closed, the drawer is off-screen: it must not be reachable by Tab or a screen reader.
   function sync() {
     drawer.toggleAttribute('inert', !open);
     drawer.setAttribute('aria-hidden', String(!open));
-    drawer.setAttribute('aria-modal', String(open && phone.matches));
-    if (scrim) scrim.hidden = !(open && phone.matches);
+    if (scrim) scrim.hidden = true;
     doc.body.classList.toggle('drawer-open', open);
   }
 
@@ -38,17 +32,12 @@ export function setupElarionDrawer(doc, { onOpen = () => {}, onClose = () => {},
     // Focus goes to the message box, where the person types next.
     const target = focusTarget() || closeButton;
     if (target) target.focus({ preventScroll: true });
-    if (phone.matches) trap = trapFocus(drawer, { returnTo: opener });
     onOpen();
   }
 
   function hide(restore = true) {
     if (!open) return;
     open = false;
-    if (trap) {
-      trap.release({ restore: false });
-      trap = null;
-    }
     sync();
     // Told before focus goes back, so a composer that opens the drawer when focused does not reopen it on the way out.
     onClosing();
@@ -64,7 +53,6 @@ export function setupElarionDrawer(doc, { onOpen = () => {}, onClose = () => {},
       hide();
     }
   });
-  if (phone.addEventListener) phone.addEventListener('change', sync);
   sync();
 
   return { open: show, close: hide, toggle: (from) => (open ? hide() : show(from)), isOpen: () => open };
