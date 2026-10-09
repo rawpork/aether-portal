@@ -129,9 +129,10 @@ describe('Roadmap Templates tab', () => {
 	});
 
 	it('sorts the roadmaps into category tabs, and the 1-day audit and affiliate campaign are there', () => {
-		expect(ROADMAP_CATEGORIES.map((c) => c.id)).toEqual(['all', 'rapid', 'affiliate', 'marketing', 'seo', 'app']);
+		expect(ROADMAP_CATEGORIES.map((c) => c.id)).toEqual(['all', 'rapid', 'affiliate', 'marketing', 'seo', 'app', 'ops']);
 		expect(roadmapsIn('all')).toHaveLength(ROADMAP_TEMPLATES.length);
-		expect(roadmapsIn('rapid').map((t) => t.id)).toEqual(['local-audit-1d', 'affiliate-brainiac-1d']);
+		expect(roadmapsIn('rapid').map((t) => t.id)).toEqual(['local-audit-1d', 'affiliate-brainiac-1d', 'sales-crm-1d', 'finance-ledger-1d', 'onboarding-sop-1d']);
+		expect(roadmapsIn('ops').map((t) => t.id)).toEqual(['sales-crm-1d', 'finance-ledger-1d', 'onboarding-sop-1d']);
 		expect(roadmapsIn('affiliate').map((t) => t.id)).toContain('affiliate-brainiac-1d');
 		for (const c of ROADMAP_CATEGORIES.slice(1)) expect(roadmapsIn(c.id).length).toBeGreaterThan(0);
 		for (const t of ROADMAP_TEMPLATES) expect(t.categories.length).toBeGreaterThan(0);
@@ -144,7 +145,7 @@ describe('Roadmap Templates tab', () => {
 		project.open('roadmap');
 		document.querySelector('[data-np-panel="roadmap"] [data-category="rapid"]').click();
 		const ids = [...document.querySelectorAll('[data-np-panel="roadmap"] .np-card input')].map((i) => i.value);
-		expect(ids).toEqual(['local-audit-1d', 'affiliate-brainiac-1d']);
+		expect(ids).toEqual(['local-audit-1d', 'affiliate-brainiac-1d', 'sales-crm-1d', 'finance-ledger-1d', 'onboarding-sop-1d']);
 		expect(document.querySelector('[data-np-panel="roadmap"] [data-category="rapid"]').getAttribute('aria-pressed')).toBe('true');
 		document.querySelector('[data-np-panel="roadmap"] [data-category="all"]').click();
 		expect(document.querySelectorAll('[data-np-panel="roadmap"] .np-card').length).toBe(ROADMAP_TEMPLATES.length);

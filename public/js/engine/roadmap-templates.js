@@ -11,6 +11,7 @@ export const ROADMAP_CATEGORIES = [
   { id: 'marketing', label: 'Marketing & Funnels' },
   { id: 'seo', label: 'SEO & Web Development' },
   { id: 'app', label: 'App & SaaS Creation' },
+  { id: 'ops', label: 'Business Operations & Scale' },
 ];
 
 export const ROADMAP_TEMPLATES = [
@@ -110,6 +111,42 @@ export const ROADMAP_TEMPLATES = [
       { title: 'Morning: Understand the offer', goals: ['Read the offer link or product spec: what it is, the price, the commission, the rules on how it may be promoted', 'Name the audience it fits and the problem it solves for them', 'Find three angles and pick the strongest, with the reason'] },
       { title: 'Midday: Build the page', goals: ['Write the landing page copy: headline, benefits, proof, answers to objections and one clear call to action', 'Lay out the page sections and the disclosure that this is an affiliate link', 'Draft the follow-up email and three posts'] },
       { title: 'Afternoon: Launch blueprint', goals: ['Compile the launch checklist as a runnable blueprint with an approval before anything is published or sent', 'Set the tracking: link, clicks and a pass mark for the first week', 'Hand over the page, the posts and the plan for your approval'] },
+    ],
+  },
+  {
+    id: 'sales-crm-1d',
+    categories: ['rapid', 'ops', 'marketing'],
+    name: 'Sales Outbound & CRM Engine',
+    horizon: '1 day',
+    summary: 'Turn a list of leads into scored prospects, a ready outreach sequence and a proposal for each warm one.',
+    phases: [
+      { title: 'Morning: Leads and scoring', goals: ['Set up the lead list in a sheet: name, business, contact, source and the date added', 'Define the score: fit, need, size and how reachable they are, each out of 5', 'Score every lead and sort them into hot, warm and cold, with the reason for each'] },
+      { title: 'Midday: Outreach sequence', goals: ['Write a three-step email sequence: first message, follow-up after 3 days, last note after 7', 'Add the unsubscribe line and your sending address; keep to the daily cap you set', 'Draft the first message for each hot lead in your voice. Nothing is sent until you approve'] },
+      { title: 'Afternoon: Pipeline and proposals', goals: ['Set the pipeline stages: contacted, replied, call booked, proposal sent, won, lost', 'Write a proposal template with scope, price, timeline and terms, then fill one for each warm lead', 'Set the daily follow-up list and a weekly count of replies and meetings'] },
+    ],
+  },
+  {
+    id: 'finance-ledger-1d',
+    categories: ['rapid', 'ops'],
+    name: 'Finance & Revenue Ledger Setup',
+    horizon: '1 day',
+    summary: 'Connect Stripe, track what comes in and goes out, see net margin per product, and set up invoicing.',
+    phases: [
+      { title: 'Morning: Stripe and the ledger', goals: ['Connect Stripe with a read-only key and list payments, fees and refunds', 'Set up the ledger: date, source, product, amount, fee, cost and net', 'Record the costs you already pay: tools, hosting, ads, contractors'] },
+      { title: 'Midday: Margin calculator', goals: ['Work out net margin for each product: price, less fees, less direct costs, less its share of fixed costs', 'Show revenue, costs and net by month, and which product earns the most per sale', 'Set a break-even number and a monthly profit target'] },
+      { title: 'Afternoon: Invoicing', goals: ['Make an invoice template with your details, number, due date and payment link', 'Set the rule for when an invoice is created, sent and chased. Sending needs your approval', 'Write the month-end checklist: reconcile Stripe, record costs, set aside tax'] },
+    ],
+  },
+  {
+    id: 'onboarding-sop-1d',
+    categories: ['rapid', 'ops'],
+    name: 'Client Onboarding & SOP Builder',
+    horizon: '1 day',
+    summary: 'Set up how a new client comes in, from intake form to kickoff, and write down how the work is done.',
+    phases: [
+      { title: 'Morning: Intake', goals: ['Write the intake form: who they are, what they want, the deadline, the budget and who approves', 'Set what happens when it is filled in: a confirmation to them, a note to you, a row in the client sheet', 'Draft the welcome email with next steps and what you need from them'] },
+      { title: 'Midday: Onboarding flow', goals: ['List the steps from signed to kickoff: agreement, payment, access, kickoff call, first deliverable', 'Give each step an owner and a time limit, and the reminder if it slips', 'Write the kickoff agenda and the checklist for the first week'] },
+      { title: 'Afternoon: SOPs', goals: ['Write the standard steps for the three jobs you repeat most: what triggers it, who does it, the steps, what done looks like', 'Add a check at the end of each one and the common mistakes', 'Put them in one place with a name and a date, and note who reviews them each quarter'] },
     ],
   },
 ];
