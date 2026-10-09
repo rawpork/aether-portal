@@ -1109,6 +1109,9 @@ ${SHELL_SWITCH_CSS}
     .inspector-signals { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
     .inspector-signals li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
     .inspector-terms { grid-column: 1 / -1; }
+    .wfc-node[data-needs="true"] { border-color: var(--warn, #d9a441); }
+    .wfc-setup-row { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: transparent; color: var(--text); text-align: left; cursor: pointer; font: inherit; font-size: 12.5px; }
+    .wfc-setup-row:hover { border-color: var(--line-strong); }
     .wfc-flow-list { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-2); }
     .inspector-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 12.5px; }
     .inspector-meta dt { color: var(--muted); }

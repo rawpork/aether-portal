@@ -11,6 +11,7 @@
 //
 // Port rules and layout live in workflow-model.js (mirrors Aether_Engine src/workflows.ts).
 import { getEngineApi } from '../engine-api.bundle.js';
+import { issuesFor, workflowReadiness } from './workflow-readiness.js';
 import { describeAuthError, describeUnreachableEngine } from './connection.js';
 import {
   CABLE_TEXT, KIND_TEXT, NODE_H, NODE_W, PORT_TEXT, PORTS, autoLayout, cableLabel, cablePath, cablePoint, checkConnect,
@@ -510,6 +511,8 @@ export function mountWorkflowConsole(container, options = {}) {
     return g;
   }
 
+  const readiness = () => workflowReadiness(workflow, connectors, mcpServers);
+
   function renderNode(node) {
     const runStatus = run && run.node_status ? run.node_status[node.id] : undefined;
     const card = el(doc, 'div', {
@@ -526,8 +529,10 @@ export function mountWorkflowConsole(container, options = {}) {
       el(doc, 'span', { class: 'wfc-node-label', text: node.label }),
     ]);
     card.append(head);
-    const sub = node.kind === 'mcp' ? (node.role || 'MCP server') : node.role || (node.kind === 'action' ? 'Not executed automatically' : '');
-    card.append(el(doc, 'p', { class: 'wfc-node-sub', text: sub, title: node.instructions || sub }));
+    const needs = issuesFor(readiness(), node.id);
+    const sub = needs.length ? 'Needs setup: ' + needs[0].problem : node.kind === 'mcp' ? (node.role || 'MCP server') : node.role || (node.kind === 'action' ? 'Not executed automatically' : '');
+    if (needs.length) card.setAttribute('data-needs', 'true');
+    card.append(el(doc, 'p', { class: 'wfc-node-sub', text: sub, title: needs.length ? needs.map((i) => i.problem).join(' ') : node.instructions || sub }));
     if (runStatus) card.append(el(doc, 'span', { class: 'pill wfc-run-pill', 'data-kind': RUN_KIND[runStatus] || 'queued' }, [el(doc, 'span', { class: 'pill-dot' }), RUN_TEXT[runStatus] || runStatus]));
     for (const dir of ['in', 'out']) {
       for (const port of PORTS[node.kind][dir]) {
@@ -553,6 +558,8 @@ export function mountWorkflowConsole(container, options = {}) {
 
   // ---- toolbox: the connectors a workflow can reach out to (the engine's list), added to the canvas as action nodes --------------
   let connectors = [];
+  let mcpServers = [];
+  let setupOpen = false; // the Set up panel, shown when Run finds things that are not ready
   let toolboxOpen = false; // closed by default so the canvas gets the room; the button opens it
   const STATUS_TEXT = { ready: 'Ready', needs_setup: 'Needs setup', coming_soon: 'Coming soon' };
   // Version history: fetched when the toolbox is open on a workflow, and again whenever the workflow's version changes.
@@ -608,8 +615,13 @@ export function mountWorkflowConsole(container, options = {}) {
     } catch {
       connectors = []; // an engine without connectors: the toolbox says so
     }
-    renderToolbox();
-    renderInspector();
+    try {
+      const result = await api.listMcpServers();
+      mcpServers = (result && result.servers) || [];
+    } catch {
+      mcpServers = []; // an older engine: tools are not checked
+    }
+    renderAll();
   }
 
   function renderToolbox() {
@@ -748,10 +760,37 @@ export function mountWorkflowConsole(container, options = {}) {
     if (node.kind !== 'mcp') inspector.append(...list('Where its result goes', toRows, 'Nothing is wired out of this card.'));
   }
 
+  // Everything not ready, one line each; tapping a line opens that card. Run goes ahead only when you say so.
+  function renderSetupPanel() {
+    const issues = readiness();
+    const close = el(doc, 'button', { type: 'button', class: 'btn btn-small inspector-close', text: 'Close' });
+    close.addEventListener('click', () => {
+      setupOpen = false;
+      renderInspector();
+    });
+    inspector.append(el(doc, 'div', { class: 'inspector-head' }, [el(doc, 'h3', { text: 'Before you run' }), close]));
+    inspector.append(el(doc, 'p', { class: 'mini-label', text: issues.length ? issues.length + (issues.length === 1 ? ' thing is' : ' things are') + ' not set up. Steps that are not connected are only proposed, nothing is sent or changed by them.' : 'Everything is set up.' }));
+    for (const issue of issues) {
+      const row = el(doc, 'button', { type: 'button', class: 'wfc-setup-row' }, [el(doc, 'strong', { text: issue.label }), el(doc, 'span', { text: issue.problem }), el(doc, 'span', { class: 'mini-label', text: issue.fix })]);
+      row.addEventListener('click', () => {
+        setupOpen = false;
+        select({ type: 'node', id: issue.node_id });
+      });
+      inspector.append(row);
+    }
+    const go = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: issues.length ? 'Run anyway' : 'Run' });
+    go.addEventListener('click', () => {
+      setupOpen = false;
+      renderInspector();
+      startRun();
+    });
+    inspector.append(go);
+  }
+
   function renderInspector() {
     inspector.replaceChildren();
     // It floats over the canvas only while something is selected; otherwise the canvas has the whole width.
-    inspector.hidden = Boolean(workflow) && !selected;
+    inspector.hidden = Boolean(workflow) && !selected && !setupOpen;
     if (!workflow) {
       inspector.append(
         el(doc, 'h3', { text: 'Workflow console' }),
@@ -761,6 +800,10 @@ export function mountWorkflowConsole(container, options = {}) {
     }
     const node = selected && selected.type === 'node' ? nodeById(selected.id) : null;
     const cable = selected && selected.type === 'cable' ? cableById(selected.id) : null;
+    if (setupOpen && !node && !cable) {
+      renderSetupPanel();
+      return;
+    }
     const close = el(doc, 'button', { type: 'button', class: 'btn btn-small inspector-close', text: 'Close', 'aria-label': 'Close the inspector' });
     close.addEventListener('click', () => select(null));
     if (node) {
@@ -783,6 +826,8 @@ export function mountWorkflowConsole(container, options = {}) {
       if (node.kind !== 'mcp') inspector.append(field(node.kind === 'agent' ? 'Role' : 'Note', 'role', false, 120));
       if (node.kind === 'agent') inspector.append(field('Instructions', 'instructions', true, 2000));
       if (node.kind === 'mcp') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'MCP server "' + (node.server || node.label) + '" from the engine\'s mcp-config.json. Agents get its description as context; tool calls are not made by this run.' }));
+      const needs = issuesFor(readiness(), node.id);
+      if (needs.length) inspector.append(el(doc, 'h4', { text: 'Needs setup' }), ...needs.map((i) => el(doc, 'p', { class: 'wfc-connector-note', text: i.problem + ' ' + i.fix + '.' })));
       renderDataFlow(node);
       if (node.kind === 'action' && node.connector) renderConnectorPanel(node);
       else if (node.kind === 'action') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Actions are proposed by the agent that acts on them. They are never executed automatically.' }));
@@ -1453,7 +1498,15 @@ export function mountWorkflowConsole(container, options = {}) {
     editable = !editable;
     renderAll();
   });
-  runBtn.addEventListener('click', () => startRun());
+  runBtn.addEventListener('click', () => {
+    if (workflow && readiness().length && !run) {
+      selected = null;
+      setupOpen = true;
+      renderAll();
+      return;
+    }
+    startRun();
+  });
 
   renderAll();
 

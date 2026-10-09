@@ -1101,6 +1101,11 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 			return request<{ connectors: ConnectorInfo[] }>('GET', '/api/connectors');
 		},
 
+		// GET /api/mcp/servers: the tool servers in the engine's mcp-config.json and whether their keys are set.
+		listMcpServers(): Promise<{ servers: { name: string; status: 'ready' | 'missing_keys'; missing_env: string[] }[] }> {
+			return request('GET', '/api/mcp/servers');
+		},
+
 		testConnector(payload: ConnectorTestRequest): Promise<ConnectorTestResult> {
 			return request<ConnectorTestResult>('POST', '/api/connectors/test', { body: payload, timeoutMs: 20_000 });
 		},

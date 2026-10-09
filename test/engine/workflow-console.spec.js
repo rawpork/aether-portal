@@ -50,6 +50,7 @@ function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
     const body = init.body ? JSON.parse(init.body) : undefined;
     // The toolbox's connectors are answered here and kept out of the workflow call log the older tests read.
     if (pathname === '/api/connectors') return json({ connectors: CONNECTORS });
+    if (pathname === '/api/mcp/servers') return json({ servers: [] });
     if (pathname === '/api/connectors/test') {
       state.tests.push(body);
       return json(body.send ? { ok: true, simulated: false, summary: 'Sent to your Telegram chat.', detail: 'hello' } : { ok: true, simulated: true, summary: 'Would send you this Telegram message.', detail: body.params.text });
@@ -346,7 +347,7 @@ describe('workflow console', () => {
       await flush();
       expect(state.tests.at(-1).send).toBe(true);
       expect(root.querySelector('.wfc-test-result').textContent).toContain('Sent to your Telegram chat.');
-      expect(root.querySelector('.wfc-connector-note').textContent).toMatch(/after an approval/);
+      expect([...root.querySelectorAll('.wfc-connector-note')].map((n) => n.textContent).join(' ')).toMatch(/after an approval/);
     });
 
     it('says so when the engine has no connectors, and offers nothing to add while editing is off', async () => {
@@ -624,6 +625,24 @@ describe('workflow console', () => {
     await flush();
     expect(saves(state)).toHaveLength(0);
     expect(NODE_W).toBe(208);
+  });
+
+  it('Run first lists what is not set up, marks those cards, and runs only when you say so', async () => {
+    const { api, state } = engine();
+    const { root } = mount(api, { editable: false });
+    await ui.setActive(true);
+    await flush();
+    expect(root.querySelector('.wfc-node[data-node="action_d"]').getAttribute('data-needs')).toBe('true');
+    root.querySelector('.wfc-run').click();
+    await flush();
+    const panel = root.querySelector('.wfc-inspector');
+    expect(panel.hidden).toBe(false);
+    expect(panel.textContent).toContain('Before you run');
+    expect(panel.textContent).toContain('Deploy');
+    expect(state.calls.some((c) => c.pathname.endsWith('/run'))).toBe(false);
+    [...panel.querySelectorAll('button')].find((b) => b.textContent === 'Run anyway').click();
+    await flush();
+    expect(state.calls.some((c) => c.pathname.endsWith('/run'))).toBe(true);
   });
 
   it('view-only mode: tapping a node opens its details', async () => {
