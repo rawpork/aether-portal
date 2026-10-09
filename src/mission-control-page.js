@@ -623,6 +623,18 @@ ${SHELL_SWITCH_CSS}
     .oc-run { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
     .oc-run-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .oc-run-meta { margin: 4px 0 8px; font-size: 12px; }
+    .sc-map { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 8px 0; padding: 0; }
+    .sc-step { display: flex; flex-direction: column; gap: 2px; }
+    .sc-chip { padding: 4px 10px; border: 1px solid var(--line, #444); border-radius: 8px; font-size: 12px; }
+    .sc-step[data-state="done"] .sc-chip { border-color: var(--accent-line); color: var(--accent); }
+    .sc-step[data-state="running"] .sc-chip { border-style: dashed; }
+    .sc-step[data-state="failed"] .sc-chip { border-color: #e5484d; color: #e5484d; }
+    .sc-arrow { opacity: .5; }
+    .sc-menu summary { cursor: pointer; font-size: 12px; opacity: .75; }
+    .sc-menu[open] { position: relative; }
+    .sc-option { display: block; width: 100%; text-align: left; font-size: 12px; padding: 4px 6px; background: none; border: 0; color: inherit; cursor: pointer; }
+    .sc-deliverable { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 10px; }
+    .sc-score { padding: 3px 10px; border-radius: 999px; background: var(--accent-line); font-size: 12px; }
     .oc-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
     .oc-link { padding: 4px 10px; border: 1px solid var(--accent-line); border-radius: 999px; color: var(--accent); font-size: 12px; text-decoration: none; }
     .oc-phase { margin: 4px 0; font-size: 13px; }

@@ -10,6 +10,7 @@
 //   (at most 3 per cable, extras count on a badge); node statuses update in place; a breaker halt freezes the canvas.
 //
 // Port rules and layout live in workflow-model.js (mirrors Aether_Engine src/workflows.ts).
+import { stepChatMenu } from './step-chat.js';
 import { getEngineApi } from '../engine-api.bundle.js';
 import { issuesFor, workflowReadiness } from './workflow-readiness.js';
 import { describeAuthError, describeUnreachableEngine } from './connection.js';
@@ -878,6 +879,12 @@ export function mountWorkflowConsole(container, options = {}) {
       const meta = [['Id', node.id], ['Origin', node.origin === 'operator' ? 'Edited by you' : node.origin === 'prompt' ? 'Added by a prompt' : 'Generated']];
       if (run && run.node_status && run.node_status[node.id]) meta.push(['Last run', RUN_TEXT[run.node_status[node.id]]]);
       inspector.append(el(doc, 'dl', { class: 'inspector-meta' }, meta.flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })])));
+      if (node.kind === 'agent') {
+        const index = workflow.nodes.filter((n) => n.kind === 'agent').findIndex((n) => n.id === node.id) + 1;
+        const tweak = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-tweak', title: 'Save your edits, then run the workflow again', disabled: !editable || busy, text: '🔄 Tweak & Rerun Node' });
+        tweak.addEventListener('click', () => startRun());
+        inspector.append(stepChatMenu(doc, index, node.label), tweak);
+      }
       if (editable && node.kind !== 'trigger') {
         const remove = el(doc, 'button', { type: 'button', class: 'btn btn-small btn-danger-lite', text: 'Remove ' + KIND_TEXT[node.kind].toLowerCase() });
         remove.addEventListener('click', () => removeNode(node.id));

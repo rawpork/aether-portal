@@ -353,6 +353,14 @@ export function mountBrainDock(container, options = {}) {
     }
   });
 
+  // A step's "Chat with Elarion" menu (step-chat.js) asks for text in the composer; the operator still presses Send.
+  win.addEventListener('aether:elarion-prefill', (event) => {
+    const text = event.detail && event.detail.text;
+    if (!text) return;
+    input.value = text;
+    input.focus();
+  });
+
   // --- voice stream
   function onVoiceFrame(frame) {
     switch (frame.type) {

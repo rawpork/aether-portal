@@ -15,6 +15,7 @@
 import { getEngineApi, isRelayUrl, onEngineState } from '../engine-api.bundle.js';
 import { describeEngineError } from './operator-console.js';
 import { statusLabel, taskTitle } from './labels.js';
+import { humanTitle, stepMapSteps, stepMapNode, deliverableBanner } from './step-chat.js';
 
 export const PROJECT_PAYLOAD_KEY = 'aether.projectPayload';
 export const PROJECT_RUNS_KEY = 'aether.projectRuns';
@@ -415,12 +416,15 @@ export function mountOutcomesList(container, options = {}) {
     const linkRow = links.length
       ? el(doc, 'div', { class: 'oc-links' }, links.map((url) => el(doc, 'a', { href: url, target: '_blank', rel: 'noopener noreferrer', class: 'oc-link', text: '↗ ' + url.replace(/^https?:\/\//, '').slice(0, 48) })))
       : doc.createTextNode('');
+    const complete = record.status === 'COMPLETED' && record.completed_steps >= record.total_steps;
+    const liveUrl = run.siteSlug && run.sitePublished ? origin + '/s/' + run.siteSlug : built && built.staging && built.staging.url ? built.staging.url : '';
     return el(doc, 'li', { class: 'oc-run', 'data-status': record.status }, [
       el(doc, 'div', { class: 'oc-run-head' }, [
-        el(doc, 'strong', { text: run.project || taskTitle(record.task_id) }),
+        el(doc, 'strong', { text: humanTitle({ project: run.project, goal: run.goal }, taskTitle(record.task_id)) }),
         el(doc, 'span', { class: 'mc-chip', 'data-status': record.status, text: statusLabel(record.status) }),
       ]),
       el(doc, 'p', { class: 'mc-muted oc-run-meta', text: record.completed_steps + '/' + record.total_steps + ' steps · ' + (record.total_tokens.input + record.total_tokens.output).toLocaleString() + ' tokens · ' + String(record.finished_at || record.started_at).slice(0, 16).replace('T', ' ') }),
+      stepMapNode(doc, stepMapSteps(record, (id) => stepName(record, run, id)), { complete }),
       linkRow,
       run.siteSlug ? previewRow(record, run) : doc.createTextNode(''),
       buildBadge,
@@ -428,6 +432,7 @@ export function mountOutcomesList(container, options = {}) {
       fileBlock,
       planBlock,
       phases,
+      complete ? deliverableBanner(doc, { url: liveUrl, score: built && built.viability ? built.viability.score : undefined, verdict: built && built.viability ? built.viability.verdict : undefined, download: { label: 'Download report (.md)', onClick: () => download(record) } }) : doc.createTextNode(''),
       actions,
     ]);
   }
