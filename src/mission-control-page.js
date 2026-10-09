@@ -1472,6 +1472,8 @@ ${SHELL_SWITCH_CSS}
     .np-foot { flex: none; display: flex; align-items: center; gap: 8px; padding: 12px 22px calc(14px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); }
     .np-foot button { min-height: 44px; }
     .np-error { margin: 0 22px 8px; }
+    .np-category-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+    .np-category-tabs .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--text); }
     .np-cards { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
     .np-card, .np-row { display: flex; align-items: flex-start; gap: 12px; box-sizing: border-box; min-height: 48px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); cursor: pointer; }
     .np-card[data-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }

@@ -1,6 +1,6 @@
 // The unified New project dialog: the pure spec builders each tab feeds, and the dialog's tabs and review step.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ROADMAP_TAGS, ROADMAP_TEMPLATES, roadmapById, roadmapToSpec } from '../../public/js/engine/roadmap-templates.js';
+import { ROADMAP_CATEGORIES, ROADMAP_TAGS, ROADMAP_TEMPLATES, roadmapById, roadmapToSpec, roadmapsIn } from '../../public/js/engine/roadmap-templates.js';
 import { TABS, cardsToSpec, goalToSpec, linksToSpec, mountNewProject, nameFromGoal, parseLinks } from '../../public/js/engine/new-project.js';
 
 describe('new project spec builders', () => {
@@ -126,6 +126,28 @@ describe('Roadmap Templates tab', () => {
 		expect(spec.links[0].rawSnippet).toContain('for my bakery');
 		expect(roadmapToSpec(template, { name: 'Bakery launch' }).projectName).toBe('Bakery launch');
 		expect(ROADMAP_TAGS).toEqual(['template', 'ingest', 'roadmap']);
+	});
+
+	it('sorts the roadmaps into category tabs, and the 1-day audit and affiliate campaign are there', () => {
+		expect(ROADMAP_CATEGORIES.map((c) => c.id)).toEqual(['all', 'rapid', 'affiliate', 'marketing', 'seo', 'app']);
+		expect(roadmapsIn('all')).toHaveLength(ROADMAP_TEMPLATES.length);
+		expect(roadmapsIn('rapid').map((t) => t.id)).toEqual(['local-audit-1d', 'affiliate-brainiac-1d']);
+		expect(roadmapsIn('affiliate').map((t) => t.id)).toContain('affiliate-brainiac-1d');
+		for (const c of ROADMAP_CATEGORIES.slice(1)) expect(roadmapsIn(c.id).length).toBeGreaterThan(0);
+		for (const t of ROADMAP_TEMPLATES) expect(t.categories.length).toBeGreaterThan(0);
+		expect(roadmapToSpec(roadmapById('local-audit-1d')).links[0].rawSnippet).toContain('audit report');
+	});
+
+	it('the wizard filters the roadmap cards by category tab', () => {
+		const api = { baseUrl: 'http://localhost:3333', getEngineConfig: vi.fn(async () => ({ api_key_configured: true })) };
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), onCompiled: vi.fn() });
+		project.open('roadmap');
+		document.querySelector('[data-np-panel="roadmap"] [data-category="rapid"]').click();
+		const ids = [...document.querySelectorAll('[data-np-panel="roadmap"] .np-card input')].map((i) => i.value);
+		expect(ids).toEqual(['local-audit-1d', 'affiliate-brainiac-1d']);
+		expect(document.querySelector('[data-np-panel="roadmap"] [data-category="rapid"]').getAttribute('aria-pressed')).toBe('true');
+		document.querySelector('[data-np-panel="roadmap"] [data-category="all"]').click();
+		expect(document.querySelectorAll('[data-np-panel="roadmap"] .np-card').length).toBe(ROADMAP_TEMPLATES.length);
 	});
 
 	it('launches a roadmap, and reports it to the index tagged template, ingest and roadmap', async () => {

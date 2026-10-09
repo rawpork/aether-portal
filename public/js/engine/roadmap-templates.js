@@ -3,9 +3,20 @@
 // work from the phases and goals below. Launched ones are indexed with the tags template, ingest and roadmap.
 import { BRIEF_SOURCE_URL } from './templates.js';
 
+// The filter tabs in the wizard. A template lists the categories it belongs to; "all" shows every one.
+export const ROADMAP_CATEGORIES = [
+  { id: 'all', label: 'All' },
+  { id: 'rapid', label: 'Rapid (1-Day)' },
+  { id: 'affiliate', label: 'Affiliate & Offer Campaigns' },
+  { id: 'marketing', label: 'Marketing & Funnels' },
+  { id: 'seo', label: 'SEO & Web Development' },
+  { id: 'app', label: 'App & SaaS Creation' },
+];
+
 export const ROADMAP_TEMPLATES = [
   {
     id: 'launch-30',
+    categories: ['marketing'],
     name: '30-day product launch',
     horizon: '4 weeks',
     summary: 'From a validated idea to a live page, a first audience and a first sale.',
@@ -18,6 +29,7 @@ export const ROADMAP_TEMPLATES = [
   },
   {
     id: 'mvp-8w',
+    categories: ['app'],
     name: '8-week MVP build',
     horizon: '8 weeks',
     summary: 'Scope, build and test the smallest version of a product people can use.',
@@ -30,6 +42,7 @@ export const ROADMAP_TEMPLATES = [
   },
   {
     id: 'content-90',
+    categories: ['marketing', 'seo'],
     name: '90-day content and audience plan',
     horizon: '12 weeks',
     summary: 'A steady publishing rhythm that grows an audience and feeds the product.',
@@ -41,6 +54,7 @@ export const ROADMAP_TEMPLATES = [
   },
   {
     id: 'discovery-2w',
+    categories: ['app', 'marketing'],
     name: 'Customer discovery sprint',
     horizon: '2 weeks',
     summary: 'Find out whether a problem is real, and who will pay to solve it, before building.',
@@ -52,6 +66,7 @@ export const ROADMAP_TEMPLATES = [
   },
   {
     id: 'site-revamp',
+    categories: ['seo'],
     name: 'Website revamp',
     horizon: '3 weeks',
     summary: 'Audit what is there, rewrite what matters, and relaunch with measurable goals.',
@@ -63,6 +78,7 @@ export const ROADMAP_TEMPLATES = [
   },
   {
     id: 'sidehustle-14',
+    categories: ['affiliate', 'marketing'],
     name: 'Side-hustle validation',
     horizon: '2 weeks',
     summary: 'Test a small business idea cheaply: a page, an offer and a handful of real conversations.',
@@ -72,10 +88,37 @@ export const ROADMAP_TEMPLATES = [
       { title: 'Days 13-14: Verdict', goals: ['Compare the results to the pass mark', 'Write what you learned', 'Choose: continue, pivot or stop'] },
     ],
   },
+  {
+    id: 'local-audit-1d',
+    categories: ['rapid', 'seo', 'marketing'],
+    name: 'Local AI Business Audit & Sales Engine',
+    horizon: '1 day',
+    summary: 'Scan a local business site, score how ready it is for search and AI, write the audit and build a demo of the better site.',
+    phases: [
+      { title: 'Morning: Scan', goals: ['Take the business address or the niche and city, and find the site', 'Read the home page and two inner pages: titles, headings, structured data, speed, mobile', 'Check how the business shows up for an AI assistant: clear name, services, location, hours, reviews'] },
+      { title: 'Midday: Score and report', goals: ['Score the site out of 100 on search, AI readiness, speed and trust, with the reason for each score', 'Write the audit report as a deliverable: the top five fixes in plain words, each with the effect it should have', 'Draft the one-page summary the owner will read first'] },
+      { title: 'Afternoon: Demo and pitch', goals: ['Build a demo of the improved home page for this business', 'Write the short outreach message and the offer with a price, for your approval', 'Hand over the report, the demo preview and the message; nothing is sent until you approve'] },
+    ],
+  },
+  {
+    id: 'affiliate-brainiac-1d',
+    categories: ['rapid', 'affiliate', 'marketing'],
+    name: 'Affiliate Brainiac Campaign',
+    horizon: '1 day to launch',
+    summary: 'Take an affiliate offer, find the audience angles that fit, write the landing page and compile a launch plan you can run.',
+    phases: [
+      { title: 'Morning: Understand the offer', goals: ['Read the offer link or product spec: what it is, the price, the commission, the rules on how it may be promoted', 'Name the audience it fits and the problem it solves for them', 'Find three angles and pick the strongest, with the reason'] },
+      { title: 'Midday: Build the page', goals: ['Write the landing page copy: headline, benefits, proof, answers to objections and one clear call to action', 'Lay out the page sections and the disclosure that this is an affiliate link', 'Draft the follow-up email and three posts'] },
+      { title: 'Afternoon: Launch blueprint', goals: ['Compile the launch checklist as a runnable blueprint with an approval before anything is published or sent', 'Set the tracking: link, clicks and a pass mark for the first week', 'Hand over the page, the posts and the plan for your approval'] },
+    ],
+  },
 ];
 
 export const ROADMAP_TAGS = ['template', 'ingest', 'roadmap'];
 const SNIPPET_MAX = 1200;
+
+// The templates in a category ("all" or an unknown id gives every one).
+export const roadmapsIn = (category) => (category && category !== 'all' ? ROADMAP_TEMPLATES.filter((t) => (t.categories || []).includes(category)) : ROADMAP_TEMPLATES);
 
 export const roadmapById = (id) => ROADMAP_TEMPLATES.find((t) => t.id === id) || ROADMAP_TEMPLATES[0];
 

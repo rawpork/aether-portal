@@ -15,7 +15,7 @@
 import { trapFocus, announce } from '../a11y.js';
 import { parseBlueprintSpec } from './blueprint-spec.js';
 import { runPreflight } from './outcomes.js';
-import { ROADMAP_TEMPLATES, roadmapById, roadmapToSpec } from './roadmap-templates.js';
+import { ROADMAP_CATEGORIES, ROADMAP_TEMPLATES, roadmapById, roadmapToSpec, roadmapsIn } from './roadmap-templates.js';
 import {
   AUTH_TYPES,
   BRIEF_SOURCE_URL,
@@ -199,7 +199,7 @@ export function mountNewProject(doc, options = {}) {
   // ---- the inputs of each tab ----
   // The guided intake (template, roadmap and goal): target, region, deliverables, then Elarion's check and questions.
   const intake = { target: '', region: '', deliverables: new Set(), answers: {}, analysis: null, done: false };
-  const state = { roadmap: ROADMAP_TEMPLATES[0].id, roadmapName: '', roadmapNotes: '', template: TEMPLATES[0].id, brief: { projectName: '', domain: '', auth: '', database: '', notes: '' }, goalName: '', goal: '', linksName: '', linksText: '', cardName: '', cardSearch: '' };
+  const state = { roadmap: ROADMAP_TEMPLATES[0].id, roadmapCategory: 'all', roadmapName: '', roadmapNotes: '', template: TEMPLATES[0].id, brief: { projectName: '', domain: '', auth: '', database: '', notes: '' }, goalName: '', goal: '', linksName: '', linksText: '', cardName: '', cardSearch: '' };
 
   function panelFor(tabId) {
     return scrim && scrim.querySelector('[data-np-panel="' + tabId + '"]');
@@ -208,7 +208,17 @@ export function mountNewProject(doc, options = {}) {
   // Roadmap Templates: ready-made plans, phase by phase.
   function renderRoadmapPanel() {
     const panel = panelFor('roadmap');
-    const radios = ROADMAP_TEMPLATES.map((t) => {
+    const visible = roadmapsIn(state.roadmapCategory);
+    if (!visible.some((t) => t.id === state.roadmap) && visible.length) state.roadmap = visible[0].id;
+    const tabs = ROADMAP_CATEGORIES.map((c) => {
+      const tab = el(doc, 'button', { type: 'button', class: 'np-tab btn btn-small', 'data-category': c.id, 'aria-pressed': String(c.id === state.roadmapCategory), text: c.label + ' (' + roadmapsIn(c.id).length + ')' });
+      tab.addEventListener('click', () => {
+        state.roadmapCategory = c.id;
+        renderRoadmapPanel();
+      });
+      return tab;
+    });
+    const radios = visible.map((t) => {
       const input = el(doc, 'input', { type: 'radio', name: id + '-roadmap', value: t.id, id: id + '-r-' + t.id });
       input.checked = t.id === state.roadmap;
       input.addEventListener('change', () => {
@@ -233,6 +243,7 @@ export function mountNewProject(doc, options = {}) {
     notes.addEventListener('input', () => (state.roadmapNotes = notes.value));
     panel.replaceChildren(
       el(doc, 'p', { class: 'dc-body', text: 'Start from a ready-made roadmap. Elarion plans the work phase by phase.' }),
+      el(doc, 'div', { class: 'np-category-tabs', role: 'group', 'aria-label': 'Template categories' }, tabs),
       el(doc, 'fieldset', { class: 'np-cards' }, [el(doc, 'legend', { class: 'mc-visually-hidden', text: 'Roadmap template' }), ...radios]),
       el(doc, 'div', { class: 'np-brief' }, [
         el(doc, 'h3', { class: 'np-subhead', text: chosen.name + ': ' + chosen.horizon }),
