@@ -591,6 +591,16 @@ export interface CompiledBlueprint {
 	miserly_integration: { enabled: boolean; proxy_endpoint: string | null; budget_cap_usd: number };
 }
 
+// GET /api/workflows/:id/versions and POST .../restore: the version history of a workflow and going back to one.
+export interface WorkflowVersionInfo {
+	version: number;
+	at: string;
+	source: 'model' | 'planner' | 'operator';
+	summary: string;
+	current: boolean;
+	restorable: boolean;
+}
+
 // GET /api/connectors and POST /api/connectors/test: the Studio toolbox (Aether_Engine src/connectors.ts).
 export interface ConnectorField {
 	id: string;
@@ -675,6 +685,8 @@ export interface CompileBlueprintResult {
 	blueprint_id: string;
 	artifact_path: string;
 	logged: boolean;
+	// The project's map in the Studio (one agent per phase), made when it is compiled.
+	workflow_id?: string | null;
 	blueprint: CompiledBlueprint;
 }
 
@@ -962,6 +974,23 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		// Studio workflows. A stale base_version throws EngineApiError 409 whose body.workflow is the current version.
 		listWorkflows(): Promise<{ workflows: WorkflowListItem[] }> {
 			return request<{ workflows: WorkflowListItem[] }>('GET', '/api/workflows');
+		},
+
+		// POST /api/workflows/from-blueprint: the Studio map of a compiled project (made when it was compiled; this makes one for older projects).
+		createWorkflowFromBlueprint(blueprintId: string): Promise<{ workflow: Workflow }> {
+			requireText('blueprintId', blueprintId);
+			return request<{ workflow: Workflow }>('POST', '/api/workflows/from-blueprint', { body: { blueprint_id: blueprintId } });
+		},
+
+		listWorkflowVersions(workflowId: string): Promise<{ versions: WorkflowVersionInfo[] }> {
+			requireText('workflowId', workflowId);
+			return request<{ versions: WorkflowVersionInfo[] }>('GET', '/api/workflows/' + encodeURIComponent(workflowId) + '/versions');
+		},
+
+		// The earlier version's graph becomes a new version, so nothing is lost. 409 when baseVersion is stale.
+		restoreWorkflowVersion(workflowId: string, version: number, baseVersion: number): Promise<Workflow> {
+			requireText('workflowId', workflowId);
+			return request<Workflow>('POST', '/api/workflows/' + encodeURIComponent(workflowId) + '/restore', { body: { version, base_version: baseVersion } });
 		},
 
 		getWorkflow(workflowId: string): Promise<Workflow> {

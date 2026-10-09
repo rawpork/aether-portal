@@ -43,7 +43,7 @@ const CONNECTORS = [
 ];
 
 function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
-  const state = { workflows: workflows.map((w) => structuredClone(w)), events, runStatus: 'RUNNING', calls: [], tests: [], conflictNext: false };
+  const state = { workflows: workflows.map((w) => structuredClone(w)), events, runStatus: 'RUNNING', calls: [], tests: [], restores: [], conflictNext: false };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetch = async (url, init) => {
     const { pathname, searchParams } = new URL(url);
@@ -55,7 +55,7 @@ function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
       return json(body.send ? { ok: true, simulated: false, summary: 'Sent to your Telegram chat.', detail: 'hello' } : { ok: true, simulated: true, summary: 'Would send you this Telegram message.', detail: body.params.text });
     }
     state.calls.push({ method: init.method, pathname, body });
-    const m = /^\/api\/workflows(?:\/([^/]+))?(?:\/(mutate|graph|run|events))?$/.exec(pathname);
+    const m = /^\/api\/workflows(?:\/([^/]+))?(?:\/(mutate|graph|run|events|versions|restore))?$/.exec(pathname);
     if (!m) return json({ error: 'Not found' }, 404);
     const [, id, action] = m;
     const wf = id && state.workflows.find((w) => w.workflow_id === id);
@@ -87,6 +87,15 @@ function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
       wf.nodes = wf.nodes.concat(node('agent_q', 'agent', 'Code reviewer', { origin: 'prompt' }));
       wf.cables = wf.cables.filter((c) => c.id !== 'c_4').concat(cable('c_5', 'agent_b', 'a2a', 'agent_q', 'a2a', 'a2a'), cable('c_6', 'agent_q', 'act', 'action_d', 'act', 'action'));
       return json({ workflow: wf, applied: [{ op: 'add_agent' }], skipped: [], summary: 'Added Code reviewer before Deploy.', source: 'planner', note: null });
+    }
+    if (action === 'versions') return json({ versions: [{ version: wf.version, at: new Date().toISOString(), source: 'operator', summary: 'Operator edit: 5 nodes, 4 cables.', current: true, restorable: true }, { version: wf.version - 1, at: new Date(Date.now() - 3600000).toISOString(), source: 'model', summary: 'Generated 2 agents from the goal.', current: false, restorable: true }, { version: 1, at: new Date(Date.now() - 86400000).toISOString(), source: 'planner', summary: 'Old one', current: false, restorable: false }] });
+    if (action === 'restore') {
+      state.restores.push(body);
+      if (body.base_version !== wf.version) return json({ error: 'stale', workflow: wf }, 409);
+      wf.version += 1;
+      wf.nodes = wf.nodes.slice(0, -1);
+      wf.cables = wf.cables.filter((c) => wf.nodes.some((n) => n.id === c.from) && wf.nodes.some((n) => n.id === c.to));
+      return json(wf);
     }
     if (action === 'run') return json({ run: { run_id: 'r1', task_id: 't', agent_id: 'workflow:' + id, status: 'RUNNING', started_at: '2026-10-03T20:01:00.000Z', finished_at: null, node_status: { agent_r: 'waiting', agent_b: 'waiting' } } }, 202);
     if (action === 'events') {
@@ -205,6 +214,90 @@ describe('workflow console', () => {
     expect(root.querySelector('.wfc-status').textContent).toMatch(/^2 agents · 4 cables/);
   });
 
+  describe('hover and hints', () => {
+    const over = (el, type = 'pointerover') => el.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 50, clientY: 50 }));
+
+    it('hovering a node lights up its cables and dims the rest, and leaving puts it back', async () => {
+      const { api } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      const group = root.querySelector('.wfc-cable-group');
+      over(root.querySelector('.wfc-node[data-node="agent_b"]'));
+      expect(group.getAttribute('data-focus')).toBe('agent_b');
+      const linked = [...group.querySelectorAll('.wfc-cable[data-linked="true"]')];
+      expect(linked.length).toBeGreaterThan(0);
+      expect(linked.length).toBeLessThan(group.querySelectorAll('.wfc-cable').length);
+      expect(root.querySelector('.wfc-node[data-node="agent_b"]').getAttribute('data-linked')).toBe('true');
+      root.querySelector('.wfc-viewport').dispatchEvent(new MouseEvent('pointerleave'));
+      expect(group.hasAttribute('data-focus')).toBe(false);
+      expect(group.querySelectorAll('.wfc-cable[data-linked]').length).toBe(0);
+    });
+
+    it('Hints is off until you turn it on, then hovering a node, port or cable says what it is; it is remembered', async () => {
+      const { api } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      const button = root.querySelector('.wfc-hints-btn');
+      const hint = () => document.querySelector('.wfc-hint');
+      expect(button.getAttribute('aria-pressed')).toBe('false');
+      over(root.querySelector('.wfc-node[data-node="agent_b"] .wfc-node-head'), 'pointermove');
+      expect(hint().hidden).toBe(true);
+      button.click();
+      expect(button.textContent).toBe('Hints on');
+      expect(localStorage.getItem('aether.studio.hints')).toBe('on');
+      over(root.querySelector('.wfc-node[data-node="agent_b"] .wfc-node-head'), 'pointermove');
+      expect(hint().hidden).toBe(false);
+      expect(hint().textContent).toMatch(/Agent: Builder/);
+      over(root.querySelector('.wfc-node[data-node="agent_b"] .wfc-port[data-port="a2a"]'), 'pointermove');
+      expect(hint().textContent).toMatch(/agent to agent/i);
+      over(root.querySelector('.wfc-cable[data-kind="a2a"] .wfc-hit'), 'pointermove');
+      expect(hint().textContent).toMatch(/A2A cable/);
+      expect(hint().textContent).toMatch(/hand-off/);
+      root.querySelector('.wfc-viewport').dispatchEvent(new MouseEvent('pointerleave'));
+      expect(hint().hidden).toBe(true);
+      button.click();
+      expect(localStorage.getItem('aether.studio.hints')).toBe('off');
+    });
+
+    it('a workflow list refreshed by the page shows a map made since it loaded', async () => {
+      const { api, state } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      state.workflows.push({ ...structuredClone(state.workflows[0]), workflow_id: 'wf_map00002', title: 'New project map' });
+      await ui.refreshList();
+      expect([...root.querySelectorAll('select option')].map((o) => o.textContent).join('|')).toContain('New project map');
+    });
+  });
+
+  describe('version history', () => {
+    it('the version is a button that opens the toolbox on the versions, and a click goes back to one and the canvas updates', async () => {
+      const { api, state } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      await flush();
+      const button = root.querySelector('button.wfc-version');
+      expect(button.textContent).toMatch(/^v\d+ ▾$/);
+      expect(root.querySelector('.wfc-toolbox').dataset.open).toBe('false');
+      button.click();
+      await flush();
+      expect(root.querySelector('.wfc-toolbox').dataset.open).toBe('true');
+      const rows = [...root.querySelectorAll('.wfc-version-row')];
+      expect(rows).toHaveLength(3);
+      expect(rows[0].dataset.current).toBe('true');
+      expect(rows[0].disabled).toBe(true);
+      expect(rows[1].textContent).toContain('Generated 2 agents from the goal.');
+      expect(rows[2].disabled).toBe(true);
+      const nodesBefore = root.querySelectorAll('.wfc-node').length;
+      const current = ui.getState().workflow.version;
+      rows[1].click();
+      await flush(12);
+      expect(state.restores).toEqual([{ version: current - 1, base_version: current }]);
+      expect(root.querySelectorAll('.wfc-node').length).toBe(nodesBefore - 1);
+      expect(root.querySelector('button.wfc-version').textContent).toBe('v' + (current + 1) + ' ▾');
+      expect(root.querySelector('.wfc-status').textContent).toContain('Went back to version ' + (current - 1));
+    });
+  });
+
   describe('toolbox', () => {
     // The toolbox starts closed so the canvas gets the room; its button opens it.
     const openToolbox = (root) => root.querySelector('.wfc-toolbox-toggle').click();
@@ -286,7 +379,7 @@ describe('workflow console', () => {
       wheel(root, -100, { ctrlKey: true });
       expect(scaleOf(root)).toBeGreaterThan(pinched);
       for (let i = 0; i < 40; i++) wheel(root, 500);
-      expect(scaleOf(root)).toBe(0.2);
+      expect(scaleOf(root)).toBe(0.1);
       for (let i = 0; i < 80; i++) wheel(root, -500);
       expect(scaleOf(root)).toBe(2.5);
       expect(label(root)).toBe('250%');
@@ -386,7 +479,7 @@ describe('workflow console', () => {
     expect(save.body.cables.find((c) => c.from === 'agent_b' && c.to === 'mcp_n')).toMatchObject({ from_port: 'mcp', to_port: 'read', kind: 'mcp_read', origin: 'operator' });
     expect(save.body.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
     expect(ui.getState().workflow.version).toBe(2);
-    expect(root.querySelector('.wfc-version').textContent).toBe('v2');
+    expect(root.querySelector('.wfc-version').textContent).toBe('v2 ▾');
   });
 
   it('refuses incompatible wiring with an inline reason and saves nothing', async () => {

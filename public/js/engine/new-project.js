@@ -180,6 +180,7 @@ export function mountNewProject(doc, options = {}) {
   const onCompiled = options.onCompiled || (() => {});
   const onRun = options.onRun || (async () => {});
   const onUpgrade = options.onUpgrade || (() => {});
+  const onOpenStudio = options.onOpenStudio || null;
   const id = 'np-' + ++counter;
 
   let scrim = null;
@@ -738,7 +739,7 @@ export function mountNewProject(doc, options = {}) {
       return showError('Could not plan the project: ' + detail);
     }
     const blueprint = result.blueprint || {};
-    compiled = { id: result.blueprint_id, blueprint, sourceIds: built.sourceIds, template: built.template || null, wantsWebsite: guided() && intake.done && intake.deliverables.has('website') };
+    compiled = { id: result.blueprint_id, blueprint, sourceIds: built.sourceIds, template: built.template || null, wantsWebsite: guided() && intake.done && intake.deliverables.has('website'), workflowId: result.workflow_id || null };
     if (built.template && storage) {
       const usage = loadUsage(storage);
       usage[built.template.id] = (Number(usage[built.template.id]) || 0) + 1;
@@ -749,6 +750,16 @@ export function mountNewProject(doc, options = {}) {
     try { onCompiled(result.blueprint_id, blueprint, { sourceIds: built.sourceIds, tags }); } catch { /* the list refreshing must not stop the review */ }
     setBusy(false);
     await renderReview();
+  }
+
+  // The project is already a map in the Studio: one agent per phase, in order.
+  function openMapRow(workflowId) {
+    const open = el(doc, 'button', { type: 'button', class: 'toggle-button np-map', text: 'Open the map in Studio' });
+    open.addEventListener('click', () => {
+      api_.close();
+      onOpenStudio(workflowId);
+    });
+    return el(doc, 'p', { class: 'dc-hint np-map-row' }, [doc.createTextNode('Elarion has drawn this plan as a map of agents in the Studio. '), open]);
   }
 
   async function renderReview() {
@@ -780,6 +791,7 @@ export function mountNewProject(doc, options = {}) {
         lines.length ? el(doc, 'ol', { class: 'np-plan' }, lines.map((l) => el(doc, 'li', {}, [el(doc, 'strong', { text: l.what }), l.who ? doc.createTextNode(' · ' + l.who) : null]))) : el(doc, 'p', { class: 'dc-hint', text: 'Elarion decides the steps when it starts.' }),
         el(doc, 'h4', { class: 'np-subhead', text: 'What it will use' }),
         estimate,
+        ...(compiled.workflowId && onOpenStudio ? [openMapRow(compiled.workflowId)] : []),
         el(doc, 'h4', { class: 'np-subhead', text: 'Ready?' }),
         checkList,
         el(doc, 'label', { class: 'bp-website', for: website.id }, [website, el(doc, 'span', {}, [el(doc, 'strong', { text: 'Deliver a live website' }), doc.createTextNode(' · hosted by Aether; you preview it and it goes public only when you approve it.')])]),

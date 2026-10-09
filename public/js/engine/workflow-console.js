@@ -94,10 +94,12 @@ export function mountWorkflowConsole(container, options = {}) {
     el(doc, 'div', { class: 'wfc-command-meta' }, [hint, newBtn]),
   ]);
   const picker = el(doc, 'select', { class: 'wfc-picker', 'aria-label': 'Open workflow' });
-  const version = el(doc, 'span', { class: 'mini-label wfc-version' });
+  // The version is a button: it opens the toolbox on the version history, where a click goes back to that version.
+  const version = el(doc, 'button', { type: 'button', class: 'wfc-version', title: 'Version history: click to go back to an earlier version', hidden: true });
   const arrangeBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: 'Auto-arrange' });
   const editBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-edit-toggle' });
   const runBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-run', text: 'Run' });
+  const hintsBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-hints-btn', 'aria-pressed': 'false', title: 'Hints: hover a node, port or cable to see what it is and does' });
   const legend = el(doc, 'span', { class: 'wfc-legend mini-label', 'aria-hidden': 'true' }, Object.entries(CABLE_TEXT).map(([kind, text]) => el(doc, 'span', { class: 'wfc-legend-item', 'data-kind': kind }, [el(doc, 'span', { class: 'wfc-legend-line' }), text])));
   const status = el(doc, 'p', { class: 'wfc-status mini-label', role: 'status', 'aria-live': 'polite' });
   const banner = el(doc, 'div', { class: 'wfc-halted', role: 'alert', hidden: true });
@@ -125,14 +127,105 @@ export function mountWorkflowConsole(container, options = {}) {
   const inspector = el(doc, 'aside', { class: 'wfc-inspector surface', 'aria-label': 'Workflow inspector' });
   container.replaceChildren(
     form,
-    el(doc, 'div', { class: 'wfc-toolbar' }, [picker, version, el(doc, 'span', { class: 'studio-spacer' }), legend, arrangeBtn, editBtn, runBtn]),
+    el(doc, 'div', { class: 'wfc-toolbar' }, [picker, version, el(doc, 'span', { class: 'studio-spacer' }), legend, hintsBtn, arrangeBtn, editBtn, runBtn]),
     status,
     banner,
     el(doc, 'div', { class: 'wfc-body' }, [toolbox, el(doc, 'div', { class: 'wfc-canvas-wrap' }, [viewport, zoomBar, tip, menu]), inspector]),
   );
 
+  // ---- hover: the cables of the node under the pointer light up and the rest dim; with Hints on, a card says what it is -------------
+  const HINTS_KEY = 'aether.studio.hints';
+  let hintsOn = false;
+  try { hintsOn = win.localStorage.getItem(HINTS_KEY) === 'on'; } catch { /* storage blocked: off */ }
+  const hintEl = el(doc, 'div', { class: 'wfc-hint', role: 'tooltip', hidden: true });
+  doc.body.append(hintEl);
+  const PORT_HINTS = {
+    start: 'Start: hands the work on to the next agent, or kicks the flow off.',
+    context: 'Context: extra background an agent reads before it starts.',
+    a2a: 'A2A: agent to agent. The next agent builds on what this one produced.',
+    mcp: 'MCP: tools this agent can read from, such as a connected service.',
+    act: 'Act: an action this agent proposes, such as sending a message. It waits for your approval.',
+    read: 'Read: the tool this agent reads from.',
+  };
+  const CABLE_HINTS = {
+    start: 'Start cable: the work moves from one step to the next.',
+    mcp_read: 'MCP read cable: the agent reads from this tool; nothing is changed.',
+    a2a: 'A2A cable: hand-off from one agent to another.',
+    action: 'Action cable: something this agent proposes to do. It stops for your approval first.',
+  };
+  function hintFor(target) {
+    const port = target.closest && target.closest('.wfc-port');
+    const card = target.closest && target.closest('.wfc-node');
+    const cableNode = target.closest && target.closest('.wfc-cable');
+    if (port) return { title: PORT_TEXT[port.getAttribute('data-port')] + ' ' + (port.getAttribute('data-dir') === 'out' ? 'output' : 'input'), body: PORT_HINTS[port.getAttribute('data-port')] || '' };
+    if (card) {
+      const node = nodeById(card.getAttribute('data-node'));
+      if (!node) return null;
+      const lines = [node.role, node.instructions && node.instructions.slice(0, 160), node.connector ? 'Connector: ' + node.connector + '.' + node.action : '', run && run.node_status && run.node_status[node.id] ? 'Last run: ' + RUN_TEXT[run.node_status[node.id]] : ''].filter(Boolean);
+      return { title: KIND_TEXT[node.kind] + ': ' + node.label, body: lines.join('\n') };
+    }
+    if (cableNode) {
+      const cable = cableById(cableNode.getAttribute('data-cable'));
+      return cable ? { title: CABLE_TEXT[cable.kind] + ' cable', body: (nodeById(cable.from) || {}).label + ' → ' + (nodeById(cable.to) || {}).label + '\n' + (CABLE_HINTS[cable.kind] || '') } : null;
+    }
+    return null;
+  }
+  function placeHint(event) {
+    const w = hintEl.offsetWidth || 260;
+    hintEl.style.left = Math.max(8, Math.min(event.clientX + 14, win.innerWidth - w - 8)) + 'px';
+    hintEl.style.top = Math.min(event.clientY + 16, win.innerHeight - (hintEl.offsetHeight || 80) - 8) + 'px';
+  }
+  function focusNode(id) {
+    if (!id) {
+      cableGroup.removeAttribute('data-focus');
+      for (const c of cableGroup.querySelectorAll('.wfc-cable')) c.removeAttribute('data-linked');
+      for (const n of nodeLayer.querySelectorAll('.wfc-node')) n.removeAttribute('data-linked');
+      return;
+    }
+    const linked = new Set([id]);
+    for (const c of workflow ? workflow.cables : []) {
+      if (c.from === id || c.to === id) {
+        linked.add(c.from);
+        linked.add(c.to);
+        const ce = cableEl(c.id);
+        if (ce) ce.setAttribute('data-linked', 'true');
+      }
+    }
+    cableGroup.setAttribute('data-focus', id);
+    for (const n of nodeLayer.querySelectorAll('.wfc-node')) n.setAttribute('data-linked', String(linked.has(n.getAttribute('data-node'))));
+  }
+  viewport.addEventListener('pointerover', (event) => {
+    if (drag || wiring) return;
+    const card = event.target.closest && event.target.closest('.wfc-node');
+    focusNode(card ? card.getAttribute('data-node') : null);
+  });
+  viewport.addEventListener('pointerleave', () => {
+    focusNode(null);
+    hintEl.hidden = true;
+  });
+  viewport.addEventListener('pointermove', (event) => {
+    if (!hintsOn || drag || wiring || event.buttons) {
+      hintEl.hidden = true;
+      return;
+    }
+    const hint = hintFor(event.target);
+    if (!hint) {
+      hintEl.hidden = true;
+      return;
+    }
+    hintEl.replaceChildren(el(doc, 'strong', { text: hint.title }), ...(hint.body ? [el(doc, 'span', { class: 'wfc-hint-body', text: hint.body })] : []));
+    hintEl.hidden = false;
+    placeHint(event);
+  });
+  hintsBtn.addEventListener('click', () => {
+    hintsOn = !hintsOn;
+    try { win.localStorage.setItem(HINTS_KEY, hintsOn ? 'on' : 'off'); } catch { /* storage blocked: for this page only */ }
+    if (!hintsOn) hintEl.hidden = true;
+    renderToolbar();
+  });
+
   // ---- camera: the stage is moved and scaled inside a fixed viewport, so there are no scrollbars -----------------
-  const K_MIN = 0.2;
+  const K_MIN = 0.1; // low enough that a long flow fits a phone
   const K_MAX = 2.5;
   const FIT_PAD = 40;
   const cam = { x: 0, y: 0, k: 1 };
@@ -157,10 +250,13 @@ export function mountWorkflowConsole(container, options = {}) {
     const minY = Math.min(...ys);
     const w = Math.max(...xs) + NODE_W - minX;
     const h = Math.max(...ys) + NODE_H - minY;
-    const k = clampK(Math.min((box.width - FIT_PAD * 2) / w, (box.height - FIT_PAD * 2) / h, 1));
+    const pad = Math.min(FIT_PAD, box.width * 0.05);
+    const k = clampK(Math.min((box.width - pad * 2) / w, (box.height - pad * 2) / h, 1));
     cam.k = k;
     cam.x = (box.width - w * k) / 2 - minX * k;
-    cam.y = (box.height - h * k) / 2 - minY * k;
+    // Centred, unless the flow is a thin strip in a tall box (a phone): then it sits near the top where it is seen.
+    // (The strip along the top is kept clear for the toolbox and zoom buttons.)
+    cam.y = (box.height > h * k * 1.6 ? 64 : (box.height - h * k) / 2) - minY * k;
     applyCam();
   }
   // Zooms about a point on screen, so what is under the pointer stays under it.
@@ -179,6 +275,13 @@ export function mountWorkflowConsole(container, options = {}) {
     const box = viewport.getBoundingClientRect();
     zoomAt(box.left + box.width / 2, box.top + box.height / 2, factor);
   };
+  // The viewport's size settles after the first draw (the page above it finishes laying out, a phone rotates): while the view is not
+  // moved by hand, keep the whole flow framed.
+  let sizeWatch = null;
+  if (win.ResizeObserver) {
+    sizeWatch = new win.ResizeObserver(() => { if (!camTouched) fitView(); });
+    sizeWatch.observe(viewport);
+  }
   zoomIn.addEventListener('click', () => zoomCentre(1.25));
   zoomOut.addEventListener('click', () => zoomCentre(0.8));
   zoomFit.addEventListener('click', () => fitView());
@@ -314,7 +417,10 @@ export function mountWorkflowConsole(container, options = {}) {
     );
     if (workflow) picker.value = workflow.workflow_id;
     picker.disabled = !list.length;
-    version.textContent = workflow ? 'v' + workflow.version + (saving ? ' · saving…' : '') : '';
+    version.hidden = !workflow;
+    version.textContent = workflow ? 'v' + workflow.version + (saving ? ' · saving…' : ' ▾') : '';
+    hintsBtn.textContent = hintsOn ? 'Hints on' : 'Hints';
+    hintsBtn.setAttribute('aria-pressed', String(hintsOn));
     editBtn.textContent = editable ? 'Editing on' : 'Edit';
     editBtn.setAttribute('aria-pressed', String(editable));
     arrangeBtn.disabled = !workflow || !editable;
@@ -435,6 +541,51 @@ export function mountWorkflowConsole(container, options = {}) {
   let connectors = [];
   let toolboxOpen = false; // closed by default so the canvas gets the room; the button opens it
   const STATUS_TEXT = { ready: 'Ready', needs_setup: 'Needs setup', coming_soon: 'Coming soon' };
+  // Version history: fetched when the toolbox is open on a workflow, and again whenever the workflow's version changes.
+  let versionList = [];
+  let versionsFor = '';
+  async function loadVersions() {
+    if (!workflow) return;
+    const key = workflow.workflow_id + ':' + workflow.version;
+    versionsFor = key;
+    try {
+      const result = await api.listWorkflowVersions(workflow.workflow_id);
+      if (versionsFor === key) versionList = (result && result.versions) || [];
+    } catch {
+      if (versionsFor === key) versionList = [];
+    }
+    renderToolbox();
+  }
+  async function restoreVersion(number) {
+    if (!workflow) return;
+    const previous = workflow;
+    message = 'Going back to version ' + number + '…';
+    renderStatus();
+    try {
+      if (saving) await saving;
+      const next = await api.restoreWorkflowVersion(previous.workflow_id, number, workflow.version);
+      adopt(next, previous);
+      camTouched = false;
+      message = 'Went back to version ' + number + ' (now v' + next.version + '). Click a version again to go forward.';
+      error = null;
+    } catch (err) {
+      message = '';
+      error = describeError(err, 'Could not go back to version ' + number);
+    }
+    renderAll();
+  }
+  const SOURCE_SHORT = { model: 'Model', planner: 'Planner', operator: 'You' };
+  const agoText = (iso) => {
+    const seconds = Math.max(0, (now() - new Date(iso).getTime()) / 1000);
+    if (!Number.isFinite(seconds)) return '';
+    return seconds < 90 ? 'just now' : seconds < 5400 ? Math.round(seconds / 60) + ' min ago' : seconds < 129600 ? Math.round(seconds / 3600) + ' h ago' : Math.round(seconds / 86400) + ' d ago';
+  };
+  version.addEventListener('click', () => {
+    toolboxOpen = true;
+    versionsFor = '';
+    renderToolbox();
+    if (toolbox.scrollIntoView) toolbox.scrollIntoView({ block: 'nearest' });
+  });
   const connectorOf = (id) => connectors.find((c) => c.id === id);
   async function loadConnectors() {
     try {
@@ -469,6 +620,22 @@ export function mountWorkflowConsole(container, options = {}) {
         }
         nodes.push(card);
       }
+    }
+    if (toolboxOpen && workflow) {
+      nodes.push(el(doc, 'h4', { class: 'wfc-versions-title', text: 'Versions' }));
+      if (!versionList.length) nodes.push(el(doc, 'p', { class: 'mini-label', text: 'Loading versions…' }));
+      for (const v of versionList) {
+        const row = el(doc, 'button', {
+          type: 'button', class: 'wfc-version-row', 'data-version': String(v.version), 'data-current': String(v.current), disabled: v.current || !v.restorable,
+          title: v.current ? 'This is the version on the canvas.' : v.restorable ? 'Go back to this version.' : 'This version was not kept.',
+        }, [
+          el(doc, 'span', { class: 'wfc-version-head' }, [el(doc, 'strong', { text: 'v' + v.version }), el(doc, 'span', { class: 'mini-label', text: v.current ? 'on the canvas' : (SOURCE_SHORT[v.source] || v.source) + ' · ' + agoText(v.at) })]),
+          el(doc, 'span', { class: 'wfc-version-summary', text: v.summary }),
+        ]);
+        row.addEventListener('click', () => restoreVersion(v.version));
+        nodes.push(row);
+      }
+      if (versionsFor !== workflow.workflow_id + ':' + workflow.version) loadVersions();
     }
     toolbox.dataset.open = String(toolboxOpen);
     toolbox.replaceChildren(...nodes);
@@ -1260,6 +1427,11 @@ export function mountWorkflowConsole(container, options = {}) {
     command,
     connect,
     open,
+    // The workflow list again (a project's map was made since it was loaded).
+    async refreshList() {
+      await loadList();
+      renderToolbar();
+    },
     save,
     run: startRun,
     pulse,
@@ -1273,6 +1445,8 @@ export function mountWorkflowConsole(container, options = {}) {
     getState: () => ({ workflow, selected, mode, run, lastSeq, error, message, editable, pulses: pulses.length, overflow: Object.fromEntries(overflow), frozen }),
     destroy() {
       destroyed = true;
+      hintEl.remove();
+      if (sizeWatch) sizeWatch.disconnect();
       win.removeEventListener('pointermove', onPointerMove);
       win.removeEventListener('pointerup', onPointerUp);
       stopPolling();

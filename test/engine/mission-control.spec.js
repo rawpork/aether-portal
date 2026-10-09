@@ -70,7 +70,7 @@ it('mounts the rail, the master breaker, the workforce overview and the other vi
   expect(html).toContain('.mc-status:has(.status-pill[data-kind="alert"]), .mc-status:has(.status-pill[data-kind="halted"]) { order: 8; flex: 1 0 100%; }');
   expect(html).not.toMatch(/\n\s*\.btn-primary \{ width: 42px;/);
   expect(html).toMatch(/\.wfc-prompt \{[^}]*width: 100%;[^}]*min-width: 0;/);
-  expect(html).toMatch(/\.wfc-prompt \{ flex: none; font-size: 16px;/);
+  expect(html).toMatch(/\.wfc-prompt \{ flex: 1 1 auto; font-size: 16px; min-height: 44px;/);
   // The header is lean: the page title is the menu button (the ☰ square, the Space switch and New agent are gone from it).
   // Space is one tap away through the rail's brand (Alt+S), and Agent spec lives in the rail.
   expect(html).toMatch(/<header class="mc-top">\s*<div class="mc-heading">[\s\S]*?<h1 class="mc-title" id="mc-title"><button type="button" class="mc-menu-button" id="mc-menu-toggle" aria-controls="mc-rail" aria-expanded="false" aria-describedby="mc-menu-hint" title="Menu"><span class="mc-menu-text" id="mc-title-text">Mission Control<\/span>/);

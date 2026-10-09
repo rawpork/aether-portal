@@ -47,6 +47,8 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const onStarted = options.onStarted || (() => {});
   // The "New project" button opens the one front door (new-project.js). Without it the button falls back to the raw editor.
   const onNewProject = options.onNewProject || null;
+  // Opens a project's map in the Studio (the page switches to Studio and shows that workflow).
+  const onOpenStudio = options.onOpenStudio || null;
   // Called with the project open in the viewer (its full blueprint) once it has loaded, so Elarion's drawer can offer it as the
   // thing being asked about.
   const onSelectionChange = options.onSelectionChange || (() => {});
@@ -299,6 +301,20 @@ export function mountBlueprintWorkspace(container, options = {}) {
     const miserly = bp.miserly_integration || {};
     const phases = bp.execution_phases || [];
 
+    // The project's map: its phases as nodes in the Studio (made if this project does not have one yet).
+    const mapButton = el(doc, 'button', { type: 'button', class: 'toggle-button bp-map', title: 'See this project as a map of agents in the Studio', text: 'Open the map in Studio' });
+    mapButton.addEventListener('click', async () => {
+      mapButton.disabled = true;
+      try {
+        const made = await api.createWorkflowFromBlueprint(bp.blueprint_id);
+        await onOpenStudio(made.workflow.workflow_id);
+      } catch (error) {
+        deployStatus.textContent = 'Could not make the map: ' + ((error && error.message) || 'the engine did not answer') + '. The engine may need updating.';
+      } finally {
+        mapButton.disabled = false;
+      }
+    });
+
     // Deploy & Execute (Pro-gated).
     const deploy = el(doc, 'button', { type: 'button', class: 'bp-primary bp-deploy' }, [doc.createTextNode('Deploy & Execute Blueprint')]);
     if (!pro) {
@@ -382,7 +398,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
         fact('Miserly budget', miserly.enabled ? '$' + Number(miserly.budget_cap_usd || 0).toFixed(2) : 'Proxy off'),
         fact('Database / hosting', (interview.database || '?') + ' / ' + (interview.hosting || '?')),
       ]),
-      el(doc, 'div', { class: 'bp-deploy-row' }, [deploy, download]),
+      el(doc, 'div', { class: 'bp-deploy-row' }, [deploy, download, ...(onOpenStudio ? [mapButton] : [])]),
       confirmRow,
       deployStatus,
       el(doc, 'h4', { text: 'Route matrix' }),

@@ -47,6 +47,10 @@ function createEngine() {
         engine.stored.push(blueprint);
         return reply(200, { success: true, message: 'Blueprint successfully compiled and stored.', blueprint_id: blueprint.blueprint_id, artifact_path: '/out/' + blueprint.blueprint_id + '.json', logged: true, blueprint });
       }
+      if (method === 'POST' && pathname === '/api/workflows/from-blueprint') {
+        engine.maps = (engine.maps || []).concat(body.blueprint_id);
+        return reply(201, { workflow: { workflow_id: 'wf_map00001', title: 'Map', nodes: [], cables: [], history: [], version: 1 } });
+      }
       if (pathname === '/api/engine/config') {
         if (!engine.config) return reply(401, { error: 'Invalid token signature.' });
         return reply(200, engine.config);
@@ -405,5 +409,25 @@ describe('Projects page structure', () => {
     await ws.select(group.querySelector('.bp-list-item').dataset.id);
     expect(ws.elements.list.querySelector('.bp-list-group details').open).toBe(true);
     expect(ws.elements.list.querySelector('.bp-list-group [aria-current="true"]')).not.toBe(null);
+  });
+});
+
+describe('the project map', () => {
+  it("Open the map in Studio makes (or finds) the project's workflow and opens it there", async () => {
+    const opened = [];
+    await mount({ onOpenStudio: async (id) => opened.push(id) });
+    await compileExample();
+    const button = ws.elements.viewer.querySelector('.bp-map');
+    expect(button.textContent).toBe('Open the map in Studio');
+    button.click();
+    await settle();
+    expect(engine.maps).toEqual([engine.stored[0].blueprint_id]);
+    expect(opened).toEqual(['wf_map00001']);
+  });
+
+  it('has no map button where the page cannot open the Studio', async () => {
+    await mount();
+    await compileExample();
+    expect(ws.elements.viewer.querySelector('.bp-map')).toBe(null);
   });
 });

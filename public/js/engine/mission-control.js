@@ -440,6 +440,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     tier: options.tier || meta(doc, 'aether-tier') || 'free',
     upgradeUrl: options.upgradeUrl ?? meta(doc, 'aether-upgrade-url'),
     // A deploy runs as a task loop: show it in the monitor once the engine has registered it, and again when done.
+    onOpenStudio: (workflowId) => openMapInStudio(workflowId),
     onNewProject: () => newProject.open(),
     onSelectionChange: () => refreshScopes(),
     onStarted: () => setTimeout(() => monitor.refresh(), 300),
@@ -497,6 +498,7 @@ export async function mountMissionControl(doc = document, options = {}) {
       blueprints.select(blueprintId);
     },
     onUpgrade: () => blueprints.showUpgrade(),
+    onOpenStudio: (workflowId) => openMapInStudio(workflowId),
   });
   const newButton = byId('mc-nav-new');
   if (newButton) newButton.addEventListener('click', () => newProject.open());
@@ -563,6 +565,14 @@ export async function mountMissionControl(doc = document, options = {}) {
   const studio = byId('mc-studio') ? mountStudioCanvas(byId('mc-studio'), { api, onConnect: () => tabs.select('connect', true), ...options.studio }) : null;
   const workflowConsole = byId('mc-workflow') ? mountWorkflowConsole(byId('mc-workflow'), { api, onConnect: () => tabs.select('connect', true), ...options.workflow }) : null;
   const studioTabs = setupStudioTabs(doc, () => syncStudio());
+  // A project's map: the Studio's Workflow console, on that workflow.
+  async function openMapInStudio(workflowId) {
+    if (!workflowConsole) return;
+    tabs.select('studio');
+    if (studioTabs) studioTabs.select('workflow');
+    await workflowConsole.refreshList();
+    await workflowConsole.open(workflowId);
+  }
   let studioShown = false;
   function syncStudio() {
     const shown = studioShown;

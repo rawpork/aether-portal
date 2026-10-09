@@ -1150,7 +1150,7 @@ ${SHELL_SWITCH_CSS}
     .wfc-viewport { position: relative; height: clamp(340px, calc(100vh - 400px), 880px); overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; border: 1px solid var(--line); border-radius: var(--radius-l); background-color: var(--surface-soft); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px; }
     .wfc-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
     .wfc-viewport[data-panning] { cursor: grabbing; }
-    .wfc-zoom { position: absolute; right: 12px; bottom: 12px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
+    .wfc-zoom { position: absolute; right: 12px; top: 12px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
     .wfc-zoom-btn { appearance: none; min-width: 40px; height: 40px; border: 0; border-radius: var(--radius-s); background: none; color: var(--text); font: inherit; font-size: 18px; cursor: pointer; }
     .wfc-zoom-btn:hover { background: var(--surface-soft); }
     .wfc-zoom-fit { font-size: 13px; font-weight: 600; padding: 0 10px; }
@@ -1222,6 +1222,29 @@ ${SHELL_SWITCH_CSS}
     .wfc-toolbox[data-open="false"] { width: auto; padding: 2px 8px; background: var(--surface); }
     /* The toolbox and the inspector float over the canvas (the canvas keeps the whole width); on a phone they stack. */
     .wfc-toolbox { width: 220px; padding: 12px; position: absolute; left: 12px; top: 12px; z-index: 4; max-height: calc(100% - 24px); overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+    /* Hover: the cables of the node under the pointer light up and the others fade; Hints adds a card that says what it is. */
+    .wfc-cable-group[data-focus] .wfc-cable:not([data-linked="true"]) { opacity: 0.2; }
+    .wfc-cable-group[data-focus] .wfc-cable[data-linked="true"] .wfc-line { stroke-width: 3.5px; }
+    .wfc-nodes .wfc-node { transition: opacity 0.15s ease, box-shadow 0.15s ease; }
+    .wfc-nodes .wfc-node:hover { box-shadow: 0 0 0 2px var(--accent-line); }
+    .wfc-viewport:has(.wfc-node:hover) .wfc-node[data-linked="false"] { opacity: 0.45; }
+    .wfc-port { transition: transform 0.12s ease; }
+    .wfc-port:hover { transform: scale(1.35); }
+    .wfc-hints-btn[aria-pressed="true"] { border-color: var(--accent-line); color: var(--accent-text); }
+    .wfc-hint { position: fixed; z-index: 400; max-width: 280px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: #0B0D10; color: var(--text); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); font-size: 12px; line-height: 1.4; pointer-events: none; }
+    .wfc-hint[hidden] { display: none; }
+    .wfc-hint strong { display: block; font-size: 13px; margin-bottom: 2px; }
+    .wfc-hint-body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+    .np-map-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .wfc-version { appearance: none; min-height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+    .wfc-version:hover { color: var(--text); border-color: var(--accent-line); }
+    .wfc-versions-title { margin: 8px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .wfc-version-row { appearance: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface-soft); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+    .wfc-version-row:hover:not(:disabled) { border-color: var(--accent-line); }
+    .wfc-version-row[data-current="true"] { border-color: var(--accent-line); }
+    .wfc-version-row:disabled { cursor: default; opacity: 0.6; }
+    .wfc-version-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+    .wfc-version-summary { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
     .wfc-toolbox-toggle { appearance: none; min-height: 40px; padding: 0 4px; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
     .wfc-connector { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
     .wfc-connector[data-status="coming_soon"] { opacity: 0.8; }
@@ -1252,13 +1275,17 @@ ${SHELL_SWITCH_CSS}
     .btn-danger-lite { align-self: flex-start; border-color: var(--danger-line); color: var(--danger-text); }
     @media (max-width: 900px) {
       .wfc-console { padding: 12px 14px 18px; }
-      .wfc-body { flex-direction: column; }
-      .wfc-inspector, .wfc-toolbox { width: 100%; position: static; max-height: none; box-sizing: border-box; }
-      .wfc-command-row { flex-direction: column; }
-      /* In a column a flex: 1 box starts from zero height; keep the textarea's own two rows instead. */
-      .wfc-prompt { flex: none; font-size: 16px; min-height: 96px; }
+      /* Stretch, so the canvas takes the whole width (it has no content width of its own: the stage is positioned inside it). */
+      .wfc-body { flex-direction: column; align-items: stretch; }
+      .wfc-canvas-wrap { width: 100%; }
+      .wfc-inspector { width: 100%; position: static; max-height: none; box-sizing: border-box; }
+      .wfc-toolbox { width: min(280px, calc(100% - 24px)); }
+      /* One compact row for the command bar and no legend, so the nodes are on the first screen, not far below it. */
+      .wfc-command { padding: 10px 12px 8px; }
+      .wfc-command-label, .wfc-prompt-hint-line, #wfc-prompt-hint, .wfc-legend { display: none; }
+      .wfc-prompt { flex: 1 1 auto; font-size: 16px; min-height: 44px; }
       .wfc-submit { align-self: stretch; justify-content: center; }
-      .wfc-viewport { height: 62vh; }
+      .wfc-viewport { height: clamp(300px, calc(100vh - 360px), 62vh); }
     }
     @media (prefers-reduced-motion: reduce) {
       .engine-badge[data-state="HALTED"], .status-pill[data-kind="halted"] { animation: none; }

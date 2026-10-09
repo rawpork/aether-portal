@@ -156,6 +156,38 @@ describe('Roadmap Templates tab', () => {
 	});
 });
 
+describe('the project map in the review', () => {
+	let project;
+	afterEach(() => { if (project) project.destroy(); project = null; document.body.replaceChildren(); });
+	const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0)); };
+	const BP = { blueprint_id: 'bp_1', project_name: 'Bakery', execution_phases: [{ phase_id: 'p1', phase_name: 'Plan', agent_persona: 'Researcher', description: 'Read', task_steps: ['a'] }] };
+	const startLinks = async (api, extra) => {
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), ...extra });
+		project.open('links');
+		const links = document.querySelector('[data-field="links"]');
+		links.value = 'https://a.test/page';
+		links.dispatchEvent(new Event('input', { bubbles: true }));
+		document.querySelector('.np-next').click();
+		await flush();
+	};
+
+	it('says the plan is already a map in the Studio and opens it from the review', async () => {
+		const api = { baseUrl: 'http://localhost:3333', compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', workflow_id: 'wf_abc12345', blueprint: BP })), getEngineConfig: vi.fn(async () => ({ api_key_configured: true })) };
+		const onOpenStudio = vi.fn();
+		await startLinks(api, { onOpenStudio });
+		expect(document.querySelector('.np-map-row').textContent).toContain('drawn this plan as a map of agents in the Studio');
+		document.querySelector('.np-map').click();
+		expect(onOpenStudio).toHaveBeenCalledWith('wf_abc12345');
+		expect(document.querySelector('.np-modal')).toBeNull();
+	});
+
+	it('shows no map line when the engine made none', async () => {
+		const api = { baseUrl: 'http://localhost:3333', compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })), getEngineConfig: vi.fn(async () => ({ api_key_configured: true })) };
+		await startLinks(api, { onOpenStudio: vi.fn() });
+		expect(document.querySelector('.np-map-row')).toBeNull();
+	});
+});
+
 describe('Guided intake', () => {
 	let project;
 	afterEach(() => { if (project) project.destroy(); project = null; document.body.replaceChildren(); });
