@@ -112,7 +112,13 @@ export function mountWorkflowConsole(container, options = {}) {
   cableLayer.append(defs, cableGroup, ghost, pulseGroup);
   const nodeLayer = el(doc, 'div', { class: 'wfc-nodes' });
   const stage = el(doc, 'div', { class: 'wfc-stage' }, [cableLayer, nodeLayer]);
-  const viewport = el(doc, 'div', { class: 'wfc-viewport', role: 'group', 'aria-label': 'Workflow canvas' }, [stage]);
+  const viewport = el(doc, 'div', { class: 'wfc-viewport', role: 'group', 'aria-label': 'Workflow canvas. Drag to move around, scroll or pinch to zoom, double-click to fit the whole flow.', title: 'Drag to move around · scroll or pinch to zoom · double-click to fit' }, [stage]);
+  // Camera controls: the canvas pans and zooms like a map (drag, wheel, pinch); these buttons are the same thing for a keyboard or a mouse without a wheel.
+  const zoomOut = el(doc, 'button', { type: 'button', class: 'wfc-zoom-btn', 'aria-label': 'Zoom out', title: 'Zoom out (-)', text: '−' });
+  const zoomLabel = el(doc, 'span', { class: 'wfc-zoom-label', 'aria-live': 'polite', text: '100%' });
+  const zoomIn = el(doc, 'button', { type: 'button', class: 'wfc-zoom-btn', 'aria-label': 'Zoom in', title: 'Zoom in (+)', text: '+' });
+  const zoomFit = el(doc, 'button', { type: 'button', class: 'wfc-zoom-btn wfc-zoom-fit', 'aria-label': 'Fit the whole flow in view', title: 'Fit the whole flow (0 or double-click)', text: 'Fit' });
+  const zoomBar = el(doc, 'div', { class: 'wfc-zoom', role: 'group', 'aria-label': 'Canvas zoom' }, [zoomOut, zoomLabel, zoomIn, zoomFit]);
   const tip = el(doc, 'p', { class: 'wfc-tip', role: 'alert', hidden: true });
   const menu = el(doc, 'div', { class: 'wfc-connect-menu surface', role: 'dialog', 'aria-label': 'Connect to', hidden: true });
   const inspector = el(doc, 'aside', { class: 'wfc-inspector surface', 'aria-label': 'Workflow inspector' });
@@ -121,8 +127,127 @@ export function mountWorkflowConsole(container, options = {}) {
     el(doc, 'div', { class: 'wfc-toolbar' }, [picker, version, el(doc, 'span', { class: 'studio-spacer' }), legend, arrangeBtn, editBtn, runBtn]),
     status,
     banner,
-    el(doc, 'div', { class: 'wfc-body' }, [el(doc, 'div', { class: 'wfc-canvas-wrap' }, [viewport, tip, menu]), inspector]),
+    el(doc, 'div', { class: 'wfc-body' }, [el(doc, 'div', { class: 'wfc-canvas-wrap' }, [viewport, zoomBar, tip, menu]), inspector]),
   );
+
+  // ---- camera: the stage is moved and scaled inside a fixed viewport, so there are no scrollbars -----------------
+  const K_MIN = 0.2;
+  const K_MAX = 2.5;
+  const FIT_PAD = 40;
+  const cam = { x: 0, y: 0, k: 1 };
+  let camTouched = false; // once you move the view yourself it stays put; a new workflow or Fit frames the flow again
+  const clampK = (k) => Math.min(K_MAX, Math.max(K_MIN, k));
+  function applyCam() {
+    stage.style.transform = 'translate(' + Math.round(cam.x * 100) / 100 + 'px, ' + Math.round(cam.y * 100) / 100 + 'px) scale(' + Math.round(cam.k * 1000) / 1000 + ')';
+    zoomLabel.textContent = Math.round(cam.k * 100) + '%';
+  }
+  // Frames every node: scaled down to fit (never up past 100%) and centred.
+  function fitView() {
+    camTouched = false;
+    if (!workflow || !workflow.nodes.length) {
+      Object.assign(cam, { x: 0, y: 0, k: 1 });
+      return applyCam();
+    }
+    const box = viewport.getBoundingClientRect();
+    if (!box.width || !box.height) return applyCam(); // hidden (another Studio tab): framed when it is shown
+    const xs = workflow.nodes.map((n) => n.x);
+    const ys = workflow.nodes.map((n) => n.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const w = Math.max(...xs) + NODE_W - minX;
+    const h = Math.max(...ys) + NODE_H - minY;
+    const k = clampK(Math.min((box.width - FIT_PAD * 2) / w, (box.height - FIT_PAD * 2) / h, 1));
+    cam.k = k;
+    cam.x = (box.width - w * k) / 2 - minX * k;
+    cam.y = (box.height - h * k) / 2 - minY * k;
+    applyCam();
+  }
+  // Zooms about a point on screen, so what is under the pointer stays under it.
+  function zoomAt(clientX, clientY, factor) {
+    const box = viewport.getBoundingClientRect();
+    const px = clientX - box.left;
+    const py = clientY - box.top;
+    const k = clampK(cam.k * factor);
+    cam.x = px - (px - cam.x) * (k / cam.k);
+    cam.y = py - (py - cam.y) * (k / cam.k);
+    cam.k = k;
+    camTouched = true;
+    applyCam();
+  }
+  const zoomCentre = (factor) => {
+    const box = viewport.getBoundingClientRect();
+    zoomAt(box.left + box.width / 2, box.top + box.height / 2, factor);
+  };
+  zoomIn.addEventListener('click', () => zoomCentre(1.25));
+  zoomOut.addEventListener('click', () => zoomCentre(0.8));
+  zoomFit.addEventListener('click', () => fitView());
+
+  // Wheel and trackpad pinch (which browsers report as ctrl+wheel) zoom about the pointer.
+  viewport.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    const lines = event.deltaMode === 1 ? 16 : 1;
+    zoomAt(event.clientX, event.clientY, Math.exp(-event.deltaY * lines * (event.ctrlKey ? 0.01 : 0.0018)));
+  }, { passive: false });
+
+  // Drag the background to move around; two fingers pinch and move at once. Nodes, ports and cables keep their own drags.
+  const touches = new Map();
+  let pan = null;
+  let pinch = null;
+  const spread = () => {
+    const [a, b] = [...touches.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
+  viewport.addEventListener('pointerdown', (event) => {
+    if (event.target.closest && event.target.closest('.wfc-node, .wfc-cable, .wfc-port')) return;
+    if (event.pointerType === 'mouse' && event.button > 1) return;
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (viewport.setPointerCapture) { try { viewport.setPointerCapture(event.pointerId); } catch { /* not capturable */ } }
+    if (touches.size === 2) {
+      const s = spread();
+      pinch = { dist: s.dist, k: cam.k };
+      pan = null;
+    } else if (touches.size === 1) {
+      pan = { x: event.clientX, y: event.clientY, moved: false };
+    }
+  });
+  viewport.addEventListener('pointermove', (event) => {
+    if (!touches.has(event.pointerId)) return;
+    const before = touches.size === 2 ? spread() : null;
+    touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinch && touches.size === 2) {
+      const now = spread();
+      zoomAt(now.x, now.y, (pinch.k * (now.dist / pinch.dist)) / cam.k);
+      cam.x += now.x - before.x;
+      cam.y += now.y - before.y;
+      applyCam();
+    } else if (pan) {
+      const dx = event.clientX - pan.x;
+      const dy = event.clientY - pan.y;
+      if (!pan.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+      pan.moved = true;
+      viewport.setAttribute('data-panning', 'true');
+      cam.x += dx;
+      cam.y += dy;
+      pan.x = event.clientX;
+      pan.y = event.clientY;
+      camTouched = true;
+      applyCam();
+    }
+  });
+  const endTouch = (event) => {
+    touches.delete(event.pointerId);
+    if (touches.size < 2) pinch = null;
+    if (!touches.size) {
+      pan = null;
+      viewport.removeAttribute('data-panning');
+    }
+  };
+  viewport.addEventListener('pointerup', endTouch);
+  viewport.addEventListener('pointercancel', endTouch);
+  viewport.addEventListener('dblclick', (event) => {
+    if (event.target.closest && event.target.closest('.wfc-node, .wfc-cable')) return;
+    fitView();
+  });
 
   // ---- helpers ------------------------------------------------------------------------------------------------
   const nodeById = (id) => workflow && workflow.nodes.find((n) => n.id === id);
@@ -243,6 +368,7 @@ export function mountWorkflowConsole(container, options = {}) {
     cableLayer.setAttribute('height', String(height));
     cableLayer.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
     for (const cable of workflow.cables) cableGroup.append(renderCable(cable));
+    if (!camTouched) fitView();
     for (const node of workflow.nodes) nodeLayer.append(renderNode(node));
   }
 
@@ -442,6 +568,7 @@ export function mountWorkflowConsole(container, options = {}) {
     try {
       const next = await api.getWorkflow(id);
       selected = null;
+      camTouched = false;
       adopt(next, null);
       run = next.run ? { ...next.run } : null;
       lastSeq = 0;
@@ -794,7 +921,7 @@ export function mountWorkflowConsole(container, options = {}) {
 
   const stagePoint = (event) => {
     const rect = stage.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return { x: (event.clientX - rect.left) / cam.k, y: (event.clientY - rect.top) / cam.k };
   };
 
   function markCompatible(fromId, fromPort) {
@@ -836,9 +963,9 @@ export function mountWorkflowConsole(container, options = {}) {
 
   const onPointerMove = (event) => {
     if (drag) {
-      const dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
-      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+      const dx = (event.clientX - drag.startX) / cam.k;
+      const dy = (event.clientY - drag.startY) / cam.k;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4 / cam.k) return;
       drag.moved = true;
       moveNode(drag.id, snap(drag.x + dx), snap(drag.y + dy));
     } else if (wiring) {
@@ -907,6 +1034,12 @@ export function mountWorkflowConsole(container, options = {}) {
 
   container.addEventListener('keydown', (event) => {
     const t = event.target;
+    // + and - zoom, 0 frames the whole flow (not while typing in a field).
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && !(t.closest && t.closest('input, textarea, select'))) {
+      if (event.key === '+' || event.key === '=') { event.preventDefault(); return zoomCentre(1.25); }
+      if (event.key === '-' || event.key === '_') { event.preventDefault(); return zoomCentre(0.8); }
+      if (event.key === '0') { event.preventDefault(); return fitView(); }
+    }
     if (event.key === 'Escape') {
       if (!menu.hidden) closeMenu(menu.anchor);
       else if (selected) select(null);
@@ -979,6 +1112,7 @@ export function mountWorkflowConsole(container, options = {}) {
   arrangeBtn.addEventListener('click', () => {
     if (!workflow || !editable) return;
     workflow = { ...workflow, nodes: autoLayout(workflow, { force: true }) };
+    camTouched = false;
     message = 'Auto-arranged. Positions saved.';
     renderAll();
     scheduleSave();
@@ -1004,6 +1138,8 @@ export function mountWorkflowConsole(container, options = {}) {
         if (list.length) await open(list[0].workflow_id);
         else renderAll();
       } else if (run && run.status === 'RUNNING') startPolling(true);
+      // Shown now (it had no size while hidden): frame the flow unless the view was moved by hand.
+      raf(() => { if (!camTouched) fitView(); });
     },
     command,
     connect,

@@ -193,6 +193,65 @@ describe('workflow console', () => {
     expect(root.querySelector('.wfc-status').textContent).toMatch(/^2 agents · 4 cables/);
   });
 
+  describe('camera', () => {
+    const scaleOf = (root) => Number(/scale\(([\d.]+)\)/.exec(root.querySelector('.wfc-stage').style.transform)[1]);
+    const label = (root) => root.querySelector('.wfc-zoom-label').textContent;
+    const wheel = (root, deltaY, extra = {}) => root.querySelector('.wfc-viewport').dispatchEvent(new WheelEvent('wheel', { deltaY, clientX: 100, clientY: 100, bubbles: true, cancelable: true, ...extra }));
+
+    it('zooms with the wheel and with a trackpad pinch, in and out, within limits, with no scrollbars to use', async () => {
+      const { api } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      expect(label(root)).toBe('100%');
+      wheel(root, -200);
+      expect(scaleOf(root)).toBeGreaterThan(1.2);
+      wheel(root, 400);
+      expect(scaleOf(root)).toBeLessThan(1);
+      wheel(root, -100, { ctrlKey: true });
+      const pinched = scaleOf(root);
+      wheel(root, -100, { ctrlKey: true });
+      expect(scaleOf(root)).toBeGreaterThan(pinched);
+      for (let i = 0; i < 40; i++) wheel(root, 500);
+      expect(scaleOf(root)).toBe(0.2);
+      for (let i = 0; i < 80; i++) wheel(root, -500);
+      expect(scaleOf(root)).toBe(2.5);
+      expect(label(root)).toBe('250%');
+    });
+
+    it('the + and - buttons and keys zoom, and Fit frames the whole flow again', async () => {
+      const { api } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      root.querySelector('[aria-label="Zoom in"]').click();
+      expect(label(root)).toBe('125%');
+      root.querySelector('[aria-label="Zoom out"]').click();
+      root.querySelector('[aria-label="Zoom out"]').click();
+      expect(label(root)).toBe('80%');
+      root.querySelector('.wfc-viewport').dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }));
+      expect(label(root)).toBe('100%');
+      root.querySelector('.wfc-zoom-fit').click();
+      expect(root.querySelector('.wfc-stage').style.transform).toMatch(/^translate\(/);
+    });
+
+    it('dragging the background moves the view, and dragging a node still moves the node, not the view', async () => {
+      const { api } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      const viewport = root.querySelector('.wfc-viewport');
+      const before = root.querySelector('.wfc-stage').style.transform;
+      const ptr = (type, x, y, id = 1) => viewport.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, button: 0 }));
+      Object.defineProperty(MouseEvent.prototype, 'pointerId', { get: () => 1, configurable: true });
+      ptr('pointerdown', 200, 200);
+      ptr('pointermove', 260, 230);
+      ptr('pointerup', 260, 230);
+      expect(root.querySelector('.wfc-stage').style.transform).not.toBe(before);
+      expect(/translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(root.querySelector('.wfc-stage').style.transform).slice(1).map(Number)).toEqual([
+        Number(/translate\(([-\d.]+)px/.exec(before)[1]) + 60,
+        Number(/, ([-\d.]+)px\)/.exec(before)[1]) + 30,
+      ]);
+    });
+  });
+
   it('generates a workflow from the Command Bar when none exists', async () => {
     const { api, state } = engine({ workflows: [] });
     const { root } = mount(api);
