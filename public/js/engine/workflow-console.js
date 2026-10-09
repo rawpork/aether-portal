@@ -163,7 +163,7 @@ export function mountWorkflowConsole(container, options = {}) {
       const node = nodeById(card.getAttribute('data-node'));
       if (!node) return null;
       const lines = [node.role, node.instructions && node.instructions.slice(0, 160), node.connector ? 'Connector: ' + node.connector + '.' + node.action : '', run && run.node_status && run.node_status[node.id] ? 'Last run: ' + RUN_TEXT[run.node_status[node.id]] : ''].filter(Boolean);
-      return { title: KIND_TEXT[node.kind] + ': ' + node.label, body: lines.join('\n') };
+      return { title: KIND_TEXT[node.kind] + ': ' + node.label, body: lines.concat('Tap or click the card to see where its data comes from.').join('\n') };
     }
     if (cableNode) {
       const cable = cableById(cableNode.getAttribute('data-cable'));
@@ -722,6 +722,32 @@ export function mountWorkflowConsole(container, options = {}) {
     inspector.append(result);
   }
 
+  // Where a card gets its data and where its result goes, read from the cables, in plain words. Only what a run really does:
+  // an agent gets the goal and the previous agent's written answer; tools bound to it are described to it, not called.
+  function renderDataFlow(node) {
+    if (node.kind === 'trigger') return;
+    const labelOf = (id) => (nodeById(id) || {}).label || id;
+    const into = workflow.cables.filter((c) => c.to === node.id && c.kind !== 'mcp_read');
+    const tools = workflow.cables.filter((c) => c.from === node.id && c.kind === 'mcp_read');
+    const outOf = workflow.cables.filter((c) => c.from === node.id && c.kind !== 'mcp_read');
+    const list = (title, rows, empty) => [
+      el(doc, 'h4', { text: title }),
+      rows.length ? el(doc, 'ul', { class: 'wfc-flow-list' }, rows.map((r) => el(doc, 'li', { text: r }))) : el(doc, 'p', { class: 'mini-label', text: empty }),
+    ];
+    const from = into.map((c) => {
+      const source = nodeById(c.from);
+      const what = source && source.kind === 'trigger' ? 'the workflow goal' : source && source.kind === 'human' ? 'your approval' : 'its written answer';
+      return labelOf(c.from) + ': ' + what;
+    });
+    const toRows = outOf.map((c) => labelOf(c.to) + ' (' + CABLE_TEXT[c.kind] + ')');
+    inspector.append(...list('Where its data comes from', from, node.kind === 'mcp' ? 'An MCP server is a source the agents read.' : 'Nothing is wired into this card yet.'));
+    if (node.kind === 'agent') {
+      inspector.append(...list('Tools it can read', tools.map((c) => labelOf(c.to)), 'No tools are connected to this agent.'));
+      inspector.append(el(doc, 'p', { class: 'mini-label', text: 'How it works: this agent is an AI following the instructions above. It gets the goal and the answer of the agent before it as text. A tool listed here is described to it, but it cannot browse, scrape or call it yet, so a step like "analyze all scraped sources" works on what an earlier step wrote, not on live data.' }));
+    }
+    if (node.kind !== 'mcp') inspector.append(...list('Where its result goes', toRows, 'Nothing is wired out of this card.'));
+  }
+
   function renderInspector() {
     inspector.replaceChildren();
     // It floats over the canvas only while something is selected; otherwise the canvas has the whole width.
@@ -757,6 +783,7 @@ export function mountWorkflowConsole(container, options = {}) {
       if (node.kind !== 'mcp') inspector.append(field(node.kind === 'agent' ? 'Role' : 'Note', 'role', false, 120));
       if (node.kind === 'agent') inspector.append(field('Instructions', 'instructions', true, 2000));
       if (node.kind === 'mcp') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'MCP server "' + (node.server || node.label) + '" from the engine\'s mcp-config.json. Agents get its description as context; tool calls are not made by this run.' }));
+      renderDataFlow(node);
       if (node.kind === 'action' && node.connector) renderConnectorPanel(node);
       else if (node.kind === 'action') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Actions are proposed by the agent that acts on them. They are never executed automatically.' }));
       if (node.kind === 'human') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'An approval checkpoint. Runs stop here: agents after it wait for approval.' }));

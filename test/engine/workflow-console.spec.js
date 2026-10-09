@@ -638,6 +638,20 @@ describe('workflow console', () => {
     expect(root.querySelector('.wfc-inspector').hidden).toBe(false);
   });
 
+  it('a card says where its data comes from, what it reads and where its result goes', async () => {
+    const { api } = engine();
+    const { root } = mount(api, { editable: false });
+    await ui.setActive(true);
+    const agents = [...root.querySelectorAll('.wfc-node')].filter((n) => /agent/i.test(n.textContent));
+    agents[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10, button: 0 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 10, clientY: 10 }));
+    await flush();
+    const text = root.querySelector('.wfc-inspector').textContent;
+    expect(text).toContain('Where its data comes from');
+    expect(text).toContain('Where its result goes');
+    expect(text).toContain('cannot browse, scrape or call it yet');
+  });
+
   it('on a phone with a localhost engine address, explains and offers Settings instead of "unreachable"', async () => {
     const original = window.location.href;
     window.happyDOM.setURL('https://aether.example.workers.dev/mission-control');
