@@ -129,9 +129,10 @@ describe('Roadmap Templates tab', () => {
 	});
 
 	it('sorts the roadmaps into category tabs, and the 1-day audit and affiliate campaign are there', () => {
-		expect(ROADMAP_CATEGORIES.map((c) => c.id)).toEqual(['all', 'rapid', 'affiliate', 'marketing', 'seo', 'app', 'ops']);
+		expect(ROADMAP_CATEGORIES.map((c) => c.id)).toEqual(['all', 'rapid', 'affiliate', 'marketing', 'seo', 'app', 'ops', 'personal']);
 		expect(roadmapsIn('all')).toHaveLength(ROADMAP_TEMPLATES.length);
 		expect(roadmapsIn('rapid').map((t) => t.id)).toEqual(['local-audit-1d', 'affiliate-brainiac-1d', 'sales-crm-1d', 'finance-ledger-1d', 'onboarding-sop-1d']);
+		expect(roadmapsIn('personal').map((t) => t.id)).toEqual(['life-calendar', 'life-workout', 'life-meals', 'life-travel', 'life-bills']);
 		expect(roadmapsIn('ops').map((t) => t.id)).toEqual(['sales-crm-1d', 'finance-ledger-1d', 'onboarding-sop-1d']);
 		expect(roadmapsIn('affiliate').map((t) => t.id)).toContain('affiliate-brainiac-1d');
 		for (const c of ROADMAP_CATEGORIES.slice(1)) expect(roadmapsIn(c.id).length).toBeGreaterThan(0);

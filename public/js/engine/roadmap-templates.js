@@ -12,6 +12,7 @@ export const ROADMAP_CATEGORIES = [
   { id: 'seo', label: 'SEO & Web Development' },
   { id: 'app', label: 'App & SaaS Creation' },
   { id: 'ops', label: 'Business Operations & Scale' },
+  { id: 'personal', label: 'Personal Life' },
 ];
 
 export const ROADMAP_TEMPLATES = [
@@ -147,6 +148,66 @@ export const ROADMAP_TEMPLATES = [
       { title: 'Morning: Intake', goals: ['Write the intake form: who they are, what they want, the deadline, the budget and who approves', 'Set what happens when it is filled in: a confirmation to them, a note to you, a row in the client sheet', 'Draft the welcome email with next steps and what you need from them'] },
       { title: 'Midday: Onboarding flow', goals: ['List the steps from signed to kickoff: agreement, payment, access, kickoff call, first deliverable', 'Give each step an owner and a time limit, and the reminder if it slips', 'Write the kickoff agenda and the checklist for the first week'] },
       { title: 'Afternoon: SOPs', goals: ['Write the standard steps for the three jobs you repeat most: what triggers it, who does it, the steps, what done looks like', 'Add a check at the end of each one and the common mistakes', 'Put them in one place with a name and a date, and note who reviews them each quarter'] },
+    ],
+  },
+  {
+    id: 'life-calendar',
+    categories: ['personal'],
+    name: 'Calendar & Week Planner',
+    horizon: '1 day',
+    summary: 'Put your commitments in one calendar, block time for what matters and get a plan for each week.',
+    phases: [
+      { title: 'Morning: Gather', goals: ['List every regular commitment: work, family, appointments, classes', 'Connect your Google Calendar so Elarion can see what is already booked', 'Note the things that keep slipping and the time of day you work best'] },
+      { title: 'Midday: Shape the week', goals: ['Block time for focus work, exercise, meals and rest first', 'Fit the rest around them and flag any clashes', 'Set a weekly review slot and a daily five-minute check'] },
+      { title: 'Afternoon: Automate', goals: ['Draft the reminders you want and when they should arrive', 'Write a Sunday summary of the week ahead for your approval', 'Nothing is added to your calendar or sent to anyone until you approve'] },
+    ],
+  },
+  {
+    id: 'life-workout',
+    categories: ['personal'],
+    name: 'Workout Plan',
+    horizon: '4 weeks',
+    summary: 'A training plan that fits your goal, your schedule and the equipment you have, with a way to track it.',
+    phases: [
+      { title: 'Week 1: Baseline', goals: ['Write down your goal, your current level, any injuries and the days you can train', 'List the equipment you have', 'Test a baseline: a few simple lifts or a timed run, and record the numbers'] },
+      { title: 'Weeks 2-3: Build', goals: ['Plan each session: exercises, sets, reps and rest', 'Add the sessions to your calendar on the days you chose', 'Log each session and note how hard it felt'] },
+      { title: 'Week 4: Review', goals: ['Compare the numbers to the baseline', 'Adjust the load, the days or the exercises', 'Write the next four weeks from what worked'] },
+    ],
+  },
+  {
+    id: 'life-meals',
+    categories: ['personal'],
+    name: 'Meal Plan & Grocery List',
+    horizon: '1 day',
+    summary: 'A week of meals that fit your goals, budget and tastes, with the shopping list already made.',
+    phases: [
+      { title: 'Morning: Set the rules', goals: ['Note your goal, diet needs, foods you avoid and the number of people', 'Set a weekly food budget and how long you will spend cooking', 'List five meals you already like'] },
+      { title: 'Midday: Plan the week', goals: ['Plan breakfast, lunch, dinner and snacks for seven days, reusing ingredients', 'Show the calories and protein per day if you want them', 'Mark which meals can be made ahead'] },
+      { title: 'Afternoon: Shop', goals: ['Build one grocery list grouped by shop aisle, with quantities and the cost', 'Cross out what you already have at home', 'Save the plan so next week starts from it'] },
+    ],
+  },
+  {
+    id: 'life-travel',
+    categories: ['personal'],
+    name: 'Trip Planner',
+    horizon: '1 day',
+    summary: 'Plan a trip from dates and budget to a day-by-day itinerary and a packing list.',
+    phases: [
+      { title: 'Morning: Frame the trip', goals: ['Set where, when, who is going and the total budget', 'Search flights and places to stay for the dates, and compare the best three', 'Check passport, visa and vaccine needs'] },
+      { title: 'Midday: Itinerary', goals: ['Plan each day with a morning, afternoon and evening, and travel time between them', 'Add the bookings you already have and leave one free half-day', 'Put the plan on your calendar for your approval'] },
+      { title: 'Afternoon: Prepare', goals: ['Write the packing list for the weather and the length of stay', 'List what to do before leaving: bills, mail, home, insurance', 'Make one page with confirmations, addresses and phone numbers'] },
+    ],
+  },
+  {
+    id: 'life-bills',
+    categories: ['personal'],
+    name: 'Bills & Budget Organizer',
+    horizon: '1 day',
+    summary: 'See every bill and subscription in one place, never miss a due date and know where your money goes.',
+    phases: [
+      { title: 'Morning: Collect', goals: ['List every bill and subscription: name, amount, due date and how it is paid', 'Mark the ones you no longer use', 'Add your income and its dates'] },
+      { title: 'Midday: Organize', goals: ['Sort spending into needs, wants and savings and see the totals', 'Put every due date on your calendar with a reminder three days before', 'Find the three biggest savings, such as a cheaper plan or a cancelled subscription'] },
+      { title: 'Afternoon: Keep it running', goals: ['Set a monthly check and a short summary of what came in and went out', 'Set up a savings goal and the amount to move each payday', 'Nothing is paid, cancelled or changed without your approval'] },
     ],
   },
 ];
