@@ -645,6 +645,23 @@ describe('workflow console', () => {
     expect(state.calls.some((c) => c.pathname.endsWith('/run'))).toBe(true);
   });
 
+  it('an approval card says what waits, what happens on approval and where to answer', async () => {
+    const wf = sampleWorkflow();
+    wf.nodes.push(node('gate_1', 'human', 'Approve before publishing'));
+    wf.cables = wf.cables.filter((c) => c.id !== 'c_2').concat(cable('c_5', 'agent_r', 'act', 'gate_1', 'act', 'action'), cable('c_6', 'gate_1', 'start', 'agent_b', 'start', 'start'));
+    const { api } = engine({ workflows: [wf] });
+    const { root } = mount(api, { editable: false });
+    await ui.setActive(true);
+    root.querySelector('.wfc-node[data-node="gate_1"]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5, button: 0 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 5, clientY: 5 }));
+    await flush();
+    const text = root.querySelector('.wfc-inspector').textContent;
+    expect(text).toContain('Researcher finishes first, then this asks you.');
+    expect(text).toContain('Builder continues.');
+    expect(text).toContain('Deploy (only proposed, not connected)');
+    expect(text).toContain('Where approvals are answered');
+  });
+
   it('view-only mode: tapping a node opens its details', async () => {
     const { api } = engine();
     const { root } = mount(api, { editable: false });

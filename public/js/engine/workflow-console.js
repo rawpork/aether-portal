@@ -760,6 +760,28 @@ export function mountWorkflowConsole(container, options = {}) {
     if (node.kind !== 'mcp') inspector.append(...list('Where its result goes', toRows, 'Nothing is wired out of this card.'));
   }
 
+  // An approval card, in plain words: what waits for you, what happens when you approve, and where to answer.
+  function renderApproval(node) {
+    const labelOf = (id) => (nodeById(id) || {}).label || id;
+    const before = workflow.cables.filter((c) => c.to === node.id).map((c) => labelOf(c.from));
+    const released = workflow.cables.filter((c) => c.from === node.id && c.kind === 'start').map((c) => c.to);
+    const effects = workflow.cables.filter((c) => released.includes(c.from) && c.kind === 'action').map((c) => nodeById(c.to)).filter((n) => n && n.kind === 'action');
+    const effectText = (n) => n.label + (n.connector && n.action ? ' (runs for real: ' + n.connector + ')' : ' (only proposed, not connected)');
+    const status = run && run.node_status ? run.node_status[node.id] : '';
+    inspector.append(
+      el(doc, 'p', { class: 'mini-label', text: 'An approval checkpoint. The run stops here until you answer.' }),
+      el(doc, 'h4', { text: 'What is waiting for you' }),
+      el(doc, 'p', { class: 'mini-label', text: before.length ? before.join(', ') + ' finishes first, then this asks you.' : 'Nothing is wired into this approval yet.' }),
+      el(doc, 'h4', { text: 'When you approve' }),
+    );
+    inspector.append(released.length ? el(doc, 'ul', { class: 'wfc-flow-list' }, released.map((id) => el(doc, 'li', { text: labelOf(id) + ' continues.' })).concat(effects.map((n) => el(doc, 'li', { text: effectText(n) })))) : el(doc, 'p', { class: 'mini-label', text: 'Nothing continues after it.' }));
+    inspector.append(el(doc, 'h4', { text: 'How to approve' }));
+    if (status === 'running') inspector.append(el(doc, 'p', { class: 'wfc-connector-note', text: 'Waiting for you now.' }));
+    const open = el(doc, 'button', { type: 'button', class: 'btn btn-small', text: status === 'running' ? 'Answer it now' : 'Where approvals are answered' });
+    open.addEventListener('click', () => { win.location.hash = 'operator'; });
+    inspector.append(open);
+  }
+
   // Everything not ready, one line each; tapping a line opens that card. Run goes ahead only when you say so.
   function renderSetupPanel() {
     const issues = readiness();
@@ -831,7 +853,7 @@ export function mountWorkflowConsole(container, options = {}) {
       renderDataFlow(node);
       if (node.kind === 'action' && node.connector) renderConnectorPanel(node);
       else if (node.kind === 'action') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Actions are proposed by the agent that acts on them. They are never executed automatically.' }));
-      if (node.kind === 'human') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'An approval checkpoint. Runs stop here: agents after it wait for approval.' }));
+      if (node.kind === 'human') renderApproval(node);
       const meta = [['Id', node.id], ['Origin', node.origin === 'operator' ? 'Edited by you' : node.origin === 'prompt' ? 'Added by a prompt' : 'Generated']];
       if (run && run.node_status && run.node_status[node.id]) meta.push(['Last run', RUN_TEXT[run.node_status[node.id]]]);
       inspector.append(el(doc, 'dl', { class: 'inspector-meta' }, meta.flatMap(([k, v]) => [el(doc, 'dt', { text: k }), el(doc, 'dd', { text: v })])));
