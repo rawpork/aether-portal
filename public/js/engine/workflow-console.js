@@ -84,7 +84,7 @@ export function mountWorkflowConsole(container, options = {}) {
   let lastRunSummary = '';
 
   // ---- static frame -------------------------------------------------------------------------------------------
-  const prompt = el(doc, 'textarea', { id: 'wfc-prompt', class: 'wfc-prompt', rows: '2', maxlength: '4000', 'aria-describedby': 'wfc-prompt-hint' });
+  const prompt = el(doc, 'textarea', { id: 'wfc-prompt', class: 'wfc-prompt', rows: '1', maxlength: '4000', 'aria-describedby': 'wfc-prompt-hint' });
   const submit = el(doc, 'button', { type: 'submit', class: 'btn-primary wfc-submit' });
   const hint = el(doc, 'span', { id: 'wfc-prompt-hint', class: 'mini-label' });
   const newBtn = el(doc, 'button', { type: 'button', class: 'btn btn-small btn-ghost wfc-new' });
@@ -119,6 +119,7 @@ export function mountWorkflowConsole(container, options = {}) {
   const zoomIn = el(doc, 'button', { type: 'button', class: 'wfc-zoom-btn', 'aria-label': 'Zoom in', title: 'Zoom in (+)', text: '+' });
   const zoomFit = el(doc, 'button', { type: 'button', class: 'wfc-zoom-btn wfc-zoom-fit', 'aria-label': 'Fit the whole flow in view', title: 'Fit the whole flow (0 or double-click)', text: 'Fit' });
   const zoomBar = el(doc, 'div', { class: 'wfc-zoom', role: 'group', 'aria-label': 'Canvas zoom' }, [zoomOut, zoomLabel, zoomIn, zoomFit]);
+  const toolbox = el(doc, 'aside', { class: 'wfc-toolbox surface', 'aria-label': 'Toolbox: what the workflow can connect to' });
   const tip = el(doc, 'p', { class: 'wfc-tip', role: 'alert', hidden: true });
   const menu = el(doc, 'div', { class: 'wfc-connect-menu surface', role: 'dialog', 'aria-label': 'Connect to', hidden: true });
   const inspector = el(doc, 'aside', { class: 'wfc-inspector surface', 'aria-label': 'Workflow inspector' });
@@ -127,7 +128,7 @@ export function mountWorkflowConsole(container, options = {}) {
     el(doc, 'div', { class: 'wfc-toolbar' }, [picker, version, el(doc, 'span', { class: 'studio-spacer' }), legend, arrangeBtn, editBtn, runBtn]),
     status,
     banner,
-    el(doc, 'div', { class: 'wfc-body' }, [el(doc, 'div', { class: 'wfc-canvas-wrap' }, [viewport, zoomBar, tip, menu]), inspector]),
+    el(doc, 'div', { class: 'wfc-body' }, [toolbox, el(doc, 'div', { class: 'wfc-canvas-wrap' }, [viewport, zoomBar, tip, menu]), inspector]),
   );
 
   // ---- camera: the stage is moved and scaled inside a fixed viewport, so there are no scrollbars -----------------
@@ -430,8 +431,120 @@ export function mountWorkflowConsole(container, options = {}) {
     return card;
   }
 
+  // ---- toolbox: the connectors a workflow can reach out to (the engine's list), added to the canvas as action nodes --------------
+  let connectors = [];
+  let toolboxOpen = false; // closed by default so the canvas gets the room; the button opens it
+  const STATUS_TEXT = { ready: 'Ready', needs_setup: 'Needs setup', coming_soon: 'Coming soon' };
+  const connectorOf = (id) => connectors.find((c) => c.id === id);
+  async function loadConnectors() {
+    try {
+      const result = await api.listConnectors();
+      connectors = (result && result.connectors) || [];
+    } catch {
+      connectors = []; // an engine without connectors: the toolbox says so
+    }
+    renderToolbox();
+    renderInspector();
+  }
+
+  function renderToolbox() {
+    const toggle = el(doc, 'button', { type: 'button', class: 'wfc-toolbox-toggle', 'aria-expanded': String(toolboxOpen), text: 'Toolbox ' + (toolboxOpen ? '▾' : '▸') });
+    toggle.addEventListener('click', () => {
+      toolboxOpen = !toolboxOpen;
+      renderToolbox();
+    });
+    const nodes = [toggle];
+    if (toolboxOpen) {
+      if (!connectors.length) nodes.push(el(doc, 'p', { class: 'mini-label', text: 'No connectors found. The engine may need updating.' }));
+      else nodes.push(el(doc, 'p', { class: 'mini-label', text: editable ? 'Add one to the canvas; it is wired to the selected agent.' : 'Turn on editing to add these.' }));
+      for (const c of connectors) {
+        const card = el(doc, 'section', { class: 'wfc-connector', 'data-status': c.status, 'aria-label': c.name }, [
+          el(doc, 'div', { class: 'wfc-connector-head' }, [el(doc, 'strong', { text: c.name }), el(doc, 'span', { class: 'wfc-connector-status', text: STATUS_TEXT[c.status] || c.status })]),
+          el(doc, 'p', { class: 'mini-label', text: c.status === 'ready' ? c.description : c.status_detail }),
+        ]);
+        for (const a of c.actions) {
+          const add = el(doc, 'button', { type: 'button', class: 'wfc-connector-add', 'data-connector': c.id, 'data-action': a.id, title: a.description, disabled: !editable, text: '+ ' + a.label });
+          add.addEventListener('click', () => addConnectorNode(c, a));
+          card.append(add);
+        }
+        nodes.push(card);
+      }
+    }
+    toolbox.dataset.open = String(toolboxOpen);
+    toolbox.replaceChildren(...nodes);
+  }
+
+  // Puts a connector action on the canvas as an action node, beside the agent it follows, and wires it from that agent.
+  function addConnectorNode(connector, action) {
+    if (!workflow || !editable) return showTip('Turn on editing to add to the workflow.', null);
+    const anchor = (selected && selected.type === 'node' && nodeById(selected.id) && nodeById(selected.id).kind === 'agent' ? nodeById(selected.id) : null) || [...workflow.nodes].reverse().find((n) => n.kind === 'agent') || null;
+    const taken = (x, y) => workflow.nodes.some((n) => Math.abs(n.x - x) < NODE_W + 16 && Math.abs(n.y - y) < NODE_H + 16);
+    let x = anchor ? anchor.x + NODE_W + 64 : 32;
+    let y = anchor ? anchor.y : 32;
+    for (let i = 0; i < 40 && taken(x, y); i++) y += NODE_H + 24;
+    const params = Object.fromEntries(action.fields.filter((f) => f.default).map((f) => [f.id, f.default]));
+    const node = { id: localId('action'), kind: 'action', label: connector.name + ': ' + action.label, role: action.description.slice(0, 120), connector: connector.id, action: action.id, params, x, y, origin: 'operator' };
+    workflow.nodes = [...workflow.nodes, node];
+    selected = { type: 'node', id: node.id };
+    message = 'Added ' + node.label + (anchor ? ' after ' + anchor.label + '.' : '. Wire it from an agent.');
+    renderAll();
+    if (anchor) connect(anchor.id, 'act', node.id, 'act', null);
+    else scheduleSave();
+    // Wiring selects the new cable; the node is what you are about to fill in.
+    select({ type: 'node', id: node.id });
+  }
+
+  // The fields of a bound action node, and the buttons that try it. Test says what would happen and sends nothing.
+  function renderConnectorPanel(node) {
+    const connector = connectorOf(node.connector);
+    const action = connector && connector.actions.find((a) => a.id === node.action);
+    if (!connector || !action) {
+      inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Bound to ' + node.connector + '.' + node.action + ', which this engine does not list.' }));
+      return;
+    }
+    inspector.append(el(doc, 'h4', { text: connector.name + ': ' + action.label }));
+    if (connector.status !== 'ready') inspector.append(el(doc, 'p', { class: 'wfc-connector-note', text: STATUS_TEXT[connector.status] + '. ' + connector.status_detail }));
+    node.params = node.params || {};
+    for (const f of action.fields) {
+      const id = 'wfc-param-' + f.id;
+      const input = f.type === 'select'
+        ? el(doc, 'select', { id, class: 'wfc-field', disabled: !editable }, f.options.map((o) => el(doc, 'option', { value: o, text: o })))
+        : el(doc, f.type === 'longtext' ? 'textarea' : 'input', { id, class: 'wfc-field', rows: f.type === 'longtext' ? '4' : null, maxlength: '4000', placeholder: f.placeholder || '', disabled: !editable });
+      input.value = node.params[f.id] !== undefined ? node.params[f.id] : f.default || '';
+      input.addEventListener('change', () => updateNode(node.id, { params: { ...node.params, [f.id]: input.value } }));
+      inspector.append(el(doc, 'label', { class: 'wfc-field-wrap', for: id }, [el(doc, 'span', { class: 'mini-label', text: f.label + (f.required ? ' *' : '') }), input]));
+    }
+    inspector.append(el(doc, 'p', { class: 'mini-label', text: '{{result}} becomes the previous step\'s answer when the workflow runs. A test uses a sample.' }));
+    if (action.outward) inspector.append(el(doc, 'p', { class: 'wfc-connector-note', text: 'This reaches outside Aether, so it should come after an approval.' }));
+    const result = el(doc, 'div', { class: 'wfc-test-result', role: 'status', 'aria-live': 'polite', hidden: true });
+    const run = async (send) => {
+      result.hidden = false;
+      result.dataset.state = 'pending';
+      result.textContent = send ? 'Sending…' : 'Testing…';
+      try {
+        const answer = await api.testConnector({ connector: node.connector, action: node.action, params: node.params, send });
+        result.dataset.state = answer.ok ? 'ok' : 'fail';
+        result.replaceChildren(el(doc, 'strong', { text: (answer.simulated ? 'Test: ' : '') + answer.summary }), ...(answer.detail ? [el(doc, 'p', { class: 'wfc-test-detail', text: answer.detail })] : []), ...(answer.error ? [el(doc, 'p', { class: 'wfc-test-detail', text: answer.error })] : []));
+      } catch (err) {
+        result.dataset.state = 'fail';
+        result.textContent = (err && err.body && err.body.error) || (err && err.message) || 'The test could not run.';
+      }
+    };
+    const test = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-test', text: 'Test (nothing is sent)' });
+    test.addEventListener('click', () => run(false));
+    inspector.append(test);
+    if (action.live_test) {
+      const live = el(doc, 'button', { type: 'button', class: 'btn btn-small wfc-test-live', text: 'Send a test to me' });
+      live.addEventListener('click', () => run(true));
+      inspector.append(live);
+    }
+    inspector.append(result);
+  }
+
   function renderInspector() {
     inspector.replaceChildren();
+    // It floats over the canvas only while something is selected; otherwise the canvas has the whole width.
+    inspector.hidden = Boolean(workflow) && !selected;
     if (!workflow) {
       inspector.append(
         el(doc, 'h3', { text: 'Workflow console' }),
@@ -463,7 +576,8 @@ export function mountWorkflowConsole(container, options = {}) {
       if (node.kind !== 'mcp') inspector.append(field(node.kind === 'agent' ? 'Role' : 'Note', 'role', false, 120));
       if (node.kind === 'agent') inspector.append(field('Instructions', 'instructions', true, 2000));
       if (node.kind === 'mcp') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'MCP server "' + (node.server || node.label) + '" from the engine\'s mcp-config.json. Agents get its description as context; tool calls are not made by this run.' }));
-      if (node.kind === 'action') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Actions are proposed by the agent that acts on them. They are never executed automatically.' }));
+      if (node.kind === 'action' && node.connector) renderConnectorPanel(node);
+      else if (node.kind === 'action') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'Actions are proposed by the agent that acts on them. They are never executed automatically.' }));
       if (node.kind === 'human') inspector.append(el(doc, 'p', { class: 'mini-label', text: 'An approval checkpoint. Runs stop here: agents after it wait for approval.' }));
       const meta = [['Id', node.id], ['Origin', node.origin === 'operator' ? 'Edited by you' : node.origin === 'prompt' ? 'Added by a prompt' : 'Generated']];
       if (run && run.node_status && run.node_status[node.id]) meta.push(['Last run', RUN_TEXT[run.node_status[node.id]]]);
@@ -500,6 +614,7 @@ export function mountWorkflowConsole(container, options = {}) {
   }
 
   function renderAll() {
+    renderToolbox();
     renderCommand();
     renderToolbar();
     renderStatus();
@@ -1134,6 +1249,7 @@ export function mountWorkflowConsole(container, options = {}) {
         return;
       }
       if (!loaded) {
+        loadConnectors();
         await loadList();
         if (list.length) await open(list[0].workflow_id);
         else renderAll();

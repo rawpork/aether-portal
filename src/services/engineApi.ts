@@ -591,6 +591,53 @@ export interface CompiledBlueprint {
 	miserly_integration: { enabled: boolean; proxy_endpoint: string | null; budget_cap_usd: number };
 }
 
+// GET /api/connectors and POST /api/connectors/test: the Studio toolbox (Aether_Engine src/connectors.ts).
+export interface ConnectorField {
+	id: string;
+	label: string;
+	type: 'text' | 'longtext' | 'select' | 'url';
+	required?: boolean;
+	placeholder?: string;
+	options?: string[];
+	default?: string;
+}
+
+export interface ConnectorAction {
+	id: string;
+	label: string;
+	description: string;
+	fields: ConnectorField[];
+	outward: boolean;
+	live_test?: boolean;
+}
+
+export interface ConnectorInfo {
+	id: string;
+	name: string;
+	category: 'messaging' | 'web' | 'google';
+	description: string;
+	available: boolean;
+	status: 'ready' | 'needs_setup' | 'coming_soon';
+	status_detail: string;
+	actions: ConnectorAction[];
+}
+
+export interface ConnectorTestRequest {
+	connector: string;
+	action: string;
+	params?: Record<string, string>;
+	// Send for real: only for actions the engine marks live_test (a Telegram message to yourself).
+	send?: boolean;
+}
+
+export interface ConnectorTestResult {
+	ok: boolean;
+	simulated: boolean;
+	summary: string;
+	detail?: string;
+	error?: string;
+}
+
 // POST /api/intake/analyze: Elarion checks the target page against the on-page benchmark and asks what decides the plan.
 export interface IntakeRequest {
 	url?: string;
@@ -986,6 +1033,14 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		// POST /api/blueprint/compile. Schema violations throw EngineApiError 400 with body.validation_errors.
 		compileBlueprint(payload: CompileBlueprintRequest): Promise<CompileBlueprintResult> {
 			return request<CompileBlueprintResult>('POST', '/api/blueprint/compile', { body: payload });
+		},
+
+		listConnectors(): Promise<{ connectors: ConnectorInfo[] }> {
+			return request<{ connectors: ConnectorInfo[] }>('GET', '/api/connectors');
+		},
+
+		testConnector(payload: ConnectorTestRequest): Promise<ConnectorTestResult> {
+			return request<ConnectorTestResult>('POST', '/api/connectors/test', { body: payload, timeoutMs: 20_000 });
 		},
 
 		analyzeIntake(payload: IntakeRequest): Promise<IntakeResult> {

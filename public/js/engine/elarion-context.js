@@ -32,6 +32,7 @@ export function studioContext(state) {
         name: short(n.label, 80),
         ...(n.role ? { role: short(n.role) } : {}),
         ...(n.instructions ? { instructions: short(n.instructions) } : {}),
+        ...(n.connector ? { connector: n.connector + '.' + n.action } : {}),
         ...(status[n.id] ? { last_run: status[n.id] } : {}),
       })),
       cables: cables.slice(0, MAX_CABLES).map((c) => ({ from: nameOf(c.from), to: nameOf(c.to), kind: c.kind })),

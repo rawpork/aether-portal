@@ -19,6 +19,7 @@ export { GraphEvents } from "./graph-events.js";
 export { UserHub } from "./realtime/user-hub.js";
 import { devRoleFor, ensureDevOperator, isDevAuthEnabled } from "./dev-auth.js";
 import { getRecord, recordStats, reindexAccount, searchRecords, upsertRecord } from "./records.js";
+import { sendTelegramToUser } from "./connectors.js";
 import { appendMessages, deleteThread, getThread, listThreads, refileThreads } from "./conversations.js";
 import { ENGINE_RELAY_PREFIX, enginePublicUrl, relayToEngine } from "./engine-relay.js";
 import { AEPS_SKILLS } from "./generated/aeps-skills.js";
@@ -227,6 +228,21 @@ export default {
       } catch (err) {
         console.error("Conversations request failed:", err);
         return jsonResponse({ error: "The conversation could not be read or saved." }, 500);
+      }
+    }
+
+    // Connector calls from the engine (src/connectors.js): POST /api/connectors/telegram/send { text } messages the user's own Telegram chat.
+    if (url.pathname === "/api/connectors/telegram/send") {
+      if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405, { Allow: "POST" });
+      const who = await recordsUser(request, env, url);
+      if (who.error) return who.error;
+      try {
+        const body = await request.json().catch(() => null);
+        const result = await sendTelegramToUser(env, who.userId, body && body.text, sendTelegram);
+        return jsonResponse(result.body, result.status);
+      } catch (err) {
+        console.error("Telegram connector failed:", err);
+        return jsonResponse({ error: "The message could not be sent." }, 500);
       }
     }
 

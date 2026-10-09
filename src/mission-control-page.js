@@ -1126,7 +1126,7 @@ ${SHELL_SWITCH_CSS}
     .wfc-command-row { display: flex; gap: 10px; align-items: stretch; width: 100%; min-width: 0; }
     /* The goal box fills its row at every width (explicit width, not just flex), and touch screens get 16px text so
        iOS Safari doesn't zoom the page when it is focused. */
-    .wfc-prompt { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; line-height: 1.4; resize: vertical; -webkit-appearance: none; appearance: none; }
+    .wfc-prompt { flex: 1 1 auto; width: 100%; min-width: 0; min-height: 48px; max-height: 120px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; line-height: 1.4; resize: vertical; -webkit-appearance: none; appearance: none; }
     @media (pointer: coarse) { .wfc-prompt { font-size: 16px; } }
     .wfc-prompt:focus { outline: 2px solid var(--accent-line); outline-offset: 1px; border-color: var(--accent); }
     .wfc-prompt[aria-busy="true"] { opacity: 0.7; }
@@ -1145,9 +1145,9 @@ ${SHELL_SWITCH_CSS}
     .wfc-status { margin: 10px 0 8px; font-size: 12.5px; }
     .wfc-status[data-kind="error"] { color: var(--danger-text); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .wfc-halted { margin: 0 0 10px; padding: 10px 14px; border: 1px solid var(--danger-line); border-radius: var(--radius-m); background: var(--danger-soft); color: var(--danger-text); font-weight: 600; font-size: 13px; }
-    .wfc-body { display: flex; gap: 16px; align-items: flex-start; }
+    .wfc-body { position: relative; display: flex; gap: 16px; align-items: flex-start; }
     .wfc-canvas-wrap { position: relative; isolation: isolate; flex: 1; min-width: 0; }
-    .wfc-viewport { position: relative; height: clamp(420px, 68vh, 880px); overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; border: 1px solid var(--line); border-radius: var(--radius-l); background-color: var(--surface-soft); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px; }
+    .wfc-viewport { position: relative; height: clamp(340px, calc(100vh - 400px), 880px); overflow: hidden; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; border: 1px solid var(--line); border-radius: var(--radius-l); background-color: var(--surface-soft); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 16px 16px; }
     .wfc-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
     .wfc-viewport[data-panning] { cursor: grabbing; }
     .wfc-zoom { position: absolute; right: 12px; bottom: 12px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
@@ -1219,7 +1219,25 @@ ${SHELL_SWITCH_CSS}
     .wfc-menu-title { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; }
     .wfc-menu-item { appearance: none; min-height: 40px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-s); background: none; color: var(--text); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
     .wfc-menu-item:hover, .wfc-menu-item:focus-visible { background: var(--surface-soft); border-color: var(--line); outline: none; }
-    .wfc-inspector { width: 320px; flex-shrink: 0; padding: 16px 18px; position: sticky; top: 16px; max-height: calc(100vh - 140px); overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+    .wfc-toolbox[data-open="false"] { width: auto; padding: 2px 8px; background: var(--surface); }
+    /* The toolbox and the inspector float over the canvas (the canvas keeps the whole width); on a phone they stack. */
+    .wfc-toolbox { width: 220px; padding: 12px; position: absolute; left: 12px; top: 12px; z-index: 4; max-height: calc(100% - 24px); overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+    .wfc-toolbox-toggle { appearance: none; min-height: 40px; padding: 0 4px; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
+    .wfc-connector { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .wfc-connector[data-status="coming_soon"] { opacity: 0.8; }
+    .wfc-connector-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+    .wfc-connector-status { padding: 1px 8px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); font-size: 12px; }
+    .wfc-connector[data-status="ready"] .wfc-connector-status { border-color: var(--accent-line); color: var(--accent-text); }
+    .wfc-connector-add { appearance: none; min-height: 40px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+    .wfc-connector-add:hover:not(:disabled) { border-color: var(--accent-line); color: var(--accent-text); }
+    .wfc-connector-add:disabled { opacity: 0.5; cursor: default; }
+    .wfc-connector-note { margin: 0; padding: 8px 10px; border: 1px solid var(--alert-line); border-radius: var(--radius-s); background: var(--alert-soft); color: var(--alert); font-size: 13px; }
+    .wfc-test-result { padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface-soft); font-size: 13px; }
+    .wfc-test-result[data-state="ok"] { border-color: var(--accent-line); }
+    .wfc-test-result[data-state="fail"] { border-color: var(--danger-line); color: var(--danger-text); }
+    .wfc-test-detail { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
+    .wfc-inspector { width: 300px; padding: 16px 18px; position: absolute; right: 12px; top: 12px; z-index: 4; max-height: calc(100% - 24px); overflow: auto; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3); display: flex; flex-direction: column; gap: 10px; }
+    .wfc-inspector[hidden] { display: none; }
     .wfc-inspector h3 { margin: 0; font-size: 15px; font-weight: 600; }
     .wfc-inspector h4 { margin: 6px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
     .wfc-inspector p { margin: 0; }
@@ -1235,7 +1253,7 @@ ${SHELL_SWITCH_CSS}
     @media (max-width: 900px) {
       .wfc-console { padding: 12px 14px 18px; }
       .wfc-body { flex-direction: column; }
-      .wfc-inspector { width: 100%; position: static; max-height: none; box-sizing: border-box; }
+      .wfc-inspector, .wfc-toolbox { width: 100%; position: static; max-height: none; box-sizing: border-box; }
       .wfc-command-row { flex-direction: column; }
       /* In a column a flex: 1 box starts from zero height; keep the textarea's own two rows instead. */
       .wfc-prompt { flex: none; font-size: 16px; min-height: 96px; }

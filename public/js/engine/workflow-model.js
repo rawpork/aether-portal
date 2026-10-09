@@ -216,7 +216,7 @@ export function cableLabel(cable, nodes) {
 export function graphForSave(nodes, cables) {
   const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => obj[k] !== undefined && obj[k] !== '').map((k) => [k, obj[k]]));
   return {
-    nodes: nodes.map((n) => ({ ...pick(n, ['id', 'kind', 'label', 'role', 'instructions', 'server', 'origin']), x: Math.round(n.x), y: Math.round(n.y) })),
+    nodes: nodes.map((n) => ({ ...pick(n, ['id', 'kind', 'label', 'role', 'instructions', 'server', 'origin', 'connector', 'action']), ...(n.params && Object.keys(n.params).length ? { params: Object.fromEntries(Object.entries(n.params).filter(([, v]) => typeof v === 'string' && v !== '')) } : {}), x: Math.round(n.x), y: Math.round(n.y) })),
     cables: cables.map((c) => pick(c, ['id', 'from', 'from_port', 'to', 'to_port', 'kind', 'origin'])),
   };
 }

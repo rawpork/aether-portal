@@ -36,12 +36,24 @@ function sampleWorkflow(version = 1) {
 }
 
 // A small stateful engine: version checks on save and mutate, a queue of run events.
+const CONNECTORS = [
+  { id: 'telegram', name: 'Telegram', category: 'messaging', description: 'Message you through Elarion’s Telegram bot.', available: true, status: 'ready', status_detail: 'Ready.', actions: [{ id: 'send_message', label: 'Send me a message', description: 'Sends a message to your own Telegram chat.', outward: true, live_test: true, fields: [{ id: 'text', label: 'Message', type: 'longtext', required: true }] }] },
+  { id: 'webhook', name: 'Web request', category: 'web', description: 'Call any web address.', available: true, status: 'ready', status_detail: 'Ready.', actions: [{ id: 'http_request', label: 'Send a request', description: 'Sends an HTTP request.', outward: true, fields: [{ id: 'url', label: 'Address', type: 'url', required: true }, { id: 'method', label: 'Method', type: 'select', options: ['POST', 'GET'], default: 'POST' }] }] },
+  { id: 'gmail', name: 'Gmail', category: 'google', description: 'Create drafts and send email.', available: false, status: 'coming_soon', status_detail: 'Needs your Google connection, which is not set up yet.', actions: [{ id: 'send_email', label: 'Send an email', description: 'Sends from your Google account.', outward: true, fields: [{ id: 'to', label: 'To', type: 'text', required: true }] }] },
+];
+
 function engine({ workflows = [sampleWorkflow()], events = [] } = {}) {
-  const state = { workflows: workflows.map((w) => structuredClone(w)), events, runStatus: 'RUNNING', calls: [], conflictNext: false };
+  const state = { workflows: workflows.map((w) => structuredClone(w)), events, runStatus: 'RUNNING', calls: [], tests: [], conflictNext: false };
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetch = async (url, init) => {
     const { pathname, searchParams } = new URL(url);
     const body = init.body ? JSON.parse(init.body) : undefined;
+    // The toolbox's connectors are answered here and kept out of the workflow call log the older tests read.
+    if (pathname === '/api/connectors') return json({ connectors: CONNECTORS });
+    if (pathname === '/api/connectors/test') {
+      state.tests.push(body);
+      return json(body.send ? { ok: true, simulated: false, summary: 'Sent to your Telegram chat.', detail: 'hello' } : { ok: true, simulated: true, summary: 'Would send you this Telegram message.', detail: body.params.text });
+    }
     state.calls.push({ method: init.method, pathname, body });
     const m = /^\/api\/workflows(?:\/([^/]+))?(?:\/(mutate|graph|run|events))?$/.exec(pathname);
     if (!m) return json({ error: 'Not found' }, 404);
@@ -191,6 +203,68 @@ describe('workflow console', () => {
     expect([...agent.querySelectorAll('.wfc-port')].map((p) => p.getAttribute('data-dir') + ':' + p.getAttribute('data-port'))).toEqual(['in:start', 'in:context', 'in:a2a', 'out:mcp', 'out:a2a', 'out:act']);
     expect(root.querySelector('.wfc-submit').textContent).toBe('Apply');
     expect(root.querySelector('.wfc-status').textContent).toMatch(/^2 agents · 4 cables/);
+  });
+
+  describe('toolbox', () => {
+    // The toolbox starts closed so the canvas gets the room; its button opens it.
+    const openToolbox = (root) => root.querySelector('.wfc-toolbox-toggle').click();
+    it('lists the connectors with their state, and adds one as an action node wired from the selected agent', async () => {
+      const { api, state } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      await flush();
+      expect(root.querySelector('.wfc-toolbox').dataset.open).toBe('false');
+      expect(root.querySelectorAll('.wfc-connector')).toHaveLength(0);
+      openToolbox(root);
+      const cards = [...root.querySelectorAll('.wfc-connector')];
+      expect(cards.map((c) => c.getAttribute('aria-label') + ':' + c.dataset.status)).toEqual(['Telegram:ready', 'Web request:ready', 'Gmail:coming_soon']);
+      expect(root.querySelector('.wfc-connector[data-status="coming_soon"] .mini-label').textContent).toMatch(/Google connection/);
+      ui.select({ type: 'node', id: 'agent_b' });
+      root.querySelector('.wfc-connector-add[data-connector="telegram"]').click();
+      const after = ui.getState().workflow;
+      const added = after.nodes.find((n) => n.connector === 'telegram');
+      expect(added).toMatchObject({ kind: 'action', action: 'send_message', origin: 'operator' });
+      expect(added.label).toBe('Telegram: Send me a message');
+      expect(after.cables.some((c) => c.from === 'agent_b' && c.to === added.id && c.kind === 'action')).toBe(true);
+      expect(ui.getState().selected).toEqual({ type: 'node', id: added.id });
+      await flush(12);
+      const save = state.calls.filter((c) => c.pathname.endsWith('/graph')).at(-1);
+      expect(save.body.nodes.find((n) => n.id === added.id)).toMatchObject({ connector: 'telegram', action: 'send_message' });
+    });
+
+    it('shows the fields of a bound action, saves what you type, and tests it: a test sends nothing, "send a test to me" does', async () => {
+      const { api, state } = engine();
+      const { root } = mount(api);
+      await ui.setActive(true);
+      await flush();
+      openToolbox(root);
+      ui.select({ type: 'node', id: 'agent_b' });
+      root.querySelector('.wfc-connector-add[data-connector="telegram"]').click();
+      const field = root.querySelector('#wfc-param-text');
+      field.value = 'All done: {{result}}';
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush(12);
+      expect(state.calls.filter((c) => c.pathname.endsWith('/graph')).at(-1).body.nodes.find((n) => n.connector === 'telegram').params).toEqual({ text: 'All done: {{result}}' });
+      root.querySelector('.wfc-test').click();
+      await flush();
+      expect(state.tests.at(-1)).toMatchObject({ connector: 'telegram', action: 'send_message', send: false, params: { text: 'All done: {{result}}' } });
+      expect(root.querySelector('.wfc-test-result').textContent).toContain('Test: Would send you this Telegram message.');
+      root.querySelector('.wfc-test-live').click();
+      await flush();
+      expect(state.tests.at(-1).send).toBe(true);
+      expect(root.querySelector('.wfc-test-result').textContent).toContain('Sent to your Telegram chat.');
+      expect(root.querySelector('.wfc-connector-note').textContent).toMatch(/after an approval/);
+    });
+
+    it('says so when the engine has no connectors, and offers nothing to add while editing is off', async () => {
+      const { api } = engine();
+      const { root } = mount(api, { editable: false });
+      await ui.setActive(true);
+      await flush();
+      openToolbox(root);
+      expect(root.querySelector('.wfc-toolbox .mini-label').textContent).toMatch(/Turn on editing/);
+      expect(root.querySelector('.wfc-connector-add').disabled).toBe(true);
+    });
   });
 
   describe('camera', () => {
