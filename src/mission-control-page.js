@@ -1288,7 +1288,8 @@ ${SHELL_SWITCH_CSS}
       /* Stretch, so the canvas takes the whole width (it has no content width of its own: the stage is positioned inside it). */
       .wfc-body { flex-direction: column; align-items: stretch; }
       .wfc-canvas-wrap { width: 100%; }
-      .wfc-inspector { width: 100%; position: static; max-height: none; box-sizing: border-box; }
+      /* On a phone the inspector is a sheet over the bottom of the screen, so a selected node is seen and edited without scrolling. */
+      .wfc-inspector { width: auto; position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto; z-index: 40; max-height: 55vh; box-sizing: border-box; box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.45); }
       .wfc-toolbox { width: min(280px, calc(100% - 24px)); }
       /* One compact row for the command bar and no legend, so the nodes are on the first screen, not far below it. */
       .wfc-command { padding: 10px 12px 8px; }

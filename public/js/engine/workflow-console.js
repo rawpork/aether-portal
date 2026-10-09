@@ -217,6 +217,18 @@ export function mountWorkflowConsole(container, options = {}) {
     hintEl.hidden = false;
     placeHint(event);
   });
+  // A finger has no hover: with hints on, tapping a node, port or cable shows its hint; tapping empty canvas hides it.
+  viewport.addEventListener('pointerup', (event) => {
+    if (event.pointerType !== 'touch' || !hintsOn || drag || wiring) return;
+    const hint = hintFor(event.target);
+    if (!hint) {
+      hintEl.hidden = true;
+      return;
+    }
+    hintEl.replaceChildren(el(doc, 'strong', { text: hint.title }), ...(hint.body ? [el(doc, 'span', { class: 'wfc-hint-body', text: hint.body })] : []));
+    hintEl.hidden = false;
+    placeHint({ clientX: Math.min(event.clientX, win.innerWidth - 280), clientY: Math.max(8, event.clientY - (hintEl.offsetHeight || 80) - 24) });
+  });
   hintsBtn.addEventListener('click', () => {
     hintsOn = !hintsOn;
     try { win.localStorage.setItem(HINTS_KEY, hintsOn ? 'on' : 'off'); } catch { /* storage blocked: for this page only */ }
