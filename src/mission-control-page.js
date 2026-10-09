@@ -596,6 +596,7 @@ ${SHELL_SWITCH_CSS}
     .oc-prompt { padding: 14px; border: 1px solid var(--accent-line); border-radius: var(--radius-m); background: var(--accent-soft); }
     .oc-prompt-who { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
     .oc-prompt-question { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text); }
+    .oc-prompt-detail { margin: 0 0 12px; padding: 10px 12px; max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text-2); font: inherit; font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .oc-chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .oc-chip { min-height: 40px; padding: 8px 14px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
     .oc-chip:hover:not(:disabled), .oc-chip:focus-visible { border-color: var(--accent); outline: none; }

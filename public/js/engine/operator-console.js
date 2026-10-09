@@ -187,6 +187,7 @@ export function mountOperatorConsole(container, options = {}) {
       card.append(
         el(doc, 'p', { class: 'oc-prompt-who', text: agentName(task.agent_id) + ' / ' + taskTitle(task.task_id) }),
         el(doc, 'p', { class: 'oc-prompt-question', text: task.awaiting.question }),
+        ...(task.awaiting.detail ? [el(doc, 'pre', { class: 'oc-prompt-detail', text: task.awaiting.detail })] : []),
         chips,
         message
       );
