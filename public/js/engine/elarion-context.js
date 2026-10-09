@@ -48,7 +48,7 @@ export function studioContext(state) {
 }
 
 // Projects: the blueprint open, its phases and which agent does each.
-export function projectContext(blueprint, page = 'Projects') {
+export function projectContext(blueprint, page = 'Projects', lifecycle = null) {
   if (!blueprint) return { page };
   const phases = Array.isArray(blueprint.execution_phases) ? blueprint.execution_phases : [];
   return {
@@ -56,6 +56,8 @@ export function projectContext(blueprint, page = 'Projects') {
     project: short(blueprint.project_name, 120),
     blueprint_id: blueprint.blueprint_id,
     status: blueprint.status,
-    phases: phases.slice(0, 20).map((p) => ({ name: short(p.phase_name, 80), agent: p.agent_persona, what: short(p.description) })),
+    phases: phases.slice(0, 20).map((p) => ({ name: short(p.phase_name || p.phase_index, 80), agent: p.agent_persona || p.agent_role, what: short(p.description || p.prompt_template) })),
+    // Where it stands from idea to delivery, and what Elarion is asking for next.
+    ...(lifecycle ? { where_it_stands: { stage: lifecycle.stage, steps: lifecycle.steps.map((s) => s.label + ': ' + s.state + (s.state === 'done' ? '' : ' (' + short(s.detail, 120) + ')')), next_step: lifecycle.next && lifecycle.next.question } } : {}),
   };
 }

@@ -47,6 +47,15 @@ function createEngine() {
         engine.stored.push(blueprint);
         return reply(200, { success: true, message: 'Blueprint successfully compiled and stored.', blueprint_id: blueprint.blueprint_id, artifact_path: '/out/' + blueprint.blueprint_id + '.json', logged: true, blueprint });
       }
+      if (method === 'GET' && /^\/api\/projects\/[^/]+\/lifecycle$/.test(pathname)) {
+        if (engine.lifecycle === false) return reply(404, { error: 'Not found' });
+        const id = pathname.split('/')[3];
+        return reply(200, engine.lifecycle || {
+          blueprint_id: id, project_name: 'Journey project', stage: 'test', summary: 'x',
+          steps: [{ id: 'plan', label: 'Plan', state: 'done', detail: 'Compiled.' }, { id: 'map', label: 'Map', state: 'done', detail: 'Drawn.' }, { id: 'connections', label: 'Connections', state: 'done', detail: 'None needed.' }, { id: 'test', label: 'Test', state: 'current', detail: 'Not tested yet.' }, { id: 'launch', label: 'Launch', state: 'todo', detail: 'Not launched yet.' }, { id: 'deliver', label: 'Deliver', state: 'todo', detail: 'Nothing yet.' }],
+          next: { kind: 'test', title: 'Test it', question: 'Journey project is planned and mapped, but it has not been tested. Run a test now?', options: ['Run the test', 'Show me the map first', 'Not now'] },
+        });
+      }
       if (method === 'POST' && pathname === '/api/workflows/from-blueprint') {
         engine.maps = (engine.maps || []).concat(body.blueprint_id);
         return reply(201, { workflow: { workflow_id: 'wf_map00001', title: 'Map', nodes: [], cables: [], history: [], version: 1 } });
@@ -429,5 +438,62 @@ describe('the project map', () => {
     await mount();
     await compileExample();
     expect(ws.elements.viewer.querySelector('.bp-map')).toBe(null);
+  });
+});
+
+describe('the project journey', () => {
+  const asked = [];
+  const tested = [];
+  const opened = [];
+  const mountJourney = async (extra = {}) => {
+    asked.length = tested.length = opened.length = 0;
+    await mount({ onOpenStudio: async (id) => opened.push(id), onRunTest: async (id) => tested.push(id), onAskElarion: (text) => asked.push(text), ...extra });
+    await compileExample();
+    await settle();
+  };
+
+  it('shows the steps from idea to delivery and Elarion\'s question, and the lifecycle is what Elarion is told', async () => {
+    await mountJourney();
+    const card = ws.elements.viewer.querySelector('.bp-journey');
+    expect(card.hidden).toBe(false);
+    expect([...card.querySelectorAll('.bp-step')].map((li) => li.querySelector('.bp-step-label').textContent + ':' + li.dataset.state)).toEqual(['Plan:done', 'Map:done', 'Connections:done', 'Test:current', 'Launch:todo', 'Deliver:todo']);
+    expect(card.querySelector('.bp-next-title').textContent).toBe('Elarion: Test it');
+    expect(card.querySelector('.bp-next-question').textContent).toMatch(/has not been tested/);
+    expect([...card.querySelectorAll('.bp-next-option')].map((b) => b.textContent)).toEqual(['Run the test', 'Show me the map first', 'Not now']);
+    expect(ws.getLifecycle().stage).toBe('test');
+  });
+
+  it('"Run the test" makes the map and runs its test; "Show me the map first" only opens it; "Not now" puts the card away', async () => {
+    await mountJourney();
+    const options = () => [...ws.elements.viewer.querySelectorAll('.bp-next-option')];
+    options()[0].click();
+    await settle();
+    expect(tested).toEqual(['wf_map00001']);
+    expect(opened).toEqual([]);
+    options()[1].click();
+    await settle();
+    expect(opened).toEqual(['wf_map00001']);
+    options()[2].click();
+    await settle();
+    expect(ws.elements.viewer.querySelector('.bp-journey').hidden).toBe(true);
+    expect(asked).toEqual([]);
+  });
+
+  it('a question the page cannot act on by itself goes to Elarion with the project named', async () => {
+    engine.lifecycle = {
+      blueprint_id: 'x', project_name: 'Journey project', stage: 'test', summary: 'x', steps: [{ id: 'plan', label: 'Plan', state: 'done', detail: '' }],
+      next: { kind: 'fix_test', title: 'Fix the test', question: 'The last test did not finish. Shall I look at what went wrong?', options: ['Look at it', 'Try again'] },
+    };
+    await mountJourney();
+    ws.elements.viewer.querySelector('.bp-next-option').click();
+    await settle();
+    expect(asked).toEqual(['Look at it (Journey project: Fix the test)']);
+  });
+
+  it('shows no card on an engine that does not report lifecycles', async () => {
+    engine.lifecycle = false;
+    await mountJourney();
+    expect(ws.elements.viewer.querySelector('.bp-journey').hidden).toBe(true);
+    expect(ws.getLifecycle()).toBe(null);
   });
 });

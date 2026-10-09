@@ -282,7 +282,7 @@ export const setupIssue = keyProblem;
 // The one thing to do next, for the banner on top of Mission Control. tasks: GET /api/tasks summaries; runs: the
 // Outcomes list's stored project runs (website drafts, Space cards). Returns { kind, title, text, action?: { label,
 // view } } with view one of connect | operator | blueprints | activity.
-export function nextAction({ error = null, tasks = [], runs = {}, setup = null } = {}) {
+export function nextAction({ error = null, tasks = [], runs = {}, setup = null, projects = [] } = {}) {
   if (error) {
     return error.isUnauthorized
       ? { kind: 'warn', title: 'Reconnect to the engine', text: 'The engine turned down this session’s sign-in. Open Settings to reconnect.', action: { label: 'Open Settings', view: 'connect' } }
@@ -304,6 +304,9 @@ export function nextAction({ error = null, tasks = [], runs = {}, setup = null }
   const run = latest ? runs[latest.task_id] || {} : {};
   if (latest && latest.status === 'FAILED') return { kind: 'warn', title: 'The last project run failed', text: taskTitle(latest.task_id) + '. See why under Studio → Engine activity (click the red step), then run it again from Projects.', action: { label: 'Open Projects', view: 'blueprints' } };
   if (latest && latest.status === 'COMPLETED' && run.siteSlug && !run.sitePublished) return { kind: 'go', title: 'Your website draft is ready', text: 'Preview /s/' + run.siteSlug + ', then press Approve & publish when you’re happy with it.', action: { label: 'Review the website', view: 'blueprints' } };
+  // Elarion as the one who guides each project: the first project that is waiting on you (to map, connect, test or launch it).
+  const guide = (projects || []).find((p) => p && p.next && ['make_map', 'connect', 'test', 'fix_test', 'launch'].includes(p.next.kind));
+  if (guide) return { kind: 'go', title: guide.next.title + ': ' + guide.project_name, text: guide.next.question, action: { label: 'Open the project', view: 'blueprints' } };
   if (latest && latest.status === 'COMPLETED' && !run.nodeId) return { kind: 'go', title: 'Your project finished', text: 'Look over the deliverables and add the result to Space.', action: { label: 'See deliverables', view: 'blueprints' } };
   if (!latest) return { kind: 'go', title: 'Start your first project', text: 'Open a card in Space and tap Make it a project, or paste links under Projects. Elarion plans the work and runs it.', action: { label: 'Open Projects', view: 'blueprints' } };
   return { kind: 'go', title: 'All caught up', text: 'The last project is done' + (run.sitePublished ? ' and its website is live' : '') + '. Start the next one when you’re ready.', action: { label: 'New project', view: 'blueprints' } };

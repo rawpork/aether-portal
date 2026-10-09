@@ -84,6 +84,8 @@ export function mountDecisionCenter(doc, options = {}) {
   const onNavigate = options.onNavigate || (() => {});
   // The engine's setup summary (key state), read each time the banner is drawn; undefined until it is known.
   const getSetup = options.getSetup || (() => undefined);
+  // The projects' lifecycles (what each is waiting on), so the banner can say what to do next for a project, not only for a run.
+  const getProjects = options.getProjects || (() => []);
   let view = options.view || 'overview';
   const pollMs = options.pollMs ?? POLL_MS;
   const storage = options.storage || (() => { try { return win.localStorage; } catch { return null; } })();
@@ -512,7 +514,7 @@ export function mountDecisionCenter(doc, options = {}) {
     try {
       runs = JSON.parse((storage && storage.getItem('aether.projectRuns')) || '{}') || {};
     } catch { /* no run hints */ }
-    const action = nextAction({ error, tasks, runs, setup: getSetup() });
+    const action = nextAction({ error, tasks, runs, setup: getSetup(), projects: getProjects() });
     const visible = bannerVisibleOn(action, view) && !dismissed.includes(bannerKey(action));
     const sig = JSON.stringify([action, visible]);
     if (sig === lastBanner) return;

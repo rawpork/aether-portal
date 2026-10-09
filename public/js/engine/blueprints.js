@@ -49,6 +49,14 @@ export function mountBlueprintWorkspace(container, options = {}) {
   const onNewProject = options.onNewProject || null;
   // Opens a project's map in the Studio (the page switches to Studio and shows that workflow).
   const onOpenStudio = options.onOpenStudio || null;
+  // The journey card's actions that leave the page: asking Elarion, running the map's test, opening Settings.
+  const onAskElarion = options.onAskElarion || null;
+  const onRunTest = options.onRunTest || null;
+  const onNavigate = options.onNavigate || null;
+  // Where the open project stands (the engine's lifecycle), fetched when it is opened; Elarion is told it too.
+  let lifecycle = null;
+  let lifecycleFor = '';
+  let journeyDismissed = new Set();
   // Called with the project open in the viewer (its full blueprint) once it has loaded, so Elarion's drawer can offer it as the
   // thing being asked about.
   const onSelectionChange = options.onSelectionChange || (() => {});
@@ -315,6 +323,54 @@ export function mountBlueprintWorkspace(container, options = {}) {
       }
     });
 
+    // The journey: the project's steps from idea to delivery, and the one thing Elarion needs from you next.
+    const journey = el(doc, 'section', { class: 'bp-journey', 'aria-label': 'Project journey', hidden: true });
+    const loadJourney = async () => {
+      lifecycleFor = bp.blueprint_id;
+      try {
+        lifecycle = await api.getProjectLifecycle(bp.blueprint_id);
+      } catch {
+        lifecycle = null; // an engine without lifecycles: no card
+      }
+      if (selected && selected.blueprint_id === bp.blueprint_id) renderJourney();
+    };
+    const renderJourney = () => {
+      if (!lifecycle || journeyDismissed.has(bp.blueprint_id + ':' + lifecycle.next.kind)) {
+        journey.hidden = true;
+        return;
+      }
+      const next = lifecycle.next;
+      const act = async (option) => {
+        const wf = async () => (await api.createWorkflowFromBlueprint(bp.blueprint_id)).workflow.workflow_id;
+        try {
+          if (/not now|later|only at the end|just tell me/i.test(option)) { journeyDismissed.add(bp.blueprint_id + ':' + next.kind); return renderJourney(); }
+          if (next.kind === 'make_map' || /map first|show me the map/i.test(option)) return onOpenStudio && (await onOpenStudio(await wf()));
+          if (next.kind === 'test' && onRunTest) return onRunTest(await wf());
+          if (next.kind === 'launch' && /^launch/i.test(option)) return deploy.click();
+          if (next.kind === 'connect' && /connect now/i.test(option) && onNavigate) return onNavigate('connect');
+        } catch (error) {
+          deployStatus.textContent = 'Could not do that: ' + ((error && error.message) || 'the engine did not answer') + '.';
+          return;
+        }
+        if (onAskElarion) onAskElarion(option + ' (' + lifecycle.project_name + ': ' + next.title + ')');
+      };
+      journey.replaceChildren(
+        el(doc, 'ol', { class: 'bp-steps' }, lifecycle.steps.map((s) => el(doc, 'li', { class: 'bp-step', 'data-state': s.state, title: s.detail }, [el(doc, 'span', { class: 'bp-step-mark', 'aria-hidden': 'true', text: s.state === 'done' ? '✓' : s.state === 'blocked' ? '!' : s.state === 'current' ? '●' : '○' }), el(doc, 'span', { class: 'bp-step-label', text: s.label }), el(doc, 'span', { class: 'sr-only mc-visually-hidden', text: ' ' + s.state })]))),
+        el(doc, 'div', { class: 'bp-next', 'data-kind': next.kind }, [
+          el(doc, 'p', { class: 'bp-next-title', text: 'Elarion: ' + next.title }),
+          el(doc, 'p', { class: 'bp-next-question', text: next.question }),
+          el(doc, 'div', { class: 'bp-next-options' }, next.options.map((option, i) => {
+            const button = el(doc, 'button', { type: 'button', class: i === 0 ? 'bp-primary bp-next-option' : 'toggle-button bp-next-option', text: option });
+            button.addEventListener('click', () => act(option));
+            return button;
+          })),
+        ]),
+      );
+      journey.hidden = false;
+    };
+    if (lifecycleFor === bp.blueprint_id && lifecycle) renderJourney();
+    loadJourney();
+
     // Deploy & Execute (Pro-gated).
     const deploy = el(doc, 'button', { type: 'button', class: 'bp-primary bp-deploy' }, [doc.createTextNode('Deploy & Execute Blueprint')]);
     if (!pro) {
@@ -398,6 +454,7 @@ export function mountBlueprintWorkspace(container, options = {}) {
         fact('Miserly budget', miserly.enabled ? '$' + Number(miserly.budget_cap_usd || 0).toFixed(2) : 'Proxy off'),
         fact('Database / hosting', (interview.database || '?') + ' / ' + (interview.hosting || '?')),
       ]),
+      journey,
       el(doc, 'div', { class: 'bp-deploy-row' }, [deploy, download, ...(onOpenStudio ? [mapButton] : [])]),
       confirmRow,
       deployStatus,
@@ -554,6 +611,10 @@ export function mountBlueprintWorkspace(container, options = {}) {
     },
     getRunStatus: (blueprintId) => runStatus.get(blueprintId) || '',
     getSelected: () => selected,
+    // Where the open project stands (null until fetched, or on an engine that does not report it).
+    getLifecycle: () => (selected && lifecycleFor === selected.blueprint_id ? lifecycle : null),
+    // The journey is re-read (after a run, a map or a test changed something).
+    refreshJourney: () => { lifecycleFor = ''; if (selected) renderViewer(); },
     elements: { form, advanced, newBlueprintButton, editor, fileInput, uploadButton, exampleButton, validateButton, compileButton, feedback, list, listEmpty, viewer, upgradeModal, refreshButton },
     destroy() {
       destroyed = true;

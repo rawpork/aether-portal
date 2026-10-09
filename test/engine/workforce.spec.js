@@ -404,3 +404,20 @@ describe('finger on the pulse', () => {
 function withPlanTick(record) {
   record.history = [...record.history, { at: iso(30000), event: 'STEP_COMPLETED', step_index: 2, step_id: 'generate-sequence' }];
 }
+
+describe('nextAction guided by project lifecycles', () => {
+  const MISSING = { elarion_ready: false, miserly_key_status: 'missing', miserly_key_detail: 'No key' };
+  const project = (kind, title) => ({ project_name: 'Bakery site', next: { kind, title, question: 'Bakery site is planned but not tested. Run a test now?', options: ['Run the test'] } });
+
+  it('suggests the next step of the first project that is waiting on you, once nothing urgent is going on', () => {
+    const action = nextAction({ tasks: [], projects: [project('test', 'Test it')] });
+    expect(action).toMatchObject({ kind: 'go', title: 'Test it: Bakery site', action: { view: 'blueprints' } });
+    expect(action.text).toMatch(/Run a test now/);
+    expect(nextAction({ tasks: [], projects: [project('done', 'Delivered'), project('wait', 'Running')] }).title).not.toMatch(/Bakery/);
+  });
+
+  it('a run in progress or a missing key still comes first', () => {
+    expect(nextAction({ tasks: [{ task_id: 'deploy-bp_x', status: 'RUNNING', completed_steps: 1, total_steps: 3 }], projects: [project('test', 'Test it')] }).kind).toBe('live');
+    expect(nextAction({ tasks: [], setup: MISSING, projects: [project('test', 'Test it')] }).title).toBe('Add an AI model key');
+  });
+});

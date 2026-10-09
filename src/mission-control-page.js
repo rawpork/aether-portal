@@ -1219,6 +1219,16 @@ ${SHELL_SWITCH_CSS}
     .wfc-menu-title { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; }
     .wfc-menu-item { appearance: none; min-height: 40px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-s); background: none; color: var(--text); text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
     .wfc-menu-item:hover, .wfc-menu-item:focus-visible { background: var(--surface-soft); border-color: var(--line); outline: none; }
+    .bp-journey { display: flex; flex-direction: column; gap: 12px; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .bp-steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .bp-step { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); font-size: 13px; }
+    .bp-step[data-state="done"] { border-color: var(--accent-line); color: var(--accent-text); }
+    .bp-step[data-state="current"] { border-color: var(--accent); color: var(--text); font-weight: 600; }
+    .bp-step[data-state="blocked"] { border-color: var(--danger-line); color: var(--danger-text); }
+    .bp-next { display: flex; flex-direction: column; gap: 8px; }
+    .bp-next-title { margin: 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .bp-next-question { margin: 0; font-size: 15px; line-height: 1.5; }
+    .bp-next-options { display: flex; flex-wrap: wrap; gap: 8px; }
     .wfc-toolbox[data-open="false"] { width: auto; padding: 2px 8px; background: var(--surface); }
     /* The toolbox and the inspector float over the canvas (the canvas keeps the whole width); on a phone they stack. */
     .wfc-toolbox { width: 220px; padding: 12px; position: absolute; left: 12px; top: 12px; z-index: 4; max-height: calc(100% - 24px); overflow: auto; display: flex; flex-direction: column; gap: 8px; }

@@ -39,6 +39,13 @@ it('keeps the context small however big the workflow is', () => {
 	expect(JSON.stringify(context).length).toBeLessThan(12000);
 });
 
+it('the open project carries where it stands, so Elarion can say what is next', () => {
+	const lifecycle = { stage: 'test', steps: [{ label: 'Plan', state: 'done', detail: 'ok' }, { label: 'Test', state: 'current', detail: 'Not tested yet.' }], next: { question: 'Run a test now?' } };
+	const context = projectContext({ project_name: 'Bakery', blueprint_id: 'bp_1', execution_phases: [{ phase_index: 1, phase_name: 'Research', agent_role: 'Researcher', prompt_template: 'Find rivals.' }] }, 'Projects', lifecycle);
+	expect(context.where_it_stands).toEqual({ stage: 'test', steps: ['Plan: done', 'Test: current (Not tested yet.)'], next_step: 'Run a test now?' });
+	expect(context.phases[0]).toEqual({ name: 'Research', agent: 'Researcher', what: 'Find rivals.' });
+});
+
 it('a project is described by its phases and who does each', () => {
 	const context = projectContext({ project_name: 'Bakery', blueprint_id: 'bp_1', status: 'APPROVED_FOR_EXECUTION', execution_phases: [{ phase_name: 'Research', agent_persona: 'Researcher', description: 'Read the market' }] });
 	expect(context).toEqual({ page: 'Projects', project: 'Bakery', blueprint_id: 'bp_1', status: 'APPROVED_FOR_EXECUTION', phases: [{ name: 'Research', agent: 'Researcher', what: 'Read the market' }] });

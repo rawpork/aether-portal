@@ -441,6 +441,9 @@ export async function mountMissionControl(doc = document, options = {}) {
     upgradeUrl: options.upgradeUrl ?? meta(doc, 'aether-upgrade-url'),
     // A deploy runs as a task loop: show it in the monitor once the engine has registered it, and again when done.
     onOpenStudio: (workflowId) => openMapInStudio(workflowId),
+    onRunTest: (workflowId) => openMapInStudio(workflowId, { run: true }),
+    onAskElarion: (text) => askElarion(text),
+    onNavigate: (view) => tabs && tabs.select(view),
     onNewProject: () => newProject.open(),
     onSelectionChange: () => refreshScopes(),
     onStarted: () => setTimeout(() => monitor.refresh(), 300),
@@ -477,7 +480,7 @@ export async function mountMissionControl(doc = document, options = {}) {
     }
     const open = blueprints && blueprints.getSelected ? blueprints.getSelected() : null;
     if (open && open.project_name && (view === 'blueprints' || view === 'roadmap')) {
-      list.unshift({ id: 'project', label: projectTitle(open), thread: 'project:' + open.blueprint_id, project_id: open.blueprint_id, context: () => projectContext(blueprints.getSelected() || open, VIEW_TITLES[view]) });
+      list.unshift({ id: 'project', label: projectTitle(open), thread: 'project:' + open.blueprint_id, project_id: open.blueprint_id, context: () => projectContext(blueprints.getSelected() || open, VIEW_TITLES[view], blueprints.getLifecycle && blueprints.getLifecycle()) });
     }
     dock.setScopes(list, list[0].id);
   }
@@ -566,12 +569,21 @@ export async function mountMissionControl(doc = document, options = {}) {
   const workflowConsole = byId('mc-workflow') ? mountWorkflowConsole(byId('mc-workflow'), { api, onConnect: () => tabs.select('connect', true), ...options.workflow }) : null;
   const studioTabs = setupStudioTabs(doc, () => syncStudio());
   // A project's map: the Studio's Workflow console, on that workflow.
-  async function openMapInStudio(workflowId) {
+  async function openMapInStudio(workflowId, { run = false } = {}) {
     if (!workflowConsole) return;
     tabs.select('studio');
     if (studioTabs) studioTabs.select('workflow');
     await workflowConsole.refreshList();
     await workflowConsole.open(workflowId);
+    // The journey's "Run the test": the operator said yes to it, so it starts here.
+    if (run) await workflowConsole.run();
+    if (blueprints && blueprints.refreshJourney) blueprints.refreshJourney();
+    refreshLifecycles();
+  }
+  // The journey card asks Elarion something (the answer appears in the tray above the composer).
+  function askElarion(text) {
+    drawer.open();
+    dock.send(text);
   }
   let studioShown = false;
   function syncStudio() {
@@ -582,6 +594,7 @@ export async function mountMissionControl(doc = document, options = {}) {
   }
   tabs = setupTabs(doc, (view) => {
     refreshScopes();
+    refreshLifecycles();
     if (decisions) decisions.setView(view);
     if (view === 'blueprints') blueprints.refresh();
     if (view === 'overview') workforce.refresh();
@@ -628,11 +641,23 @@ export async function mountMissionControl(doc = document, options = {}) {
   const skillButton = byId('mc-command-skill');
   // The "Do this next" banner (on the overview, and elsewhere only when something urgent blocks the work), and numbered
   // choice popups for decisions, finished runs and skills.
+  // Where each project stands (the engine's lifecycle): the banner and the project page ask Elarion's next question from it.
+  let lifecycles = [];
+  async function refreshLifecycles() {
+    try {
+      const result = await api.listProjectLifecycles();
+      lifecycles = (result && result.projects) || [];
+    } catch {
+      lifecycles = []; // an engine that does not report lifecycles
+    }
+    if (decisions && decisions.refreshBanner) decisions.refreshBanner();
+  }
   decisions = options.decisions === false ? null : mountDecisionCenter(doc, {
     api,
     slot: byId('mc-next'),
     storage: options.storage,
     getSetup: () => setupSummary,
+    getProjects: () => lifecycles,
     view: tabs.getView(),
     onNavigate: (view) => {
       if (view === 'activity') {

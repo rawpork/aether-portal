@@ -591,6 +591,30 @@ export interface CompiledBlueprint {
 	miserly_integration: { enabled: boolean; proxy_endpoint: string | null; budget_cap_usd: number };
 }
 
+// GET /api/projects/:id/lifecycle: where a project stands from idea to delivery, and what Elarion asks next (Aether_Engine src/lifecycle.ts).
+export interface LifecycleStep {
+	id: 'plan' | 'map' | 'connections' | 'test' | 'launch' | 'deliver';
+	label: string;
+	state: 'done' | 'current' | 'todo' | 'blocked';
+	detail: string;
+}
+
+export interface LifecycleNext {
+	kind: 'make_map' | 'open_map' | 'connect' | 'test' | 'fix_test' | 'wait' | 'launch' | 'fix_launch' | 'review' | 'done';
+	title: string;
+	question: string;
+	options: string[];
+}
+
+export interface ProjectLifecycle {
+	blueprint_id: string;
+	project_name: string;
+	stage: string;
+	steps: LifecycleStep[];
+	next: LifecycleNext;
+	summary: string;
+}
+
 // GET /api/workflows/:id/versions and POST .../restore: the version history of a workflow and going back to one.
 export interface WorkflowVersionInfo {
 	version: number;
@@ -977,6 +1001,15 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		},
 
 		// POST /api/workflows/from-blueprint: the Studio map of a compiled project (made when it was compiled; this makes one for older projects).
+		getProjectLifecycle(blueprintId: string): Promise<ProjectLifecycle> {
+			requireText('blueprintId', blueprintId);
+			return request<ProjectLifecycle>('GET', '/api/projects/' + encodeURIComponent(blueprintId) + '/lifecycle');
+		},
+
+		listProjectLifecycles(): Promise<{ projects: ProjectLifecycle[] }> {
+			return request<{ projects: ProjectLifecycle[] }>('GET', '/api/projects/lifecycle');
+		},
+
 		createWorkflowFromBlueprint(blueprintId: string): Promise<{ workflow: Workflow }> {
 			requireText('blueprintId', blueprintId);
 			return request<{ workflow: Workflow }>('POST', '/api/workflows/from-blueprint', { body: { blueprint_id: blueprintId } });
