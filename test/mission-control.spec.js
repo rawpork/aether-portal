@@ -55,8 +55,16 @@ describe('Mission Control routes', () => {
 		for (const legacy of ['view-switch', 'depth-slider', 'zoom-slider', 'telegram-help-button', 'filter-menu']) expect(menu, legacy).not.toContain(legacy);
 		expect(html).toMatch(/id="menu-toggle"[^>]*aria-controls="space-menu"/);
 		expect(html).toMatch(/#space-menu \{[^}]*width: min\(260px, 86vw\); max-width: 260px;/);
-		expect(html).toMatch(/<aside id="portal-tray" aria-label="View and filters"/);
-		expect(html).toContain('id="tools-toggle"');
+		// The view, time, filter and display controls are a toolbar of buttons that open trays, each tray holding its own controls.
+		const toolbar = /<div id="space-toolbar"[\s\S]*?<\/div>\s*<label class="search-wrap"/.exec(html)[0];
+		for (const id of ['tb-view', 'scope-chip', 'tb-filter', 'tb-display', 'tb-more']) expect(toolbar, id).toContain('id="' + id + '"');
+		const tray = id => { const start = html.indexOf('<div class="tb-tray" id="' + id + '"'); return html.slice(start, html.indexOf('\n  </div>', start)); };
+		for (const control of ['view-switch', 'view-toggle', 'wheel-home', 'xr-button']) expect(tray('tray-view'), control).toContain('id="' + control + '"');
+		for (const control of ['scope-stepper', 'platform-bar', 'type-filter', 'group-by', 'orphan-toggle', 'filters-reset']) expect(tray('tray-filter'), control).toContain('id="' + control + '"');
+		for (const control of ['depth-slider', 'zoom-slider', 'cluster-toggle']) expect(tray('tray-display'), control).toContain('id="' + control + '"');
+		for (const control of ['recluster-button', 'synthesize-button', 'telegram-help-button']) expect(tray('tray-more'), control).toContain('id="' + control + '"');
+		expect(html).not.toContain('id="portal-tray"');
+		expect(html).not.toContain('id="tools-toggle"');
 		// The same link also sits in the top bar's second slot, mirroring Space's link in Mission Control's header (WCAG 3.2.3).
 		expect(html).toMatch(/<nav class="shell-switch" aria-label="Aether"><a class="shell-item" data-surface="space" href="\/" aria-current="page"[^>]*>[\s\S]*?<a class="shell-item" data-surface="mission-control" href="\/mission-control" aria-label="Mission Control" aria-keyshortcuts="Alt\+M"/);
 		expect(html).toContain('data-shell-surface="space"');
