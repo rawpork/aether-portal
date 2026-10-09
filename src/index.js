@@ -1115,7 +1115,8 @@ export default {
         realtime: realtimeClientEnabled(env),
         upgradeUrl: env.PRO_UPGRADE_URL || "",
         // ?theme= (from the Engine status page) wins over the saved cookie, so the first paint already matches.
-        theme: url.searchParams.get("theme") || readCookie(request, "aether_theme") || ""
+        // One app, one look: Mission Control is dark like Space, whatever an old cookie or link says.
+        theme: "dark"
       }), {
         headers: { "Content-Type": "text/html;charset=UTF-8", "Cache-Control": "no-store" }
       });

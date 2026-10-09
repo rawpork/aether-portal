@@ -1515,7 +1515,7 @@ ${SHELL_SWITCH_CSS}
         <section class="surface mc-panel" aria-labelledby="mc-display-title">
           <div class="mc-panel-head"><h2 id="mc-display-title">Display and status</h2></div>
           <div class="mc-display-row">
-            <button type="button" class="toggle-button" id="mc-theme-toggle" title="Switch between light and dark">${ICONS.theme}<span id="mc-theme-label">Dark mode</span></button>
+            <button type="button" class="toggle-button" id="mc-theme-toggle" title="Switch between light and dark" hidden>${ICONS.theme}<span id="mc-theme-label">Dark mode</span></button>
             <a class="toggle-button" id="mc-nav-engine" href="#" title="Engine State: the Aether Engine's own status page">${ICONS.engine}<span>Engine status page</span></a>
           </div>
         </section>
