@@ -232,8 +232,11 @@ it('New (+) opens the unified New project dialog: a template and its brief becom
   expect(window.location.hash).toBe('');
   dialog.querySelector('input[value="landing-waitlist"]').click();
   dialog.querySelector('[data-field="domain"]').value = 'waitlist.example.com';
-  dialog.querySelector('.np-next').click();
-  for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+  // Template -> About the project -> Elarion's questions (the page check is skipped here: the fake engine has no intake endpoint) -> review.
+  for (let n = 0; n < 3; n++) {
+    dialog.querySelector('.np-next').click();
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0));
+  }
   // One review card, whichever tab fed it: the plain-language plan, what it will use, and the approve button.
   expect(dialog.querySelector('.np-project').textContent).toBe('Landing page + waitlist');
   expect(dialog.querySelector('.np-estimate')).not.toBeNull();

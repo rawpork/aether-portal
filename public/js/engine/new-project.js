@@ -1,4 +1,6 @@
-// New project: one front door. Five ways in, one way through.
+// New project: one front door. Five ways in, one way through. A template, a roadmap or a goal then goes through a short guided
+// intake (what is the target, which region, which deliverables) and Elarion's questions (the page check and what decides the plan)
+// before anything is compiled.
 //
 //   [ Pick Template | Roadmap Templates | Select Space Cards | Describe Goal | Paste Links ]  ->  "Ready to run?" review  ->  Approve & Run
 //
@@ -184,7 +186,7 @@ export function mountNewProject(doc, options = {}) {
   let trap = null;
   let returnFocus = null;
   let tab = DEFAULT_TAB;
-  let step = 'inputs'; // inputs | review
+  let step = 'inputs'; // inputs | intake | refine | review
   let compiled = null; // { id, blueprint, sourceIds }
   let busy = false;
   let cards = null; // Space cards, once loaded
@@ -194,6 +196,8 @@ export function mountNewProject(doc, options = {}) {
   let presetSourceIds = [];
 
   // ---- the inputs of each tab ----
+  // The guided intake (template, roadmap and goal): target, region, deliverables, then Elarion's check and questions.
+  const intake = { target: '', region: '', deliverables: new Set(), answers: {}, analysis: null, done: false };
   const state = { roadmap: ROADMAP_TEMPLATES[0].id, roadmapName: '', roadmapNotes: '', template: TEMPLATES[0].id, brief: { projectName: '', domain: '', auth: '', database: '', notes: '' }, goalName: '', goal: '', linksName: '', linksText: '', cardName: '', cardSearch: '' };
 
   function panelFor(tabId) {
@@ -449,6 +453,8 @@ export function mountNewProject(doc, options = {}) {
     parts.tabs = tabButtons;
     parts.error = el(doc, 'p', { class: 'dc-warn np-error', role: 'alert', hidden: true });
     parts.inputs = el(doc, 'div', { class: 'np-inputs' }, [el(doc, 'div', { class: 'np-seg', role: 'tablist', 'aria-label': 'How do you want to start?' }, tabButtons), ...panels]);
+    parts.intake = el(doc, 'div', { class: 'np-intake dc-ingest', hidden: true });
+    parts.refine = el(doc, 'div', { class: 'np-refine dc-ingest', hidden: true });
     parts.review = el(doc, 'div', { class: 'np-review-wrap', hidden: true });
     parts.next = el(doc, 'button', { type: 'button', class: 'bp-primary np-next', text: 'Review plan' });
     parts.back = el(doc, 'button', { type: 'button', class: 'toggle-button np-back', text: 'Back', hidden: true });
@@ -460,6 +466,8 @@ export function mountNewProject(doc, options = {}) {
       el(doc, 'div', { class: 'np-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId }, [
         el(doc, 'div', { class: 'np-head' }, [el(doc, 'h2', { id: titleId, class: 'np-title', text: 'New project' }), close]),
         parts.inputs,
+        parts.intake,
+        parts.refine,
         parts.review,
         parts.error,
         el(doc, 'div', { class: 'np-foot' }, [parts.cancel, el(doc, 'span', { class: 'mc-spacer' }), parts.back, parts.next]),
@@ -476,8 +484,8 @@ export function mountNewProject(doc, options = {}) {
         selectTab(tabButtons[next].dataset.npTab, true);
       });
     });
-    parts.next.addEventListener('click', () => (step === 'inputs' ? review() : approve()));
-    parts.back.addEventListener('click', () => backToInputs());
+    parts.next.addEventListener('click', () => next());
+    parts.back.addEventListener('click', () => goBack());
     parts.cancel.addEventListener('click', () => api_.close());
     close.addEventListener('click', () => api_.close());
     scrim.addEventListener('click', (event) => {
@@ -513,6 +521,7 @@ export function mountNewProject(doc, options = {}) {
       if (on && focus) button.focus();
     }
     for (const panel of scrim.querySelectorAll('[data-np-panel]')) panel.hidden = panel.dataset.npPanel !== tabId;
+    if (step === 'inputs' && parts.next) parts.next.textContent = guided() ? 'Next' : 'Review plan';
     showError('');
     if (tabId === 'template') renderTemplatePanel();
     else if (tabId === 'roadmap') renderRoadmapPanel();
@@ -522,12 +531,200 @@ export function mountNewProject(doc, options = {}) {
     else loadCards();
   }
 
+  // ---- steps between the inputs and the review: the guided intake ----
+  const GUIDED_TABS = ['template', 'roadmap', 'goal'];
+  const guided = () => !presetSpec && GUIDED_TABS.includes(tab);
+  const DELIVERABLES = [
+    { id: 'website', label: 'A live website' },
+    { id: 'plan', label: 'Written plan and playbook' },
+    { id: 'audit', label: 'SEO and page audit report' },
+    { id: 'pricing', label: 'Pricing and checkout setup' },
+    { id: 'content', label: 'Content calendar' },
+    { id: 'outreach', label: 'Outreach scripts and emails' },
+  ];
+  const DEFAULT_DELIVERABLES = { template: ['website', 'plan'], roadmap: ['plan'], goal: ['plan'] };
+  const FALLBACK_QUESTIONS = [{ id: 'criteria', question: 'How should the result be judged?', why: 'This becomes the pass mark the agents work towards.', kind: 'choice', options: ['Search score of 90 or more', 'Sign-ups or sales', 'Speed and accessibility', 'Quality of the content and copy'] }];
+
+  // The page to check, when what was typed looks like one: "example.com" or "https://example.com/page"; otherwise it is a business name.
+  const targetUrl = (text) => {
+    const value = clean(text);
+    if (/^https?:\/\/\S+$/i.test(value)) return value;
+    return /^([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(value) ? 'https://' + value : '';
+  };
+  const deliverableLabels = () => DELIVERABLES.filter((d) => intake.deliverables.has(d.id)).map((d) => d.label);
+
+  function showPane(name, title, nextLabel) {
+    step = name;
+    parts.inputs.hidden = name !== 'inputs';
+    parts.intake.hidden = name !== 'intake';
+    parts.refine.hidden = name !== 'refine';
+    parts.review.hidden = name !== 'review';
+    parts.next.hidden = false;
+    parts.next.disabled = false;
+    parts.next.classList.remove('np-upgrade');
+    parts.next.textContent = nextLabel;
+    parts.back.hidden = false;
+    parts.back.textContent = 'Back';
+    scrim.querySelector('.np-title').textContent = title;
+    showError('');
+  }
+
+  function next() {
+    if (busy) return;
+    if (step === 'inputs') return guided() ? beginIntake() : review();
+    if (step === 'intake') return checkIntake();
+    if (step === 'refine') return review();
+    return approve();
+  }
+
+  function goBack() {
+    if (busy) return;
+    if (step === 'review' && guided() && intake.done) return renderRefinePane();
+    if (step === 'refine') return renderIntakePane();
+    return backToInputs();
+  }
+
+  function beginIntake() {
+    showError('');
+    const built = buildSpec();
+    if (!built.ok) return showError(built.message, built.field);
+    if (!intake.deliverables.size) for (const d of DEFAULT_DELIVERABLES[tab] || []) intake.deliverables.add(d);
+    if (!intake.target && tab === 'template' && clean(state.brief.domain)) intake.target = clean(state.brief.domain);
+    renderIntakePane();
+  }
+
+  function renderIntakePane() {
+    const target = el(doc, 'input', { type: 'text', id: id + '-itarget', 'data-field': 'intakeTarget', 'data-autofocus': '', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', maxlength: '300', placeholder: 'example.com, or the name of the business' });
+    target.value = intake.target;
+    target.addEventListener('input', () => (intake.target = target.value));
+    const region = el(doc, 'input', { type: 'text', id: id + '-iregion', 'data-field': 'intakeRegion', autocomplete: 'off', maxlength: '120', placeholder: 'For example: Portugal, the US, Europe' });
+    region.value = intake.region;
+    region.addEventListener('input', () => (intake.region = region.value));
+    const boxes = DELIVERABLES.map((d) => {
+      const box = el(doc, 'input', { type: 'checkbox', id: id + '-d-' + d.id, value: d.id, 'data-deliverable': d.id });
+      box.checked = intake.deliverables.has(d.id);
+      box.addEventListener('change', () => (box.checked ? intake.deliverables.add(d.id) : intake.deliverables.delete(d.id)));
+      return el(doc, 'label', { class: 'np-check', for: box.id }, [box, el(doc, 'span', { text: d.label })]);
+    });
+    parts.intake.replaceChildren(
+      el(doc, 'p', { class: 'dc-body', text: 'Three quick things so the plan fits.' }),
+      el(doc, 'div', { class: 'dc-field' }, [el(doc, 'label', { for: target.id, text: 'Website or business' }), target, el(doc, 'p', { class: 'dc-hint', text: 'A web address is checked for you in the next step.' })]),
+      el(doc, 'div', { class: 'dc-field' }, [el(doc, 'label', { for: region.id, text: 'Region' }), region]),
+      el(doc, 'fieldset', { class: 'np-checks-group' }, [el(doc, 'legend', { class: 'np-subhead', text: 'What should you get?' }), ...boxes]),
+    );
+    showPane('intake', 'About the project', 'Check it');
+    const first = parts.intake.querySelector('[data-autofocus]');
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  const selectedTemplate = () => {
+    if (tab === 'template') {
+      const t = TEMPLATES.find((x) => x.id === state.template) || TEMPLATES[0];
+      return { name: t.name, category: categoryOf(t).name, summary: t.summary };
+    }
+    if (tab === 'roadmap') {
+      const r = roadmapById(state.roadmap);
+      return { name: r.name, category: 'Roadmap', summary: r.summary };
+    }
+    return null;
+  };
+
+  async function checkIntake() {
+    if (busy) return;
+    showError('');
+    if (!intake.deliverables.size) return showError('Choose at least one thing you want to get.', 'intakeTarget');
+    const url = targetUrl(intake.target);
+    setBusy(true, url ? 'Checking the page…' : 'Thinking…');
+    let analysis;
+    try {
+      analysis = await api.analyzeIntake({ url, region: clean(intake.region), goal: tab === 'goal' ? clean(state.goal) : '', deliverables: deliverableLabels(), template: selectedTemplate() });
+      // An engine without the intake check answers with something else: treat it as no answer.
+      if (!analysis || !Array.isArray(analysis.questions)) throw new Error('no intake answer');
+    } catch {
+      analysis = { target: url ? { url, checked: false, error: 'The engine could not run the check.' } : null, summary: 'Elarion could not run the page check, so the plan is built from your answers.', questions: FALLBACK_QUESTIONS };
+    }
+    setBusy(false);
+    intake.analysis = analysis;
+    intake.done = true;
+    renderRefinePane();
+  }
+
+  // The result of the page check, then Elarion's questions: each a choice or a line of text, each saying why it is asked.
+  function renderRefinePane() {
+    const analysis = intake.analysis || { target: null, summary: '', questions: FALLBACK_QUESTIONS };
+    const nodes = [el(doc, 'p', { class: 'dc-body', text: analysis.summary })];
+    const t = analysis.target;
+    if (t && t.checked) {
+      const failing = (t.findings || []).filter((f) => f.points < f.max);
+      nodes.push(el(doc, 'div', { class: 'np-score', 'data-grade': t.grade }, [
+        el(doc, 'strong', { class: 'np-score-number', text: t.score + '/100' }),
+        el(doc, 'span', { class: 'np-score-grade', text: 'Grade ' + t.grade }),
+        el(doc, 'span', { class: 'mc-muted', text: failing.length ? failing.length + ' to improve' : 'Nothing to improve' }),
+      ]));
+      if (failing.length) {
+        nodes.push(el(doc, 'ul', { class: 'np-findings', 'aria-label': 'What the page check found' }, failing.slice(0, 6).map((f) => el(doc, 'li', { class: 'np-finding' }, [el(doc, 'strong', { text: f.label }), doc.createTextNode(' · ' + f.points + '/' + f.max + ' · ' + f.detail)]))));
+      }
+    } else if (t && t.error) {
+      nodes.push(el(doc, 'p', { class: 'dc-hint', text: t.error }));
+    }
+    for (const q of analysis.questions || []) {
+      const qid = id + '-q-' + q.id;
+      let control;
+      if (q.kind === 'choice' && Array.isArray(q.options)) {
+        control = el(doc, 'div', { class: 'np-options', role: 'radiogroup', 'aria-labelledby': qid }, q.options.map((option, i) => {
+          const radio = el(doc, 'input', { type: 'radio', name: qid, id: qid + '-' + i, value: option, 'data-answer': q.id });
+          radio.checked = intake.answers[q.id] === option;
+          radio.addEventListener('change', () => (intake.answers[q.id] = option));
+          return el(doc, 'label', { class: 'np-check', for: radio.id }, [radio, el(doc, 'span', { text: option })]);
+        }));
+      } else {
+        control = el(doc, 'input', { type: 'text', id: qid + '-text', 'data-answer': q.id, maxlength: '300', autocomplete: 'off', 'aria-labelledby': qid });
+        control.value = intake.answers[q.id] || '';
+        control.addEventListener('input', () => (intake.answers[q.id] = control.value));
+      }
+      nodes.push(el(doc, 'div', { class: 'np-q' }, [el(doc, 'p', { class: 'np-q-text', id: qid, text: q.question }), el(doc, 'p', { class: 'dc-hint', text: q.why }), control]));
+    }
+    parts.refine.replaceChildren(...nodes);
+    showPane('refine', 'Elarion has questions', 'Review plan');
+    const first = parts.refine.querySelector('input');
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  // What the intake adds to the plan's brief: the target, region, deliverables, the page check and every answer given.
+  function intakeText() {
+    const facts = [];
+    if (clean(intake.target)) facts.push('Target: ' + clean(intake.target));
+    if (clean(intake.region)) facts.push('Region: ' + clean(intake.region));
+    if (intake.deliverables.size) facts.push('Deliverables: ' + deliverableLabels().join(', '));
+    const t = intake.analysis && intake.analysis.target;
+    if (t && t.checked) {
+      const failing = (t.findings || []).filter((f) => f.points < f.max).map((f) => f.label + ' (' + f.detail + ')');
+      facts.push('Page check: ' + t.score + '/100, grade ' + t.grade + (failing.length ? '; to improve: ' + failing.join('; ') : ''));
+    }
+    for (const q of (intake.analysis && intake.analysis.questions) || []) {
+      const answer = clean(intake.answers[q.id]);
+      if (answer) facts.push(q.question + ' ' + answer);
+    }
+    return facts.length ? 'Guided intake. ' + facts.join('. ') + '.' : '';
+  }
+
+  function applyIntake(spec) {
+    const text = intakeText();
+    if (!text) return spec;
+    const links = (spec.links || []).map((l) => ({ ...l }));
+    const brief = links.find((l) => l.url === BRIEF_SOURCE_URL);
+    if (brief) brief.rawSnippet = truncate(clean(brief.rawSnippet) + ' ' + text, 2500);
+    else links.push({ url: BRIEF_SOURCE_URL, title: 'Project intake', rawSnippet: truncate(text, 2500) });
+    return { ...spec, links };
+  }
+
   // ---- step 2: the review ----
   async function review() {
     if (busy) return;
     showError('');
     const built = buildSpec();
     if (!built.ok) return showError(built.message, built.field);
+    if (guided() && intake.done) built.spec = applyIntake(built.spec);
     const checked = parseBlueprintSpec(JSON.stringify(built.spec));
     if (!checked.ok) return showError('That cannot be made into a project yet: ' + checked.errors.map((e) => e.message).join(' '), null);
 
@@ -541,7 +738,7 @@ export function mountNewProject(doc, options = {}) {
       return showError('Could not plan the project: ' + detail);
     }
     const blueprint = result.blueprint || {};
-    compiled = { id: result.blueprint_id, blueprint, sourceIds: built.sourceIds, template: built.template || null };
+    compiled = { id: result.blueprint_id, blueprint, sourceIds: built.sourceIds, template: built.template || null, wantsWebsite: guided() && intake.done && intake.deliverables.has('website') };
     if (built.template && storage) {
       const usage = loadUsage(storage);
       usage[built.template.id] = (Number(usage[built.template.id]) || 0) + 1;
@@ -558,6 +755,8 @@ export function mountNewProject(doc, options = {}) {
     const bp = compiled.blueprint;
     step = 'review';
     parts.inputs.hidden = true;
+    parts.intake.hidden = true;
+    parts.refine.hidden = true;
     parts.review.hidden = false;
     parts.next.hidden = false;
     parts.next.textContent = 'Approve & Run';
@@ -571,7 +770,7 @@ export function mountNewProject(doc, options = {}) {
     const checkList = el(doc, 'ul', { class: 'bp-checks np-checks' }, [el(doc, 'li', { class: 'bp-check', 'data-ok': 'pending', text: 'Checking the engine…' })]);
     const estimate = el(doc, 'p', { class: 'np-estimate', text: 'Estimating…' });
     const website = el(doc, 'input', { type: 'checkbox', class: 'bp-website-box', id: id + '-website' });
-    website.checked = /\b(web ?site|web ?page|landing page|home ?page)\b/i.test([bp.project_name, ...(bp.execution_phases || []).map((p) => p.phase_name + ' ' + (p.prompt_template || ''))].join(' ')) || Boolean(compiled.template && compiled.template.website);
+    website.checked = /\b(web ?site|web ?page|landing page|home ?page)\b/i.test([bp.project_name, ...(bp.execution_phases || []).map((p) => p.phase_name + ' ' + (p.prompt_template || ''))].join(' ')) || Boolean(compiled.template && compiled.template.website) || Boolean(compiled.wantsWebsite);
     parts.website = website;
     parts.review.replaceChildren(
       el(doc, 'section', { class: 'np-review', 'aria-labelledby': id + '-rtitle' }, [
@@ -620,8 +819,10 @@ export function mountNewProject(doc, options = {}) {
     if (busy) return;
     step = 'inputs';
     parts.inputs.hidden = false;
+    parts.intake.hidden = true;
+    parts.refine.hidden = true;
     parts.review.hidden = true;
-    parts.next.textContent = 'Review plan';
+    parts.next.textContent = guided() ? 'Next' : 'Review plan';
     parts.next.classList.remove('np-upgrade');
     parts.next.disabled = false;
     parts.back.hidden = true;
@@ -682,6 +883,7 @@ export function mountNewProject(doc, options = {}) {
       compiled = null;
       step = 'inputs';
       presetSpec = null;
+      Object.assign(intake, { target: '', region: '', deliverables: new Set(), answers: {}, analysis: null, done: false });
       build();
       doc.body.append(scrim);
       trap = trapFocus(scrim.querySelector('.np-modal'), { returnTo: returnFocus });

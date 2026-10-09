@@ -151,3 +151,15 @@ describe('engine address on other devices', () => {
 		}
 	});
 });
+
+describe('guided intake', () => {
+	it('posts the target, region and deliverables to /api/intake/analyze and returns the check and the questions', async () => {
+		const answer = { target: null, summary: 'ok', questions: [{ id: 'criteria', question: 'q', why: 'w', kind: 'text' }] };
+		const { calls, fetchImpl } = mockFetch(200, answer);
+		const api = createEngineApi({ baseUrl: 'http://engine.test/', fetch: fetchImpl, getToken: () => 'jwt' });
+		const result = await api.analyzeIntake({ url: 'https://a.test', region: 'Portugal', deliverables: ['A live website'], template: { name: 'T' } });
+		expect(calls[0].method + ' ' + calls[0].url).toBe('POST http://engine.test/api/intake/analyze');
+		expect(calls[0].body).toEqual({ url: 'https://a.test', region: 'Portugal', deliverables: ['A live website'], template: { name: 'T' } });
+		expect(result.questions[0].id).toBe('criteria');
+	});
+});

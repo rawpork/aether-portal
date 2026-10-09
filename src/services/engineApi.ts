@@ -591,6 +591,37 @@ export interface CompiledBlueprint {
 	miserly_integration: { enabled: boolean; proxy_endpoint: string | null; budget_cap_usd: number };
 }
 
+// POST /api/intake/analyze: Elarion checks the target page against the on-page benchmark and asks what decides the plan.
+export interface IntakeRequest {
+	url?: string;
+	region?: string;
+	goal?: string;
+	deliverables?: string[];
+	template?: { name?: string; category?: string; summary?: string } | null;
+}
+
+export interface IntakeFinding {
+	id: string;
+	label: string;
+	points: number;
+	max: number;
+	detail: string;
+}
+
+export interface IntakeQuestion {
+	id: string;
+	question: string;
+	why: string;
+	kind: 'choice' | 'text';
+	options?: string[];
+}
+
+export interface IntakeResult {
+	target: { url: string; checked: boolean; status?: number; error?: string; score?: number; grade?: string; findings?: IntakeFinding[] } | null;
+	summary: string;
+	questions: IntakeQuestion[];
+}
+
 export interface CompileBlueprintResult {
 	success: true;
 	message: string;
@@ -955,6 +986,10 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 		// POST /api/blueprint/compile. Schema violations throw EngineApiError 400 with body.validation_errors.
 		compileBlueprint(payload: CompileBlueprintRequest): Promise<CompileBlueprintResult> {
 			return request<CompileBlueprintResult>('POST', '/api/blueprint/compile', { body: payload });
+		},
+
+		analyzeIntake(payload: IntakeRequest): Promise<IntakeResult> {
+			return request<IntakeResult>('POST', '/api/intake/analyze', { body: payload, timeoutMs: 20_000 });
 		},
 
 		// WebSocket /api/voice/stream on the same engine, authenticated with the same token.

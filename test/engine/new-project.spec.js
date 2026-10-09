@@ -44,10 +44,14 @@ describe('New project dialog', () => {
 		node.dispatchEvent(new Event('input', { bubbles: true }));
 	};
 	const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0)); };
+	// The guided steps (template, roadmap, goal): inputs -> About the project -> Elarion's questions -> review.
+	const clickNext = async () => { document.querySelector('.np-next').click(); await flush(); };
+	const guide = async () => { await clickNext(); await clickNext(); await clickNext(); };
 	const BP = { blueprint_id: 'bp_1', project_name: 'Bakery', execution_phases: [{ phase_id: 'p1', phase_name: 'Plan', agent_persona: 'Researcher', description: 'Read', task_steps: ['a'] }] };
 	const makeApi = () => ({
 		compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })),
 		baseUrl: 'http://localhost:3333',
+		analyzeIntake: vi.fn(async () => ({ target: null, summary: 'No page to check: Elarion plans from your goal and your answers.', questions: [{ id: 'criteria', question: 'How should the result be judged?', why: 'It becomes the pass mark.', kind: 'choice', options: ['Sign-ups or sales', 'Speed and accessibility'] }] })),
 		getEngineConfig: vi.fn(async () => ({ api_key_configured: true, key_verified: true, direct_mode: true })),
 	});
 
@@ -73,8 +77,7 @@ describe('New project dialog', () => {
 		project = mountNewProject(document, { api, pro: () => false, portalFetch: async () => new Response('{}'), onUpgrade, onRun });
 		project.open('goal');
 		type('goal', 'Research the best bakery waitlist tools and summarise them');
-		document.querySelector('.np-next').click();
-		await flush();
+		await guide();
 		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
 		expect(document.querySelector('.np-project').textContent).toBe('Bakery');
 		expect(document.querySelector('.np-plan li').textContent).toContain('Plan');
@@ -109,6 +112,8 @@ describe('Roadmap Templates tab', () => {
 	let project;
 	afterEach(() => { if (project) project.destroy(); project = null; document.body.replaceChildren(); });
 	const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0)); };
+	const clickNext = async () => { document.querySelector('.np-next').click(); await flush(); };
+	const guide = async () => { await clickNext(); await clickNext(); await clickNext(); };
 	const BP = { blueprint_id: 'bp_1', project_name: '30-day product launch', execution_phases: [{ phase_id: 'p1', phase_name: 'Position', agent_persona: 'Researcher', description: 'Define', task_steps: ['a'] }] };
 
 	it('lists the ready-made roadmaps, and builds a spec whose one source is the roadmap written out', () => {
@@ -124,14 +129,13 @@ describe('Roadmap Templates tab', () => {
 	});
 
 	it('launches a roadmap, and reports it to the index tagged template, ingest and roadmap', async () => {
-		const api = { baseUrl: 'http://localhost:3333', compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })), getEngineConfig: vi.fn(async () => ({ api_key_configured: true, key_verified: true })) };
+		const api = { baseUrl: 'http://localhost:3333', analyzeIntake: vi.fn(async () => ({ target: null, summary: '', questions: [] })), compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })), getEngineConfig: vi.fn(async () => ({ api_key_configured: true, key_verified: true })) };
 		const onCompiled = vi.fn();
 		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), onCompiled });
 		project.open('roadmap');
 		expect(document.querySelectorAll('[data-np-panel="roadmap"] .np-card').length).toBe(ROADMAP_TEMPLATES.length);
 		document.querySelector('[data-np-panel="roadmap"] input[value="launch-30"]').click();
-		document.querySelector('.np-next').click();
-		await flush();
+		await guide();
 		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
 		expect(api.compileBlueprint.mock.calls[0][0].links[0].rawSnippet).toContain('Week 4: Learn');
 		expect(onCompiled.mock.calls[0][2].tags).toEqual(['ingest', 'template', 'roadmap']);
@@ -149,5 +153,137 @@ describe('Roadmap Templates tab', () => {
 		document.querySelector('.np-next').click();
 		await flush();
 		expect(onCompiled.mock.calls[0][2].tags).toEqual(['ingest']);
+	});
+});
+
+describe('Guided intake', () => {
+	let project;
+	afterEach(() => { if (project) project.destroy(); project = null; document.body.replaceChildren(); });
+	const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0)); };
+	const clickNext = async () => { document.querySelector('.np-next').click(); await flush(); };
+	const BP = { blueprint_id: 'bp_1', project_name: 'Landing page + waitlist', execution_phases: [{ phase_id: 'p1', phase_name: 'Build the website', agent_persona: 'Developer', description: 'Build', task_steps: ['a'] }] };
+	const ANALYSIS = {
+		target: { url: 'https://shop.example.com', checked: true, status: 200, score: 62, grade: 'C', findings: [
+			{ id: 'title', label: 'Page title', points: 0, max: 10, detail: 'There is no <title>.' },
+			{ id: 'h1', label: 'Exactly one H1 heading', points: 10, max: 10, detail: '1 H1 heading found.' },
+			{ id: 'canonical', label: 'Canonical link', points: 0, max: 5, detail: 'There is no canonical link.' },
+		] },
+		summary: 'Checked https://shop.example.com against the on-page benchmark: 62 out of 100 (grade C).',
+		questions: [
+			{ id: 'region', question: 'Which region or market is this for?', why: 'Language and currency follow it.', kind: 'text' },
+			{ id: 'pricing', question: 'Which pricing tiers should it launch with?', why: 'The plan builds exactly these.', kind: 'choice', options: ['Free only', 'Free, Mid and Pro'] },
+			{ id: 'bundle', question: 'Which features should come bundled with the paid tier?', why: 'Each one has to be built.', kind: 'text' },
+		],
+	};
+	const makeApi = (analysis = ANALYSIS) => ({
+		baseUrl: 'http://localhost:3333',
+		analyzeIntake: vi.fn(async () => analysis),
+		compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })),
+		getEngineConfig: vi.fn(async () => ({ api_key_configured: true, key_verified: true, direct_mode: true })),
+	});
+	const setField = (selector, value) => { const node = document.querySelector(selector); node.value = value; node.dispatchEvent(new Event('input', { bubbles: true })); };
+
+	it('a template asks for target, region and deliverables, checks the page, asks Elarion\'s questions, then compiles with the answers', async () => {
+		const api = makeApi();
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}') });
+		project.open('template');
+		expect(document.querySelector('.np-next').textContent).toBe('Next');
+		await clickNext();
+		expect(document.querySelector('.np-title').textContent).toBe('About the project');
+		expect([...document.querySelectorAll('[data-deliverable]')].filter((b) => b.checked).map((b) => b.value)).toEqual(['website', 'plan']);
+		setField('[data-field="intakeTarget"]', 'shop.example.com');
+		setField('[data-field="intakeRegion"]', 'Portugal');
+		document.querySelector('[data-deliverable="pricing"]').click();
+		await clickNext();
+		expect(api.analyzeIntake).toHaveBeenCalledTimes(1);
+		const request = api.analyzeIntake.mock.calls[0][0];
+		expect(request.url).toBe('https://shop.example.com');
+		expect(request.region).toBe('Portugal');
+		expect(request.deliverables).toEqual(['A live website', 'Written plan and playbook', 'Pricing and checkout setup']);
+		expect(request.template.name).toBeTruthy();
+		// The page check and the questions.
+		expect(document.querySelector('.np-title').textContent).toBe('Elarion has questions');
+		expect(document.querySelector('.np-score-number').textContent).toBe('62/100');
+		expect(document.querySelector('.np-score').dataset.grade).toBe('C');
+		expect([...document.querySelectorAll('.np-finding strong')].map((n) => n.textContent)).toEqual(['Page title', 'Canonical link']);
+		expect(document.querySelectorAll('.np-q').length).toBe(3);
+		document.querySelector('[data-answer="pricing"][value="Free, Mid and Pro"]').click();
+		setField('[data-answer="bundle"]', 'Automated cron monitoring');
+		await clickNext();
+		// Compiled with all of it folded into the brief; the website was asked for, so it is ticked on the review.
+		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
+		const snippet = api.compileBlueprint.mock.calls[0][0].links.find((l) => l.url === 'aether:brief').rawSnippet;
+		expect(snippet).toContain('Guided intake.');
+		expect(snippet).toContain('Target: shop.example.com');
+		expect(snippet).toContain('Region: Portugal');
+		expect(snippet).toContain('Pricing and checkout setup');
+		expect(snippet).toContain('Page check: 62/100, grade C');
+		expect(snippet).toContain('Which pricing tiers should it launch with? Free, Mid and Pro');
+		expect(snippet).toContain('Automated cron monitoring');
+		expect(document.querySelector('.np-title').textContent).toBe('Ready to run?');
+		expect(document.querySelector('.bp-website-box').checked).toBe(true);
+	});
+
+	it('Back walks the steps in reverse and keeps what was typed', async () => {
+		project = mountNewProject(document, { api: makeApi(), pro: () => true, portalFetch: async () => new Response('{}') });
+		project.open('goal');
+		const goal = document.querySelector('[data-field="goal"]');
+		goal.value = 'Research the best bakery waitlist tools and summarise them';
+		goal.dispatchEvent(new Event('input', { bubbles: true }));
+		await clickNext();
+		setField('[data-field="intakeRegion"]', 'Spain');
+		await clickNext();
+		document.querySelector('.np-back').click();
+		expect(document.querySelector('.np-title').textContent).toBe('About the project');
+		expect(document.querySelector('[data-field="intakeRegion"]').value).toBe('Spain');
+		document.querySelector('.np-back').click();
+		expect(document.querySelector('.np-title').textContent).toBe('New project');
+		expect(document.querySelector('[data-field="goal"]').value).toContain('bakery waitlist');
+	});
+
+	it('a business name with no web address is not fetched, and a failed check still lets the plan go on', async () => {
+		const api = makeApi();
+		api.analyzeIntake = vi.fn(async () => { throw new Error('404'); });
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}') });
+		project.open('roadmap');
+		await clickNext();
+		setField('[data-field="intakeTarget"]', 'Maria\'s bakery');
+		await clickNext();
+		expect(api.analyzeIntake.mock.calls[0][0].url).toBe('');
+		expect(document.querySelector('.np-title').textContent).toBe('Elarion has questions');
+		expect(document.querySelectorAll('.np-q').length).toBe(1);
+		await clickNext();
+		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
+	});
+
+	it('an engine that answers without questions is treated as having no check', async () => {
+		const api = makeApi();
+		api.analyzeIntake = vi.fn(async () => ({}));
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}') });
+		project.open('goal');
+		const goal = document.querySelector('[data-field="goal"]');
+		goal.value = 'Research the best bakery waitlist tools and summarise them';
+		goal.dispatchEvent(new Event('input', { bubbles: true }));
+		await clickNext();
+		await clickNext();
+		expect(document.querySelectorAll('.np-q').length).toBe(1);
+	});
+
+	it('needs at least one deliverable, and Paste Links goes straight to the plan without the intake', async () => {
+		const api = makeApi();
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}') });
+		project.open('template');
+		await clickNext();
+		for (const box of document.querySelectorAll('[data-deliverable]')) if (box.checked) box.click();
+		await clickNext();
+		expect(document.querySelector('.np-error').hidden).toBe(false);
+		expect(api.analyzeIntake).not.toHaveBeenCalled();
+		project.close();
+		project.open('links');
+		expect(document.querySelector('.np-next').textContent).toBe('Review plan');
+		setField('[data-field="links"]', 'https://a.test/page');
+		await clickNext();
+		expect(api.analyzeIntake).not.toHaveBeenCalled();
+		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
 	});
 });

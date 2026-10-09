@@ -1371,6 +1371,19 @@ ${SHELL_SWITCH_CSS}
     .np-modal { background: #0B0D10; border-color: rgba(255, 255, 255, 0.08); color: var(--text); }
     .np-scrim { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 16px; background: rgba(4, 8, 14, 0.62); }
     .np-modal { box-sizing: border-box; width: min(720px, 100%); max-width: 100%; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+    /* Guided intake and Elarion's questions */
+    .np-intake, .np-refine { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 22px 16px; }
+    .np-check { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font-size: 14px; cursor: pointer; }
+    .np-check input { flex: none; width: 18px; height: 18px; accent-color: var(--accent); }
+    .np-checks-group { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; padding: 0; border: 0; }
+    .np-score { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
+    .np-score-number { font-size: 26px; font-weight: 700; }
+    .np-score-grade { padding: 2px 10px; border: 1px solid var(--accent-line); border-radius: 999px; color: var(--accent-text); font-size: 13px; font-weight: 600; }
+    .np-score[data-grade="D"] .np-score-grade, .np-score[data-grade="F"] .np-score-grade { border-color: var(--danger-line); color: var(--danger-text); }
+    .np-findings { margin: 0 0 8px; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-2); }
+    .np-q { margin: 16px 0 0; display: flex; flex-direction: column; gap: 6px; }
+    .np-q-text { margin: 0; font-size: 15px; font-weight: 600; }
+    .np-options { display: flex; flex-direction: column; gap: 6px; }
     .np-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 12px 6px 22px; }
     .np-title { font-size: 20px; font-weight: 700; }
     .np-close { appearance: none; flex: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); color: var(--text); font-size: 24px; line-height: 1; cursor: pointer; }
