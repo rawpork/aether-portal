@@ -124,6 +124,25 @@ Numbered 7-9 here because Phases 1-6 above are already taken; they are the "Phas
 - [ ] Video content engine (Director, Jordan Blake): CapCut template batch rendering and ElevenLabs audio for Miserly.io and Witt Bits campaigns
 - [ ] Physical fabrication and CAD (Sculptor, Nate Rodriguez): parametric FreeCAD scripts and OrcaSlicer profile automation for 3D printed products
 
+## Phase 10: Idea to Delivery (2026-10-08)
+One flow from an idea or a saved link to a delivered project, with Elarion guiding each step like a chief of operations. Handoff and resume notes: `HANDOFF.md`.
+- [x] Unified New project dialog: guided intake (target, region, deliverables), page score and Elarion's questions, roadmap templates, one review, `/share` lands in it (2026-10-08)
+- [x] Mission Control always dark like Space; Elarion tray above the composer, told what is on screen (Studio workflow, project phases) (2026-10-08)
+- [x] D1 retrieval layer: records + FTS5, auto-indexing triggers, conversations stored per project, `search_records` / `get_record` tools (2026-10-08)
+- [x] Space controls: 64px rail, toolbar of View / Time / Filter / Display / More trays, zoom-to-fit (2026-10-08)
+- [x] Studio: pan and zoom, version history with click-to-restore, a map for every project, hints and hover focus, connector toolbox (Telegram, Web request), test-fire per action (2026-10-08)
+- [x] Project journey: plan, map, connections, test, launch, deliver, with Elarion's next question (Projects card, Overview banner, `project_status` tool) (2026-10-08)
+- [ ] Run connector actions for real inside workflow runs, only after an approval node (Telegram, Web request first)
+- [ ] Test-fire a whole workflow: simulate each step with no sends, optional real model, result shown per node
+- [ ] Google connection (OAuth, tokens kept in the portal): Gmail drafts and send from the user's own account (approval by default, daily cap, unsubscribe line), Sheets/Drive, Calendar
+- [ ] Google Places lead finder (API key, no scraping) into a Sheet, with an email draft per lead
+- [ ] Video channel pipeline: script, voice (ElevenLabs), render, YouTube upload
+- [ ] Website generation through to a published site on a custom domain
+- [ ] Shareable example workflow: idea to website, videos, leads and outreach, runnable end to end by someone else
+- [ ] Sharing with other people: accounts, plans and billing (reuse the AuditPulse ledger and Stripe webhook design), onboarding
+- [ ] Elarion as proactive COO: Telegram nudges when a project stalls, weekly status
+- [ ] Connectors beyond Google: Slack, Notion, GitHub; auto-connect what a project already has set up
+
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev
 - **Environment:** Cloudflare Workers + D1 (aether_context_db) + static assets (public/) + Gemini 3.x API, optional Anthropic API (Claude Sonnet share tier)
