@@ -132,7 +132,7 @@ One flow from an idea or a saved link to a delivered project, with Elarion guidi
 - [x] Space controls: 64px rail, toolbar of View / Time / Filter / Display / More trays, zoom-to-fit (2026-10-08)
 - [x] Studio: pan and zoom, version history with click-to-restore, a map for every project, hints and hover focus, connector toolbox (Telegram, Web request), test-fire per action (2026-10-08)
 - [x] Project journey: plan, map, connections, test, launch, deliver, with Elarion's next question (Projects card, Overview banner, `project_status` tool) (2026-10-08)
-- [ ] Run connector actions for real inside workflow runs, only after an approval node (Telegram, Web request first)
+- [x] Run connector actions for real inside workflow runs, only after an approval node (Telegram, Web request first). Engine 97877ab, 2026-10-08.
 - [ ] Test-fire a whole workflow: simulate each step with no sends, optional real model, result shown per node
 - [ ] Google connection (OAuth, tokens kept in the portal): Gmail drafts and send from the user's own account (approval by default, daily cap, unsubscribe line), Sheets/Drive, Calendar
 - [ ] Google Places lead finder (API key, no scraping) into a Sheet, with an email draft per lead

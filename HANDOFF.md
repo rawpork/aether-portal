@@ -7,7 +7,7 @@ Written 2026-10-08 at the end of a very long session. **To resume, the owner say
 
 ## Where things stand (live)
 - **Portal** `https://lingering-water-de49.klo377.workers.dev`: Worker version `aa8b16b0-1010-48be-af9c-79085af9d1cd`, `main` at `2f0725f`. 1081 tests, `npx tsc` clean.
-- **Engine** (`../Aether_Engine`): `main` at `24d80fc`, 135 tests, runs on `localhost:3333` under the watchdog (`scripts/aether-up.ps1`).
+- **Engine** (`../Aether_Engine`): `main` at `97877ab`, 137 tests, runs on `localhost:3333` under the watchdog (`scripts/aether-up.ps1`).
 - **D1** (`aether_context_db`): migrations 0019 (records + FTS5), 0020 (conversations), 0021 (complete recall) are applied remotely.
 - Live index: `records` holds cards, deliverables, blueprints, phase outputs, runs, groups, conversations. Re-sweep: `cd ../Aether_Engine && env -u SUPABASE_JWT_SECRET npm run backfill:records`.
 
@@ -24,7 +24,7 @@ Written 2026-10-08 at the end of a very long session. **To resume, the owner say
 | `/share` goes into the New project dialog | `src/share-page.js`, `src/index.js` |
 
 ## Next up (in order; the same list is in ROADMAP.md Phase 10)
-1. **Run connector actions for real inside workflow runs**, only after an approval node (Telegram + Web request first). The engine runner treats action nodes as "proposed" today (`../Aether_Engine/src/workflows.ts` `startRun`). Connector code is ready: `src/connectors.ts` `runConnectorAction`.
+1. ~~Run connector actions for real inside workflow runs~~ DONE (engine `97877ab`): `flowObserver` in `../Aether_Engine/src/workflows.ts` runs a bound action node via `runConnectorAction` only when the handing-off agent sits behind an approved checkpoint; otherwise it stays "proposed". Not yet seen end to end in the Studio UI.
 2. **Test-fire a whole workflow**: simulate each step (no sends); optional real model; show the result per node.
 3. **Google connection (OAuth)** with tokens kept in the portal D1 (never the browser); Gmail drafts + send from the user's own account (approval by default, per-workflow daily cap, unsubscribe line for marketing), Sheets/Drive, Calendar. `src/google-auth.js` has the sign-in flow to extend; Gmail send is a restricted scope (Google review needed beyond ~100 users).
 4. **Google Places lead finder** (API key, not scraping) to a Sheet; email drafts per lead. Do NOT scrape LinkedIn (terms; account bans).
