@@ -3475,7 +3475,7 @@ ${SHELL_SWITCH_CSS}
       <span id="card-links-status" class="card-links-status" aria-live="polite"></span>
     </div>
     <button type="button" id="card-link-button" class="card-link-button" title="Connect this node to another">🔗 Link to…</button>
-    <button type="button" id="card-project-button" class="card-link-button" title="Package this card and its connected cards as a project blueprint in Mission Control">▶ Make it a project</button>
+    <button type="button" id="card-project-button" class="card-link-button" title="Package this card as a project blueprint in Mission Control">▶ Make it a project</button>
     <div id="card-status" class="card-status" role="group" aria-label="Board column"><span class="card-status-label">Board</span></div>
     <div class="ask-box">
       <div class="ask-row">
@@ -9350,22 +9350,16 @@ ${SHELL_SWITCH_CSS}
       commandMic.title = 'Voice input is not available in this browser';
     }
 
-    // ---- Make it a project (the node card): packages the card and its connected cards (links as links; notes as links to
+    // ---- Make it a project (the node card): packages the card (links as links; notes as links to
     // their own /node page, with the note text as the snippet) into a blueprint spec, hands it to Mission Control through
     // same-origin storage and opens Projects there. The card ids travel with it, so the finished run comes back to Space
     // as an Outcome linked to them. ----
     const PROJECT_PAYLOAD_KEY = 'aether.projectPayload';
     const PROJECT_MAX_CARDS = 13;
     const projectPayloadFor = node => {
-      const byId = new Map(graphData.nodes.map(item => [item.id, item]));
-      const neighbours = [];
-      graphData.links.forEach(link => {
-        const a = linkEndId(link.source);
-        const b = linkEndId(link.target);
-        if (a === node.id && b !== node.id) neighbours.push(b);
-        else if (b === node.id && a !== node.id) neighbours.push(a);
-      });
-      const items = [node, ...[...new Set(neighbours)].map(id => byId.get(id)).filter(Boolean)].slice(0, PROJECT_MAX_CARDS);
+      // Only the card you pressed the button on. Cards that merely sit next to it in the graph are not attached: they are
+      // usually about other things, and the run would read them as sources. Add more on purpose from New project > Space cards.
+      const items = [node];
       const links = items.map(item => {
         const raw = String(item.url || '');
         const isHttp = /^https?:/i.test(raw);
