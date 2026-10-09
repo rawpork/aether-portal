@@ -115,7 +115,7 @@ describe('Mission Control routes', () => {
 	it('keeps the header clear of the iPhone status bar and honors the hidden attribute', () => {
 		const html = renderMissionControlPage();
 		// Matches the main portal page, which iOS keeps below the status bar: no viewport-fit=cover.
-		expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">');
+		expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">');
 		expect(html).not.toContain('viewport-fit=cover');
 		expect(html).toMatch(/\.mc-top \{[^}]*padding: calc\(\d+px \+ env\(safe-area-inset-top/);
 		expect(html).toContain('[hidden] { display: none !important; }');
