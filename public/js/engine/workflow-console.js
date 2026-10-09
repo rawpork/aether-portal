@@ -62,6 +62,7 @@ export function mountWorkflowConsole(container, options = {}) {
   let list = [];
   let workflow = null; // engine workflow with every node positioned
   let selected = null; // { type: 'node' | 'cable', id }
+  let tap = null; // a press on a node that may become a select
   let mode = 'generate'; // command bar: generate a new workflow or change the open one
   let busy = false;
   let error = null;
@@ -199,9 +200,10 @@ export function mountWorkflowConsole(container, options = {}) {
     const card = event.target.closest && event.target.closest('.wfc-node');
     focusNode(card ? card.getAttribute('data-node') : null);
   });
-  viewport.addEventListener('pointerleave', () => {
+  viewport.addEventListener('pointerleave', (event) => {
     focusNode(null);
-    hintEl.hidden = true;
+    // A finger lifting also "leaves": keep the hint a tap just showed until the next tap.
+    if (event.pointerType !== 'touch') hintEl.hidden = true;
   });
   viewport.addEventListener('pointermove', (event) => {
     if (!hintsOn || drag || wiring || event.buttons) {
@@ -1239,7 +1241,10 @@ export function mountWorkflowConsole(container, options = {}) {
     const card = event.target.closest && event.target.closest('.wfc-node');
     if (!card) return;
     const id = card.getAttribute('data-node');
+    // A tap (press and release without moving) opens the node's details, whether or not editing is on.
+    tap = { id, x: event.clientX, y: event.clientY };
     if (port && port.getAttribute('data-dir') === 'out' && editable) {
+      tap = null;
       event.preventDefault();
       wiring = { from: id, port: port.getAttribute('data-port'), anchor: port };
       markCompatible(id, wiring.port);
@@ -1247,6 +1252,7 @@ export function mountWorkflowConsole(container, options = {}) {
     }
     if (event.target.closest('.wfc-node-head') && editable) {
       const node = nodeById(id);
+      tap = null;
       drag = { id, startX: event.clientX, startY: event.clientY, x: node.x, y: node.y, moved: false };
       card.setAttribute('data-dragging', 'true');
       if (card.setPointerCapture && event.pointerId !== undefined) {
@@ -1270,6 +1276,11 @@ export function mountWorkflowConsole(container, options = {}) {
   };
 
   const onPointerUp = (event) => {
+    if (tap) {
+      const t = tap;
+      tap = null;
+      if (!drag && !wiring && Math.hypot(event.clientX - t.x, event.clientY - t.y) < 8 && nodeById(t.id)) select({ type: 'node', id: t.id });
+    }
     if (drag) {
       const card = nodeEl(drag.id);
       if (card) card.removeAttribute('data-dragging');

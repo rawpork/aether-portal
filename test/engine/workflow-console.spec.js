@@ -626,6 +626,18 @@ describe('workflow console', () => {
     expect(NODE_W).toBe(208);
   });
 
+  it('view-only mode: tapping a node opens its details', async () => {
+    const { api } = engine();
+    const { root } = mount(api, { editable: false });
+    await ui.setActive(true);
+    const card = root.querySelector('.wfc-node');
+    card.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10, button: 0 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 11, clientY: 10 }));
+    await flush();
+    expect(ui.getState().selected).toEqual({ type: 'node', id: card.getAttribute('data-node') });
+    expect(root.querySelector('.wfc-inspector').hidden).toBe(false);
+  });
+
   it('on a phone with a localhost engine address, explains and offers Settings instead of "unreachable"', async () => {
     const original = window.location.href;
     window.happyDOM.setURL('https://aether.example.workers.dev/mission-control');
