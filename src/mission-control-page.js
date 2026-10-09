@@ -61,7 +61,7 @@ export function renderMissionControlPage({ assetVersion = 'dev', tier = 'free', 
   <title>Mission Control - Aether Portal</title>
   <!-- Same viewport as the main portal page (no cover fit): iOS then keeps the page below the status bar, also in
        the home-screen app with the translucent status bar, so the header never sits under the clock. -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#18181B">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
