@@ -143,6 +143,14 @@ One flow from an idea or a saved link to a delivered project, with Elarion guidi
 - [ ] Elarion as proactive COO: Telegram nudges when a project stalls, weekly status
 - [ ] Connectors beyond Google: Slack, Notion, GitHub; auto-connect what a project already has set up
 
+### Phase 10 follow-ups from owner testing (2026-10-10)
+
+- [ ] **Studio data in/out (n8n style)**: named, typed values on each port, field mapping between nodes, and the real payload shown on each cable after a test run. Today agents only pass the previous answer as text.
+- [ ] **Clean-up**: drop the unused D1 table `tools_manifest` (456 rows, never read by any code; back up first) and delete the untracked seed leftovers (`studio-aether-engine/`, root `fix_part4*.py`, `find_missing_tool.py`, `master_tool_manifest.json`). Owner has to confirm.
+- [ ] **Space navigation like other apps**: the four views (Space, Cluster, Horizon, Atomic) are only reachable from the Display tray zoom slider or the mouse wheel; the control wheel is hidden (`#thumb-wheel { display: none !important }`). Add a visible view switcher and on-screen hints (scroll to step in/out, click a cluster, Esc to go back).
+- [ ] **Toolbar trays**: the Time tray opens as a small clipped window that scrolls and cannot show its full setting, while View/Filter/Display/More open bottom trays. Make all five behave the same and show the current Time range in full.
+- [ ] After "Make it a project" from the modal, the new node opens in Atomic with no way to tell how to get back out to Space.
+
 ## ?? Active Architecture & System State
 - **Production URL:** https://lingering-water-de49.klo377.workers.dev
 - **Environment:** Cloudflare Workers + D1 (aether_context_db) + static assets (public/) + Gemini 3.x API, optional Anthropic API (Claude Sonnet share tier)
