@@ -2,7 +2,16 @@
 
 Use this to check that a project run does real, relevant research and returns exactly what was asked. Paste the prompt into **New project > Describe a goal** (or a card with only this text; "Make it a project" now attaches just that card).
 
-## The prompt (paste as is)
+## Short version (what you actually type)
+
+Paste this into **+ New > Describe Goal**. The Prompt Architect should turn it into something close to the long prompt below, which you then review and approve.
+
+```
+Scan the highest-rated Etsy digital download listings and tell me which niche to make first.
+```
+
+Check the engineered prompt it shows you against the checklist: real skills bound, a CSV of 10 listings, a niche ranking, one recommendation, and a sources file. Edit it if anything is missing.
+## The engineered prompt (reference for what good looks like)
 
 ```
 Research the Etsy market for digital downloads (printables, planners, templates, SVG/clipart bundles) and tell me what to make first.
