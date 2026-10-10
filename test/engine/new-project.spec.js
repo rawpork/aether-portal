@@ -343,3 +343,63 @@ describe('Guided intake', () => {
 		expect(api.compileBlueprint).toHaveBeenCalledTimes(1);
 	});
 });
+describe('Prompt Architect stage', () => {
+	let project;
+	afterEach(() => {
+		if (project) project.destroy();
+		project = null;
+		document.body.replaceChildren();
+	});
+	const flush = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 0)); };
+	const BP = { blueprint_id: 'bp_1', project_name: 'Etsy', execution_phases: [{ phase_id: 'p1', phase_name: 'Plan', agent_persona: 'Researcher', description: 'Read', task_steps: ['a'] }] };
+	const DRAFT = { prompt: 'GOAL\nRank Etsy niches', personas: [{ name: 'Elarion', role: 'Master Brain' }, { name: 'Echo', role: 'SEO' }], skills: [{ name: 'etsy-research', repo: 'skills', kind: 'recipe' }], deliverables: ['research/listings.csv', 'research/sources.md'], criteria: ['10 rows', 'real URLs'], source: 'elarion' };
+	const makeApi = (extra = {}) => ({
+		baseUrl: 'http://localhost:3333',
+		compileBlueprint: vi.fn(async () => ({ blueprint_id: 'bp_1', blueprint: BP })),
+		architectPrompt: vi.fn(async () => DRAFT),
+		getEngineConfig: vi.fn(async () => ({ api_key_configured: true, key_verified: true, direct_mode: true })),
+		...extra,
+	});
+	const spec = { projectName: 'Etsy', lodLevel: 2, useMiserlyProxy: false, links: [{ url: 'https://old.test/x', title: 'Old link', rawSnippet: 'unrelated' }, { url: 'aether:brief', title: 'Goal', rawSnippet: 'Scan Etsy' }], interviewResponses: {} };
+
+	it('shows the editable prompt, badges and deliverables before anything is compiled, then launches on approve', async () => {
+		const api = makeApi();
+		const onRun = vi.fn(async () => {});
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), onRun });
+		await project.openWithSpec(spec);
+		await flush();
+		expect(api.architectPrompt).toHaveBeenCalledTimes(1);
+		expect(api.architectPrompt.mock.calls[0][0].sources.map((s) => s.title)).toEqual(['Old link']);
+		expect(api.compileBlueprint).not.toHaveBeenCalled();
+		const text = document.querySelector('.np-architect-text');
+		expect(text.value).toBe(DRAFT.prompt);
+		expect([...document.querySelectorAll('.np-badge')].map((b) => b.textContent)).toEqual(['👤 Elarion', '👤 Echo', '🛠 etsy-research']);
+		expect([...document.querySelectorAll('.np-deliverables li')].map((l) => l.textContent)).toEqual(['☐ research/listings.csv', '☐ research/sources.md']);
+		expect(document.querySelector('.np-next').textContent).toBe('🟢 APPROVE & LAUNCH PROJECT');
+		text.value = 'GOAL\nEdited by me';
+		document.querySelector('.np-next').click();
+		await flush();
+		const sent = api.compileBlueprint.mock.calls[0][0];
+		expect(sent.links[0]).toMatchObject({ url: 'aether:engineered-prompt' });
+		expect(sent.links[0].rawSnippet).toContain('Edited by me');
+		expect(onRun).toHaveBeenCalledTimes(1);
+	});
+
+	it('Regenerate drafts again, and an engine that cannot draft falls back to the plain plan', async () => {
+		const api = makeApi();
+		project = mountNewProject(document, { api, pro: () => true, portalFetch: async () => new Response('{}'), onRun: vi.fn() });
+		await project.openWithSpec(spec);
+		await flush();
+		document.querySelector('.np-regen').click();
+		await flush();
+		expect(api.architectPrompt).toHaveBeenCalledTimes(2);
+		project.destroy();
+		document.body.replaceChildren();
+		const down = makeApi({ architectPrompt: vi.fn(async () => { throw new Error('offline'); }) });
+		project = mountNewProject(document, { api: down, pro: () => true, portalFetch: async () => new Response('{}'), onRun: vi.fn() });
+		await project.openWithSpec(spec);
+		await flush();
+		expect(down.compileBlueprint).toHaveBeenCalledTimes(1);
+		expect(document.querySelector('.np-architect-text')).toBeNull();
+	});
+});

@@ -623,6 +623,13 @@ ${SHELL_SWITCH_CSS}
     .oc-run { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); }
     .oc-run-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .oc-run-meta { margin: 4px 0 8px; font-size: 12px; }
+    .np-architect-text { width: 100%; min-height: 220px; box-sizing: border-box; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 10px; border-radius: 8px; border: 1px solid var(--accent-line); background: transparent; color: inherit; resize: vertical; }
+    .np-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+    .np-badge { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--accent-line); font-size: 12px; }
+    .np-badge[data-kind="none"] { opacity: .7; border-style: dashed; }
+    .np-deliverables, .np-criteria { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; }
+    .np-deliverables { list-style: none; padding-left: 4px; }
+    .np-regen { margin-top: 8px; }
     .sc-map { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 8px 0; padding: 0; }
     .sc-step { display: flex; flex-direction: column; gap: 2px; }
     .sc-chip { padding: 4px 10px; border: 1px solid var(--line, #444); border-radius: 8px; font-size: 12px; }

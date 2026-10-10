@@ -672,6 +672,22 @@ export interface ConnectorTestResult {
 	error?: string;
 }
 
+// POST /api/intake/architect: Elarion drafts the engineered execution prompt (personas, bound skills, deliverables, criteria).
+export interface ArchitectRequest {
+	goal: string;
+	name?: string;
+	sources?: { title: string; snippet?: string }[];
+}
+export interface ArchitectResult {
+	prompt: string;
+	personas: { name: string; role: string }[];
+	skills: { name: string; repo: string; kind: string }[];
+	deliverables: string[];
+	criteria: string[];
+	source: 'elarion' | 'template';
+	note?: string;
+}
+
 // POST /api/intake/analyze: Elarion checks the target page against the on-page benchmark and asks what decides the plan.
 export interface IntakeRequest {
 	url?: string;
@@ -1108,6 +1124,10 @@ export function createEngineApi(options: EngineApiOptions = {}) {
 
 		testConnector(payload: ConnectorTestRequest): Promise<ConnectorTestResult> {
 			return request<ConnectorTestResult>('POST', '/api/connectors/test', { body: payload, timeoutMs: 20_000 });
+		},
+
+		architectPrompt(payload: ArchitectRequest): Promise<ArchitectResult> {
+			return request<ArchitectResult>('POST', '/api/intake/architect', { body: payload, timeoutMs: 120_000 });
 		},
 
 		analyzeIntake(payload: IntakeRequest): Promise<IntakeResult> {

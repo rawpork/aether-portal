@@ -42,6 +42,7 @@ export const DEFAULT_TAB = 'template';
 
 export const MAX_CARDS = 13; // what Space's "Make it a project" packages too
 export const MAX_LINKS = 20;
+const ENGINEERED_URL = 'aether:engineered-prompt';
 export const MAX_GOAL_CHARS = 4000;
 export const MIN_GOAL_CHARS = 20;
 export const NAME_MAX_CHARS = 120;
@@ -195,6 +196,10 @@ export function mountNewProject(doc, options = {}) {
   const picked = new Set();
   let presetSpec = null; // a spec handed in (from Space's "Make it a project"): skips the tabs
   let presetSourceIds = [];
+  // Prompt Architect stage: Elarion's engineered prompt for the goal, edited and approved before anything is compiled.
+  let architect = null; // { draft, spec, built }
+  let architected = ''; // the approved prompt text
+  let launchAfter = false;
 
   // ---- the inputs of each tab ----
   // The guided intake (template, roadmap and goal): target, region, deliverables, then Elarion's check and questions.
@@ -467,6 +472,7 @@ export function mountNewProject(doc, options = {}) {
     parts.inputs = el(doc, 'div', { class: 'np-inputs' }, [el(doc, 'div', { class: 'np-seg', role: 'tablist', 'aria-label': 'How do you want to start?' }, tabButtons), ...panels]);
     parts.intake = el(doc, 'div', { class: 'np-intake dc-ingest', hidden: true });
     parts.refine = el(doc, 'div', { class: 'np-refine dc-ingest', hidden: true });
+    parts.architect = el(doc, 'div', { class: 'np-architect dc-ingest', hidden: true });
     parts.review = el(doc, 'div', { class: 'np-review-wrap', hidden: true });
     parts.next = el(doc, 'button', { type: 'button', class: 'bp-primary np-next', text: 'Review plan' });
     parts.back = el(doc, 'button', { type: 'button', class: 'toggle-button np-back', text: 'Back', hidden: true });
@@ -480,6 +486,7 @@ export function mountNewProject(doc, options = {}) {
         parts.inputs,
         parts.intake,
         parts.refine,
+        parts.architect,
         parts.review,
         parts.error,
         el(doc, 'div', { class: 'np-foot' }, [parts.cancel, el(doc, 'span', { class: 'mc-spacer' }), parts.back, parts.next]),
@@ -570,6 +577,7 @@ export function mountNewProject(doc, options = {}) {
     parts.inputs.hidden = name !== 'inputs';
     parts.intake.hidden = name !== 'intake';
     parts.refine.hidden = name !== 'refine';
+    parts.architect.hidden = name !== 'architect';
     parts.review.hidden = name !== 'review';
     parts.next.hidden = false;
     parts.next.disabled = false;
@@ -586,11 +594,14 @@ export function mountNewProject(doc, options = {}) {
     if (step === 'inputs') return guided() ? beginIntake() : review();
     if (step === 'intake') return checkIntake();
     if (step === 'refine') return review();
+    if (step === 'architect') return approveArchitect();
     return approve();
   }
 
   function goBack() {
     if (busy) return;
+    if (step === 'review' && architect) return renderArchitect();
+    if (step === 'architect') return guided() && intake.done ? renderRefinePane() : backToInputs();
     if (step === 'review' && guided() && intake.done) return renderRefinePane();
     if (step === 'refine') return renderIntakePane();
     return backToInputs();
@@ -739,6 +750,11 @@ export function mountNewProject(doc, options = {}) {
     if (guided() && intake.done) built.spec = applyIntake(built.spec);
     const checked = parseBlueprintSpec(JSON.stringify(built.spec));
     if (!checked.ok) return showError('That cannot be made into a project yet: ' + checked.errors.map((e) => e.message).join(' '), null);
+    // Prompt Architect first: the operator sees and edits the engineered prompt before the plan is compiled.
+    if (!architected && typeof api.architectPrompt === 'function') {
+      if (await draftArchitect(checked.spec, built)) return;
+    }
+    if (architected) checked.spec = withEngineeredPrompt(checked.spec, architected);
 
     setBusy(true, 'Planning…');
     let result;
@@ -761,6 +777,86 @@ export function mountNewProject(doc, options = {}) {
     try { onCompiled(result.blueprint_id, blueprint, { sourceIds: built.sourceIds, tags }); } catch { /* the list refreshing must not stop the review */ }
     setBusy(false);
     await renderReview();
+    // Approved in the Prompt Architect pane: launch as soon as the pre-flight checks allow it; otherwise the review shows what blocks it.
+    if (launchAfter) {
+      launchAfter = false;
+      if (isPro() && parts.canRun) return approve();
+    }
+  }
+
+  // ---- the Prompt Architect pane ----
+  function goalOf(spec) {
+    const links = spec.links || [];
+    const brief = links.find((l) => l.url === BRIEF_SOURCE_URL) || links[0] || {};
+    return truncate(clean([spec.projectName, brief.rawSnippet || brief.title].filter(Boolean).join('. ')), 3000);
+  }
+
+  // Asks Elarion for the draft. Returns true when the pane is showing; false (so the plan compiles as before) if the engine cannot draft.
+  async function draftArchitect(spec, built) {
+    setBusy(true, 'Elarion is drafting the prompt…');
+    try {
+      const sources = (spec.links || []).filter((l) => !/^aether:/.test(l.url)).map((l) => ({ title: l.title || l.url, snippet: l.rawSnippet || '' }));
+      const draft = await api.architectPrompt({ goal: goalOf(spec), name: spec.projectName || '', sources });
+      architect = { draft, spec, built };
+    } catch {
+      setBusy(false);
+      architect = null;
+      return false;
+    }
+    setBusy(false);
+    renderArchitect();
+    return true;
+  }
+
+  function badge(text, kind) {
+    return el(doc, 'span', { class: 'np-badge', 'data-kind': kind, text });
+  }
+
+  function renderArchitect(edited) {
+    const { draft } = architect;
+    const field = el(doc, 'textarea', { class: 'np-architect-text', id: id + '-architect', rows: '14', spellcheck: 'false', 'aria-label': 'Engineered master prompt' });
+    field.value = edited != null ? edited : draft.prompt;
+    parts.architectText = field;
+    const regen = el(doc, 'button', { type: 'button', class: 'toggle-button np-regen', text: '🔄 Regenerate Prompt' });
+    regen.addEventListener('click', async () => {
+      if (busy) return;
+      showError('');
+      if (await draftArchitect(architect.spec, architect.built)) return;
+      showError('Could not draft a new prompt. You can keep editing this one.');
+    });
+    parts.architect.replaceChildren(
+      el(doc, 'p', { class: 'dc-hint', text: draft.source === 'elarion' ? 'Elarion engineered this prompt from your idea. Edit anything, then approve.' : (draft.note || 'This is the standard template.') + ' Edit anything, then approve.' }),
+      el(doc, 'h4', { class: 'np-subhead', text: 'Engineered master prompt' }),
+      field,
+      el(doc, 'h4', { class: 'np-subhead', text: 'Bound skills & personas' }),
+      el(doc, 'div', { class: 'np-badges' }, [
+        ...draft.personas.map((p) => badge('👤 ' + p.name, 'persona')),
+        ...(draft.skills.length ? draft.skills.map((s) => badge('🛠 ' + s.name, 'skill')) : [badge('No repo skill matched: web search', 'none')]),
+      ]),
+      el(doc, 'h4', { class: 'np-subhead', text: 'Expected deliverables' }),
+      el(doc, 'ul', { class: 'np-deliverables' }, draft.deliverables.map((d) => el(doc, 'li', { text: '☐ ' + d }))),
+      el(doc, 'h4', { class: 'np-subhead', text: 'Success criteria' }),
+      el(doc, 'ul', { class: 'np-criteria' }, draft.criteria.map((c) => el(doc, 'li', { text: c }))),
+      regen,
+    );
+    showPane('architect', 'Review the engineered prompt', '🟢 APPROVE & LAUNCH PROJECT');
+    announce('Prompt drafted. Review it, then approve to launch.');
+    field.focus({ preventScroll: true });
+  }
+
+  function approveArchitect() {
+    const text = parts.architectText ? parts.architectText.value.trim() : '';
+    if (!text) return showError('The prompt is empty. Write one, or press Regenerate Prompt.', null);
+    architected = text;
+    launchAfter = true;
+    return review();
+  }
+
+  // The approved prompt travels with the plan as its own source, so the planner treats it as the brief to follow.
+  function withEngineeredPrompt(spec, text) {
+    const links = (spec.links || []).filter((l) => l.url !== ENGINEERED_URL);
+    links.unshift({ url: ENGINEERED_URL, title: 'Engineered execution prompt (approved)', rawSnippet: truncate(text, 6000) });
+    return { ...spec, links };
   }
 
   // The project is already a map in the Studio: one agent per phase, in order.
@@ -779,6 +875,7 @@ export function mountNewProject(doc, options = {}) {
     parts.inputs.hidden = true;
     parts.intake.hidden = true;
     parts.refine.hidden = true;
+    parts.architect.hidden = true;
     parts.review.hidden = false;
     parts.next.hidden = false;
     parts.next.textContent = 'Approve & Run';
@@ -844,6 +941,10 @@ export function mountNewProject(doc, options = {}) {
     parts.inputs.hidden = false;
     parts.intake.hidden = true;
     parts.refine.hidden = true;
+    parts.architect.hidden = true;
+    architect = null;
+    architected = '';
+    launchAfter = false;
     parts.review.hidden = true;
     parts.next.textContent = guided() ? 'Next' : 'Review plan';
     parts.next.classList.remove('np-upgrade');
@@ -906,6 +1007,9 @@ export function mountNewProject(doc, options = {}) {
       compiled = null;
       step = 'inputs';
       presetSpec = null;
+      architect = null;
+      architected = '';
+      launchAfter = false;
       Object.assign(intake, { target: '', region: '', deliverables: new Set(), answers: {}, analysis: null, done: false });
       build();
       doc.body.append(scrim);
