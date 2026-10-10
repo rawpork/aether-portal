@@ -630,6 +630,9 @@ ${SHELL_SWITCH_CSS}
     .np-deliverables, .np-criteria { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; }
     .np-deliverables { list-style: none; padding-left: 4px; }
     .np-regen { margin-top: 8px; }
+    .np-del-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .np-del-input { flex: 1; min-width: 0; padding: 6px 8px; font: 13px ui-monospace, Menlo, Consolas, monospace; border-radius: 6px; border: 1px solid var(--accent-line); background: transparent; color: inherit; }
+    .np-del-row button { min-height: 32px; }
     .sc-map { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; list-style: none; margin: 8px 0; padding: 0; }
     .sc-step { display: flex; flex-direction: column; gap: 2px; }
     .sc-chip { padding: 4px 10px; border: 1px solid var(--line, #444); border-radius: 8px; font-size: 12px; }
@@ -1473,7 +1476,7 @@ ${SHELL_SWITCH_CSS}
     .np-scrim { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 16px; background: rgba(4, 8, 14, 0.62); }
     .np-modal { box-sizing: border-box; width: min(720px, 100%); max-width: 100%; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--radius-l); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
     /* Guided intake and Elarion's questions */
-    .np-intake, .np-refine { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 22px 16px; }
+    .np-intake, .np-refine, .np-architect { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 22px 16px; }
     .np-check { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface-soft); color: var(--text); font-size: 14px; cursor: pointer; }
     .np-check input { flex: none; width: 18px; height: 18px; accent-color: var(--accent); }
     .np-checks-group { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; padding: 0; border: 0; }

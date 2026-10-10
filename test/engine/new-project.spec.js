@@ -374,14 +374,20 @@ describe('Prompt Architect stage', () => {
 		const text = document.querySelector('.np-architect-text');
 		expect(text.value).toBe(DRAFT.prompt);
 		expect([...document.querySelectorAll('.np-badge')].map((b) => b.textContent)).toEqual(['👤 Elarion', '👤 Echo', '🛠 etsy-research']);
-		expect([...document.querySelectorAll('.np-deliverables li')].map((l) => l.textContent)).toEqual(['☐ research/listings.csv', '☐ research/sources.md']);
+		expect([...document.querySelectorAll('.np-del-input')].map((i) => i.value)).toEqual(['research/listings.csv', 'research/sources.md']);
 		expect(document.querySelector('.np-next').textContent).toBe('🟢 APPROVE & LAUNCH PROJECT');
-		text.value = 'GOAL\nEdited by me';
+		document.querySelector('.np-del-add').click();
+		[...document.querySelectorAll('.np-del-input')].pop().value = 'research/niches.md';
+		document.querySelector('.np-del-remove').click();
+		text.value = 'REQUIRED DELIVERABLES (old)\n- a.md\n\nSUCCESS\n- x\nGOAL\nEdited by me';
 		document.querySelector('.np-next').click();
 		await flush();
 		const sent = api.compileBlueprint.mock.calls[0][0];
 		expect(sent.links[0]).toMatchObject({ url: 'aether:engineered-prompt' });
 		expect(sent.links[0].rawSnippet).toContain('Edited by me');
+		expect(sent.links[0].rawSnippet).toContain('- research/sources.md\n- research/niches.md');
+		expect(sent.links[0].rawSnippet).not.toContain('a.md');
+		expect(sent.links[0].rawSnippet).not.toContain('listings.csv');
 		expect(onRun).toHaveBeenCalledTimes(1);
 	});
 

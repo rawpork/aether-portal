@@ -834,7 +834,8 @@ export function mountNewProject(doc, options = {}) {
         ...(draft.skills.length ? draft.skills.map((s) => badge('🛠 ' + s.name, 'skill')) : [badge('No repo skill matched: web search', 'none')]),
       ]),
       el(doc, 'h4', { class: 'np-subhead', text: 'Expected deliverables' }),
-      el(doc, 'ul', { class: 'np-deliverables' }, draft.deliverables.map((d) => el(doc, 'li', { text: '☐ ' + d }))),
+      el(doc, 'p', { class: 'dc-hint', text: 'The files the run must hand back. Edit, remove or add; this list replaces the deliverables section of the prompt when you approve.' }),
+      deliverableEditor(draft.deliverables),
       el(doc, 'h4', { class: 'np-subhead', text: 'Success criteria' }),
       el(doc, 'ul', { class: 'np-criteria' }, draft.criteria.map((c) => el(doc, 'li', { text: c }))),
       regen,
@@ -844,12 +845,46 @@ export function mountNewProject(doc, options = {}) {
     field.focus({ preventScroll: true });
   }
 
+  // One editable row per required file; parts.architectDeliverables holds the container so approve can read the rows.
+  function deliverableEditor(paths) {
+    const box = el(doc, 'div', { class: 'np-deliverables', role: 'group', 'aria-label': 'Expected deliverables' });
+    const row = (value) => {
+      const input = el(doc, 'input', { type: 'text', class: 'np-del-input', maxlength: '120', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Deliverable file' });
+      input.value = value;
+      const remove = el(doc, 'button', { type: 'button', class: 'toggle-button np-del-remove', 'aria-label': 'Remove this deliverable', text: '✕' });
+      const line = el(doc, 'div', { class: 'np-del-row' }, [input, remove]);
+      remove.addEventListener('click', () => line.remove());
+      return line;
+    };
+    const add = el(doc, 'button', { type: 'button', class: 'toggle-button np-del-add', text: '+ Add a file' });
+    add.addEventListener('click', () => {
+      const line = row('');
+      add.before(line);
+      line.querySelector('input').focus();
+    });
+    box.append(...paths.map(row), add);
+    parts.architectDeliverables = box;
+    return box;
+  }
+
   function approveArchitect() {
-    const text = parts.architectText ? parts.architectText.value.trim() : '';
+    let text = parts.architectText ? parts.architectText.value.trim() : '';
+    if (parts.architectDeliverables) {
+      const files = [...parts.architectDeliverables.querySelectorAll('.np-del-input')].map((i) => clean(i.value)).filter(Boolean);
+      if (!files.length) return showError('Keep at least one deliverable, so there is something to check the run against.', null);
+      text = withDeliverables(text, files);
+    }
     if (!text) return showError('The prompt is empty. Write one, or press Regenerate Prompt.', null);
     architected = text;
     launchAfter = true;
     return review();
+  }
+
+  // Rewrites the prompt's REQUIRED DELIVERABLES section from the edited list (adds the section if the prompt has none).
+  function withDeliverables(text, files) {
+    const section = 'REQUIRED DELIVERABLES (the run is incomplete unless every file exists)\n' + files.map((f) => '- ' + f).join('\n');
+    const existing = /REQUIRED DELIVERABLES[^\n]*\n(?:- [^\n]*(?:\n|$))*/;
+    return existing.test(text) ? text.replace(existing, () => section + '\n') : text + '\n\n' + section;
   }
 
   // The approved prompt travels with the plan as its own source, so the planner treats it as the brief to follow.
